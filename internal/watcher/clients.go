@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+
 	"os"
 	"path/filepath"
 	"strings"
@@ -260,7 +260,7 @@ func (w *Watcher) addOrUpdateClientLocked(path string) {
 	updates := w.computePerPathUpdatesLocked(oldByID, newByID)
 	w.clientsMutex.Unlock()
 
-	w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
 	w.dispatchAuthUpdates(updates)
 	redisqueue.NotifyUsageRefresh()
 }
@@ -286,7 +286,7 @@ func (w *Watcher) removeClientLocked(path string) {
 	updates := w.computePerPathUpdatesLocked(oldByID, map[string]*coreauth.Auth{})
 	w.clientsMutex.Unlock()
 
-	w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
 	w.dispatchAuthUpdates(updates)
 	redisqueue.NotifyUsageRefresh()
 }

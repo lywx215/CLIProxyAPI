@@ -14,7 +14,28 @@ ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILD_DATE=unknown
 
-RUN CGO_ENABLED=1 GOOS=linux go build -buildvcs=false -ldflags="-s -w -X 'main.Version=${VERSION}' -X 'main.Commit=${COMMIT}' -X 'main.BuildDate=${BUILD_DATE}'" -o ./CLIProxyAPI ./cmd/server/
+# Auto-detect version info: build-arg > .build-info > git > defaults
+RUN set -e; \
+    _ver="$VERSION"; _commit="$COMMIT"; _date="$BUILD_DATE"; \
+    if [ -f .build-info ]; then \
+      . ./.build-info 2>/dev/null || true; \
+      [ "$_ver" = "dev" ] && [ -n "$BUILD_INFO_VERSION" ] && _ver="$BUILD_INFO_VERSION"; \
+      [ "$_commit" = "none" ] && [ -n "$BUILD_INFO_COMMIT" ] && _commit="$BUILD_INFO_COMMIT"; \
+      [ "$_date" = "unknown" ] && [ -n "$BUILD_INFO_DATE" ] && _date="$BUILD_INFO_DATE"; \
+    fi; \
+    if [ "$_ver" = "dev" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then \
+      _ver=$(git describe --tags --always 2>/dev/null || echo "dev"); \
+    fi; \
+    if [ "$_commit" = "none" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then \
+      _commit=$(git rev-parse --short HEAD 2>/dev/null || echo "none"); \
+    fi; \
+    if [ "$_date" = "unknown" ]; then \
+      _date=$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
+    fi; \
+    echo "Building with VERSION=${_ver} COMMIT=${_commit} BUILD_DATE=${_date}"; \
+    CGO_ENABLED=1 GOOS=linux go build -buildvcs=false \
+      -ldflags="-s -w -X 'main.Version=${_ver}' -X 'main.Commit=${_commit}' -X 'main.BuildDate=${_date}'" \
+      -o ./CLIProxyAPI ./cmd/server/
 
 FROM debian:bookworm
 
@@ -24,14 +45,15 @@ RUN mkdir /CLIProxyAPI
 
 COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 
-COPY config.example.yaml /CLIProxyAPI/config.example.yaml
+COPY config.yaml /CLIProxyAPI/config.yaml
 
 WORKDIR /CLIProxyAPI
 
 EXPOSE 8317
 
 ENV TZ=Asia/Shanghai
+ENV OBJECTSTORE_LOCAL_PATH=/data
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
-CMD ["./CLIProxyAPI"]
+CMD ["sh", "-c", "[ -f config.yaml ] || cp config.example.yaml config.yaml; ./CLIProxyAPI"]
