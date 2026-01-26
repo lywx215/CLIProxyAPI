@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X 'main.Version=${VERSION
 
 FROM alpine:3.22.0
 
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache tzdata ca-certificates
 
 RUN mkdir /CLIProxyAPI
 
@@ -29,7 +29,8 @@ WORKDIR /CLIProxyAPI
 EXPOSE 8317
 
 ENV TZ=Asia/Shanghai
+ENV OBJECTSTORE_LOCAL_PATH=/data
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
-CMD ["./CLIProxyAPI"]
+CMD ["sh", "-c", "[ -f config.yaml ] || cp config.example.yaml config.yaml; ./CLIProxyAPI"]
