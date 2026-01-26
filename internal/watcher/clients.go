@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -151,7 +150,7 @@ func (w *Watcher) addOrUpdateClient(path string) {
 		log.Debugf("triggering server update callback after add/update")
 		w.reloadCallback(cfg)
 	}
-	w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
 }
 
 func (w *Watcher) removeClient(path string) {
@@ -169,7 +168,7 @@ func (w *Watcher) removeClient(path string) {
 		log.Debugf("triggering server update callback after removal")
 		w.reloadCallback(cfg)
 	}
-	w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
 }
 
 func (w *Watcher) loadFileClients(cfg *config.Config) int {
