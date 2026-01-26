@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -225,7 +224,7 @@ func (w *Watcher) addOrUpdateClient(path string) {
 	updates := w.computePerPathUpdatesLocked(oldByID, newByID)
 	w.clientsMutex.Unlock()
 
-	w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Sync auth %s", filepath.Base(path)), path)
 	w.dispatchAuthUpdates(updates)
 }
 
@@ -243,7 +242,7 @@ func (w *Watcher) removeClient(path string) {
 	updates := w.computePerPathUpdatesLocked(oldByID, map[string]*coreauth.Auth{})
 	w.clientsMutex.Unlock()
 
-	w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
+	// w.persistAuthAsync(fmt.Sprintf("Remove auth %s", filepath.Base(path)), path)
 	w.dispatchAuthUpdates(updates)
 }
 
