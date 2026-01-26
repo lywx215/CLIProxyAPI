@@ -220,6 +220,14 @@ func main() {
 	if value, ok := lookupEnv("OBJECTSTORE_LOCAL_PATH", "objectstore_local_path"); ok {
 		objectStoreLocalPath = value
 	}
+	var objectStoreRegion string
+	if value, ok := lookupEnv("OBJECTSTORE_REGION", "objectstore_region"); ok {
+		objectStoreRegion = value
+	}
+	var objectStorePrefix string
+	if value, ok := lookupEnv("OBJECTSTORE_PREFIX", "objectstore_prefix"); ok {
+		objectStorePrefix = value
+	}
 
 	// Check for cloud deploy mode only on first execution
 	// Read env var name in uppercase: DEPLOY
@@ -304,8 +312,11 @@ func main() {
 			SecretKey: objectStoreSecret,
 			LocalRoot: objectStoreRoot,
 			UseSSL:    useSSL,
-			PathStyle: true,
+			PathStyle: false,
+			Region:    objectStoreRegion,
+			Prefix:    objectStorePrefix,
 		}
+		log.Infof("Initializing Object Store with Endpoint: %s, Bucket: %s, Region: %s, Prefix: %s, PathStyle: false", resolvedEndpoint, objectStoreBucket, objectStoreRegion, objectStorePrefix)
 		objectStoreInst, err = store.NewObjectTokenStore(objCfg)
 		if err != nil {
 			log.Errorf("failed to initialize object token store: %v", err)

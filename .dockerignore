@@ -1,5 +1,6 @@
 # Git and GitHub folders
 .git/*
+.env
 .github/*
 
 # Docker and CI/CD related files

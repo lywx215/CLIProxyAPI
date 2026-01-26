@@ -15,12 +15,12 @@ tls:
 remote-management:
   # Whether to allow remote (non-localhost) management access.
   # When false, only localhost can access management endpoints (a key is still required).
-  allow-remote: false
+  allow-remote: true
 
   # Management key. If a plaintext value is provided here, it will be hashed on startup.
   # All management requests (even from localhost) require this key.
   # Leave empty to disable the Management API entirely (404 for all /v0/management routes).
-  secret-key: ""
+  secret-key: "!!!"
 
   # Disable the bundled management control panel asset download and HTTP route when true.
   disable-control-panel: false
@@ -33,9 +33,7 @@ auth-dir: "~/.cli-proxy-api"
 
 # API keys for authentication
 api-keys:
-  - "your-api-key-1"
-  - "your-api-key-2"
-  - "your-api-key-3"
+  - "!!!"
 
 # Enable debug logging
 debug: false
@@ -53,7 +51,7 @@ logging-to-file: false
 
 # Maximum total size (MB) of log files under the logs directory. When exceeded, the oldest log
 # files are deleted until within the limit. Set to 0 to disable.
-logs-max-total-size-mb: 0
+logs-max-total-size-mb: 1024
 
 # Maximum number of error log files retained when request logging is disabled.
 # When exceeded, the oldest error log files are deleted. Default is 10. Set to 0 to disable cleanup.
