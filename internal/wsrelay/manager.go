@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 )
 
 // Manager exposes a websocket endpoint that proxies Gemini requests to
@@ -74,7 +75,7 @@ func NewManager(opts Options) *Manager {
 		mgr.logInfof = func(string, ...any) {}
 	}
 	if mgr.logWarnf == nil {
-		mgr.logWarnf = func(s string, args ...any) { fmt.Printf(s+"\n", args...) }
+		mgr.logWarnf = func(s string, args ...any) { log.Warnf(s, args...) }
 	}
 	return mgr
 }
