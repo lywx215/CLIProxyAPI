@@ -22,6 +22,7 @@ RUN mkdir /CLIProxyAPI
 
 COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 
+COPY config.yaml /CLIProxyAPI/config.yaml
 COPY config.example.yaml /CLIProxyAPI/config.example.yaml
 
 WORKDIR /CLIProxyAPI
@@ -33,4 +34,4 @@ ENV OBJECTSTORE_LOCAL_PATH=/data
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
-CMD ["sh", "-c", "[ -f config.yaml ] || cp config.example.yaml config.yaml; ./CLIProxyAPI"]
+CMD ["./CLIProxyAPI"]
