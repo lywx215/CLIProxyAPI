@@ -33,6 +33,13 @@ git rebase upstream/main
 > 2. `git add <file>`
 > 3. `git rebase --continue`
 
+> [!CAUTION]
+> **处理 `go.mod` 冲突时务必小心！**
+> - 冲突标记之间可能同时包含**我们要删除的依赖**和**上游新增的依赖**
+> - 仔细检查每一行，确保不要误删上游需要的包（如 `utls`、`minio-go` 等）
+> - 解决冲突后建议运行 `go build ./...` 验证编译是否通过
+> - 如果构建失败提示缺少包，使用 `go get <package>` 添加后再提交
+
 ### 第三步：推送到 GitHub
 由于变基修改了提交历史，必须使用强制推送。
 ```powershell
@@ -50,3 +57,15 @@ git push -f origin main
     *   `internal/watcher/events.go`: 降级日志级别。
     *   `internal/api/server.go`: 将 `fmt.Printf` 替换为 `log.Debugf` 消除刷屏。
 3.  **Config**: 支持 `OBJECTSTORE_PREFIX` 环境变量实现多服务器隔离。
+
+## 4. 本地专用文件 (Local-Only Files)
+
+以下目录/文件仅存于本地，**不应提交到 Git**（已在 `.gitignore` 中排除）：
+
+| 路径 | 说明 |
+|------|------|
+| `zeaburcli/` | Zeabur 多服务器部署工具，包含 `deploy_config.yaml`（含 API Token 等敏感信息） |
+| `.env` | 环境变量配置，包含各类密钥和凭证 |
+| `config.yaml` | 运行时配置，包含服务端口、数据库连接等本地设置 |
+
+> ⚠️ **注意**：如需在新机器上使用部署脚本，请从安全渠道获取 `zeaburcli/` 目录，切勿将其推送到公开仓库。
