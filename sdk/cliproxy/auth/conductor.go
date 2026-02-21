@@ -2072,7 +2072,10 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 			}
 		}
 
-		_ = m.persist(ctx, auth)
+		// Runtime state updates (ModelStates, Quota, UpdatedAt, etc.) should not trigger
+		// persistence to avoid uploading credentials to COS on every request completion.
+		// Core credential data (tokens) are persisted separately during Refresh flows.
+		// _ = m.persist(ctx, auth)
 		authSnapshot = auth.Clone()
 	}
 	m.mu.Unlock()
