@@ -1305,8 +1305,9 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 				applyAuthFailureState(auth, result.Error, result.RetryAfter, now)
 			}
 		}
-
-		_ = m.persist(ctx, auth)
+		// Runtime state updates (ModelStates, Quota, UpdatedAt, etc.) should not trigger
+		// persistence to avoid uploading credentials to COS on every request completion.
+		// Core credential data (tokens) are persisted separately during Refresh flows.
 	}
 	m.mu.Unlock()
 

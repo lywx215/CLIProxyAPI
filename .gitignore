@@ -45,6 +45,9 @@ GEMINI.md
 _bmad/*
 _bmad-output/*
 
+# Deploy scripts (contains sensitive config)
+zeaburcli/
+
 # macOS
 .DS_Store
 ._*

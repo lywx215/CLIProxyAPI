@@ -57,6 +57,9 @@ git push -f origin main
     *   `internal/watcher/events.go`: 降级日志级别。
     *   `internal/api/server.go`: 将 `fmt.Printf` 替换为 `log.Debugf` 消除刷屏。
 3.  **Config**: 支持 `OBJECTSTORE_PREFIX` 环境变量实现多服务器隔离。
+4.  **临时模型定义 (Upstream 优先)**:
+    *   `internal/registry/model_definitions_static_data.go`: 临时添加了 `gemini-3.1-pro-preview` 模型定义（添加于 2026-02-20），分布在 `GetGeminiModels`、`GetGeminiVertexModels`、`GetGeminiCLIModels`、`GetAIStudioModels` 四个函数中。
+    *   ⚠️ **同步时以 fork 源 (upstream) 为准**：当 upstream 更新了对 `gemini-3.1-pro-preview` 的支持后（可能包含更完整的参数、别名映射等），应采用 upstream 的版本，丢弃本地临时定义。冲突时选择 upstream 的代码即可。
 
 ## 4. 本地专用文件 (Local-Only Files)
 
