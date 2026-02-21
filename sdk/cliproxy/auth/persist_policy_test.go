@@ -91,3 +91,31 @@ func TestPersist_SkipsConfigAPIKeyAuth(t *testing.T) {
 		t.Fatalf("expected MarkResult to skip persist for config api key, got %d Save calls", got)
 	}
 }
+
+func TestMarkResult_DoesNotTriggerPersistence(t *testing.T) {
+	store := &countingStore{}
+	mgr := NewManager(store, nil, nil)
+	auth := &Auth{
+		ID:       "auth-1",
+		Provider: "antigravity",
+		Metadata: map[string]any{"type": "antigravity"},
+	}
+
+	// Register auth (will trigger 1 save)
+	if _, err := mgr.Register(context.Background(), auth); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	initialCount := store.saveCount.Load()
+
+	// MarkResult should NOT trigger save
+	mgr.MarkResult(context.Background(), Result{
+		AuthID:   "auth-1",
+		Provider: "antigravity",
+		Model:    "test-model",
+		Success:  true,
+	})
+
+	if got := store.saveCount.Load(); got != initialCount {
+		t.Fatalf("expected Save count to remain %d, got %d", initialCount, got)
+	}
+}
