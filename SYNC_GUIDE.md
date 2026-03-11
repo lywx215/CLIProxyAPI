@@ -2,6 +2,8 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
+> **Last updated**: 2026-03-15 — 基于 upstream `v6.8.53` 校验
+
 ## 1. 初始设置 (Initial Setup)
 
 如果我们在换了新环境，或者还没配置过 upstream，请执行：
@@ -23,7 +25,7 @@ git fetch upstream
 ```
 
 ### 第二步：变基 (Rebase)
-我们将本地的自定义修改“浮动”到最新的官方代码之上。
+我们将本地的自定义修改"浮动"到最新的官方代码之上。
 ```powershell
 git rebase upstream/main
 ```
@@ -50,18 +52,58 @@ git push -f origin main
 
 我们维护的自定义修改主要包括：
 
-1.  **Deployment**: `Dockerfile` 和 `zbpack.json` 适配 Zeabur。
-2.  **Fixes**:
-    *   `internal/store/objectstore.go`: 迁移至 AWS SDK v2 以解决腾讯云 COS 兼容性问题。
-    *   `internal/watcher/clients.go`: 移除 `persistAuthAsync` 以解决日志死循环。
-    *   `internal/watcher/events.go`: 降级日志级别。
-    *   `internal/api/server.go`: 将 `fmt.Printf` 替换为 `log.Debugf` 消除刷屏。
-3.  **Config**: 支持 `OBJECTSTORE_PREFIX` 环境变量实现多服务器隔离。
-4.  **临时模型定义 (Upstream 优先)**:
-    *   `internal/registry/model_definitions_static_data.go`: 临时添加了 `gemini-3.1-pro-preview` 模型定义（添加于 2026-02-20），分布在 `GetGeminiModels`、`GetGeminiVertexModels`、`GetGeminiCLIModels`、`GetAIStudioModels` 四个函数中。
-    *   ⚠️ **同步时以 fork 源 (upstream) 为准**：当 upstream 更新了对 `gemini-3.1-pro-preview` 的支持后（可能包含更完整的参数、别名映射等），应采用 upstream 的版本，丢弃本地临时定义。冲突时选择 upstream 的代码即可。
+### 3.1 部署相关 (Deployment)
 
-## 4. 本地专用文件 (Local-Only Files)
+| 文件 | 修改内容 |
+|------|----------|
+| `Dockerfile` | 适配 Zeabur 部署；使用 `config.yaml`（而非 `config.example.yaml`）作为 Bootstrap 模板 |
+| `zbpack.json` | 指定 `build_type: dockerfile` 以兼容 Zeabur 构建 |
+| `.dockerignore` | 添加额外忽略项（如编辑器/Agent 目录） |
+
+### 3.2 Bug 修复 (Fixes)
+
+| 文件 | 修改内容 |
+|------|----------|
+| `internal/store/objectstore.go` | 修改 S3 客户端实现以解决腾讯云 COS 兼容性问题 |
+| `internal/watcher/clients.go` | 移除 `persistAuthAsync` 调用以解决日志死循环 |
+| `internal/api/server.go` | 将 `fmt.Printf` 替换为 `log.Debugf`，消除 `UpdateClients` 刷屏日志 |
+| `internal/watcher/events.go` | 将增量处理日志从 `Infof` 降级为 `Debugf`，减少运行时刷屏 |
+| `internal/wsrelay/manager.go` | 将 `fmt.Printf` 替换为 logrus `log.Warnf`，统一日志框架 |
+| `sdk/cliproxy/auth/conductor.go` | 注释 `MarkResult` 中的 `persist` 调用，避免每次请求完成都上传凭证到 COS |
+
+### 3.3 功能增强 (Enhancements)
+
+| 文件 | 修改内容 |
+|------|----------|
+| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 |
+| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整 |
+
+### 3.4 辅助文件 (Auxiliary)
+
+| 文件 | 修改内容 |
+|------|----------|
+| `.gitignore` | 添加 `zeaburcli/` 及编辑器/Agent 目录忽略规则 |
+| `go.mod` / `go.sum` | 随上述代码修改引入的依赖变更 |
+| `SYNC_GUIDE.md` | 本文档（仅存在于 fork） |
+| `assets/cubence.png` | 自定义品牌资源 |
+| `test/config_migration_test.go` | 配置迁移测试 |
+| `sdk/cliproxy/auth/persist_policy_test.go` | 持久化策略测试 |
+
+> [!IMPORTANT]
+> **同步后请检查**：每次 rebase 后，运行 `git diff upstream/main..main --stat` 确认差异文件列表与上述清单一致。如果有新增或消失的差异，请更新本文档。
+
+## 4. 已被上游采纳的修改 (Superseded)
+
+以下修改最初由本 fork 添加，但已被上游 (upstream) 采纳，**不再需要维护**：
+
+| 修改内容 | 采纳版本 |
+|----------|----------|
+| `gemini-3.1-pro-preview` 临时模型定义（静态文件） | ≤ v6.8.52（上游已改用网络动态模型目录，静态定义文件已删除） |
+
+> [!TIP]
+> 当上游合并了我们的某个修改后，下次 rebase 时冲突会自动消失。确认采纳后将其移至此表。
+
+## 5. 本地专用文件 (Local-Only Files)
 
 以下目录/文件仅存于本地，**不应提交到 Git**（已在 `.gitignore` 中排除）：
 
