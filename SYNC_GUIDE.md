@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-03-15 — 基于 upstream `v6.8.53` 校验
+> **Last updated**: 2026-03-18 — 基于 upstream `v6.8.55` 校验
 
 ## 1. 初始设置 (Initial Setup)
 
