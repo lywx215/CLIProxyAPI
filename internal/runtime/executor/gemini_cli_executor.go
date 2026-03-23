@@ -231,7 +231,8 @@ func (e *GeminiCLIExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 			reporter.Publish(ctx, helps.ParseGeminiCLIUsage(data))
 			var param any
 			out := sdktranslator.TranslateNonStream(respCtx, to, from, attemptModel, opts.OriginalRequest, payload, data, &param)
-			resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
+			outBytes := rewriteResponseModelVersion([]byte(out), requestedModel, baseModel)
+			resp = cliproxyexecutor.Response{Payload: outBytes, Headers: httpResp.Header.Clone()}
 			return resp, nil
 		}
 
@@ -409,14 +410,14 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 					if bytes.HasPrefix(line, dataTag) {
 						segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, bytes.Clone(line), &param)
 						for i := range segments {
-							out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}
+							out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}
 						}
 					}
 				}
 
 				segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, []byte("[DONE]"), &param)
 				for i := range segments {
-					out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}
+					out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}
 				}
 				if errScan := scanner.Err(); errScan != nil {
 					helps.RecordAPIResponseError(ctx, e.cfg, errScan)
@@ -438,12 +439,12 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			var param any
 			segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, data, &param)
 			for i := range segments {
-				out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}
+				out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}
 			}
 
 			segments = sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, []byte("[DONE]"), &param)
 			for i := range segments {
-				out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}
+				out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}
 			}
 		}(httpResp, append([]byte(nil), payload...), attemptModel)
 
