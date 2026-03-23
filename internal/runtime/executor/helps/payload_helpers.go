@@ -1,6 +1,7 @@
 package helps
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -316,4 +317,78 @@ func matchModelPattern(pattern, model string) bool {
 		pi++
 	}
 	return pi == len(pattern)
+}
+
+// rewriteResponseModelVersion replaces the modelVersion field in a JSON response
+// with the client-requested model name when aliases are in use.
+// It handles both top-level modelVersion and nested response.modelVersion paths,
+// as well as the "model" field used in OpenAI/Claude translated responses.
+func rewriteResponseModelVersion(data []byte, requestedModel, baseModel string) []byte {
+	requestedModel = strings.TrimSpace(requestedModel)
+	baseModel = strings.TrimSpace(baseModel)
+	if requestedModel == "" || requestedModel == baseModel {
+		return data
+	}
+	if len(data) == 0 || data[0] != '{' {
+		return data
+	}
+	// Try top-level modelVersion (Gemini native format)
+	if gjson.GetBytes(data, "modelVersion").Exists() {
+		if updated, err := sjson.SetBytes(data, "modelVersion", requestedModel); err == nil {
+			data = updated
+		}
+	}
+	// Try nested response.modelVersion (Antigravity / Gemini CLI format)
+	if gjson.GetBytes(data, "response.modelVersion").Exists() {
+		if updated, err := sjson.SetBytes(data, "response.modelVersion", requestedModel); err == nil {
+			data = updated
+		}
+	}
+	// Try "model" field (OpenAI / Claude translated format)
+	if m := gjson.GetBytes(data, "model"); m.Exists() && m.String() != requestedModel {
+		if updated, err := sjson.SetBytes(data, "model", requestedModel); err == nil {
+			data = updated
+		}
+	}
+	// Try nested "message.model" (Claude format)
+	if m := gjson.GetBytes(data, "message.model"); m.Exists() && m.String() != requestedModel {
+		if updated, err := sjson.SetBytes(data, "message.model", requestedModel); err == nil {
+			data = updated
+		}
+	}
+	return data
+}
+
+// rewriteSSEModelVersion rewrites modelVersion in a stream chunk.
+// It handles both raw JSON payloads and SSE "data: {...}" formatted lines.
+func rewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byte {
+	requestedModel = strings.TrimSpace(requestedModel)
+	baseModel = strings.TrimSpace(baseModel)
+	if requestedModel == "" || requestedModel == baseModel {
+		return line
+	}
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		return line
+	}
+	// Raw JSON payload (no data: prefix)
+	if trimmed[0] == '{' {
+		return rewriteResponseModelVersion(line, requestedModel, baseModel)
+	}
+	// SSE data: line
+	if !bytes.HasPrefix(trimmed, []byte("data:")) {
+		return line
+	}
+	payload := bytes.TrimSpace(trimmed[5:])
+	if len(payload) == 0 || payload[0] != '{' {
+		return line
+	}
+	rewritten := rewriteResponseModelVersion(payload, requestedModel, baseModel)
+	if bytes.Equal(rewritten, payload) {
+		return line
+	}
+	var out []byte
+	out = append(out, []byte("data: ")...)
+	out = append(out, rewritten...)
+	return out
 }
