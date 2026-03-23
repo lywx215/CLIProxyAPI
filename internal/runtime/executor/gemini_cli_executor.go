@@ -232,7 +232,8 @@ func (e *GeminiCLIExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 			reporter.Publish(ctx, helps.ParseGeminiCLIUsage(data))
 			var param any
 			out := sdktranslator.TranslateNonStream(respCtx, to, from, attemptModel, opts.OriginalRequest, payload, data, &param)
-			resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
+			outBytes := rewriteResponseModelVersion([]byte(out), requestedModel, baseModel)
+			resp = cliproxyexecutor.Response{Payload: outBytes, Headers: httpResp.Header.Clone()}
 			return resp, nil
 		}
 
@@ -412,7 +413,7 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 						segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, bytes.Clone(line), &param)
 						for i := range segments {
 							select {
-							case out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}:
+							case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}:
 							case <-ctx.Done():
 								return
 							}
@@ -423,7 +424,7 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 				segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, []byte("[DONE]"), &param)
 				for i := range segments {
 					select {
-					case out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}:
+					case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}:
 					case <-ctx.Done():
 						return
 					}
@@ -457,7 +458,7 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			segments := sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, data, &param)
 			for i := range segments {
 				select {
-				case out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}:
+				case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}:
 				case <-ctx.Done():
 					return
 				}
@@ -466,7 +467,7 @@ func (e *GeminiCLIExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			segments = sdktranslator.TranslateStream(respCtx, to, from, attemptModel, opts.OriginalRequest, reqBody, []byte("[DONE]"), &param)
 			for i := range segments {
 				select {
-				case out <- cliproxyexecutor.StreamChunk{Payload: segments[i]}:
+				case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)}:
 				case <-ctx.Done():
 					return
 				}
