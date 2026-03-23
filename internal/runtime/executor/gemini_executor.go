@@ -206,7 +206,8 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	reporter.Publish(ctx, helps.ParseGeminiUsage(data))
 	var param any
 	out := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, body, data, &param)
-	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
+	outBytes := rewriteResponseModelVersion([]byte(out), requestedModel, baseModel)
+	resp = cliproxyexecutor.Response{Payload: outBytes, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }
 
@@ -322,12 +323,12 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			}
 			lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, bytes.Clone(payload), &param)
 			for i := range lines {
-				out <- cliproxyexecutor.StreamChunk{Payload: lines[i]}
+				out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}
 			}
 		}
 		lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, []byte("[DONE]"), &param)
 		for i := range lines {
-			out <- cliproxyexecutor.StreamChunk{Payload: lines[i]}
+			out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}
 		}
 		if errScan := scanner.Err(); errScan != nil {
 			helps.RecordAPIResponseError(ctx, e.cfg, errScan)

@@ -873,7 +873,7 @@ attemptLoop:
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bodyBytes, &param)
-			resp = cliproxyexecutor.Response{Payload: converted, Headers: httpResp.Header.Clone()}
+			resp = cliproxyexecutor.Response{Payload: rewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 			return resp, nil
 		}
@@ -1139,7 +1139,7 @@ attemptLoop:
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, resp.Payload, &param)
-			resp = cliproxyexecutor.Response{Payload: converted, Headers: httpResp.Header.Clone()}
+			resp = cliproxyexecutor.Response{Payload: rewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 
 			return resp, nil
@@ -1580,12 +1580,12 @@ attemptLoop:
 
 					chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(payload), &param)
 					for i := range chunks {
-						out <- cliproxyexecutor.StreamChunk{Payload: chunks[i]}
+						out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(chunks[i]), requestedModel, baseModel)}
 					}
 				}
 				tail := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, []byte("[DONE]"), &param)
 				for i := range tail {
-					out <- cliproxyexecutor.StreamChunk{Payload: tail[i]}
+					out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(tail[i]), requestedModel, baseModel)}
 				}
 				if errScan := scanner.Err(); errScan != nil {
 					helps.RecordAPIResponseError(ctx, e.cfg, errScan)
