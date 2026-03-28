@@ -932,7 +932,7 @@ func matchModelPattern(pattern, model string) bool {
 // with the client-requested model name when aliases are in use.
 // It handles both top-level modelVersion and nested response.modelVersion paths,
 // as well as the "model" field used in OpenAI/Claude translated responses.
-func rewriteResponseModelVersion(data []byte, requestedModel, baseModel string) []byte {
+func RewriteResponseModelVersion(data []byte, requestedModel, baseModel string) []byte {
 	requestedModel = strings.TrimSpace(requestedModel)
 	baseModel = strings.TrimSpace(baseModel)
 	if requestedModel == "" || requestedModel == baseModel {
@@ -970,7 +970,7 @@ func rewriteResponseModelVersion(data []byte, requestedModel, baseModel string) 
 
 // rewriteSSEModelVersion rewrites modelVersion in a stream chunk.
 // It handles both raw JSON payloads and SSE "data: {...}" formatted lines.
-func rewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byte {
+func RewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byte {
 	requestedModel = strings.TrimSpace(requestedModel)
 	baseModel = strings.TrimSpace(baseModel)
 	if requestedModel == "" || requestedModel == baseModel {
@@ -982,7 +982,7 @@ func rewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byt
 	}
 	// Raw JSON payload (no data: prefix)
 	if trimmed[0] == '{' {
-		return rewriteResponseModelVersion(line, requestedModel, baseModel)
+		return RewriteResponseModelVersion(line, requestedModel, baseModel)
 	}
 	// SSE data: line
 	if !bytes.HasPrefix(trimmed, []byte("data:")) {
@@ -992,7 +992,7 @@ func rewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byt
 	if len(payload) == 0 || payload[0] != '{' {
 		return line
 	}
-	rewritten := rewriteResponseModelVersion(payload, requestedModel, baseModel)
+	rewritten := RewriteResponseModelVersion(payload, requestedModel, baseModel)
 	if bytes.Equal(rewritten, payload) {
 		return line
 	}
