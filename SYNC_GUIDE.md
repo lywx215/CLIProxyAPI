@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-03-18 — 基于 upstream `v6.8.55` 校验
+> **Last updated**: 2026-04-04 — 基于 upstream `v6.9.14` 校验
 
 ## 1. 初始设置 (Initial Setup)
 
@@ -77,6 +77,10 @@ git push -f origin main
 |------|----------|
 | `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 |
 | `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整 |
+| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 |
+| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor |
+| `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor |
+| `internal/runtime/executor/payload_helpers.go` | `rewriteResponseModelVersion` / `rewriteSSEModelVersion` 辅助函数 |
 
 ### 3.4 辅助文件 (Auxiliary)
 
