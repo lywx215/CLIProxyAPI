@@ -4,7 +4,30 @@
 
 > **Last updated**: 2026-04-09 — 基于 upstream `v6.9.18` 校验
 
-## 1. 初始设置 (Initial Setup)
+## 1. 分支说明 (Branch Overview)
+
+本 fork 维护 **两个分支**：
+
+| 分支 | 说明 |
+|------|------|
+| `main` | 包含所有自定义修改（含 Model Version 别名重写功能） |
+| `no-model-version` | 与 `main` 相同，但**去除了 Model Version 别名重写功能**（4 个 executor 文件与上游一致） |
+
+> [!IMPORTANT]
+> **每次同步上游时，必须同时更新两个分支。**
+
+### `no-model-version` 与 `main` 的差异
+
+仅以下 4 个文件不同（`no-model-version` 中与上游保持一致）：
+
+| 文件 | `main` 分支 | `no-model-version` 分支 |
+|------|-------------|------------------------|
+| `internal/runtime/executor/antigravity_executor.go` | 调用 `RewriteResponseModelVersion` / `RewriteSSEModelVersion` | 直接传递原始 payload（与上游一致） |
+| `internal/runtime/executor/gemini_cli_executor.go` | 同上 | 同上 |
+| `internal/runtime/executor/gemini_executor.go` | 同上 | 同上 |
+| `internal/runtime/executor/helps/payload_helpers.go` | 包含 `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 函数 | 不包含这些函数（与上游一致） |
+
+## 2. 初始设置 (Initial Setup)
 
 如果我们在换了新环境，或者还没配置过 upstream，请执行：
 
@@ -15,18 +38,18 @@ git remote -v
 git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git
 ```
 
-## 2. 日常同步流程 (Routine Sync)
+## 3. 日常同步流程 (Routine Sync)
 
-当原项目有更新时，请按照以下步骤同步：
+当原项目有更新时，请按照以下步骤同步 **两个分支**：
 
 ### 第一步：获取更新
 ```powershell
 git fetch upstream
 ```
 
-### 第二步：变基 (Rebase)
-我们将本地的自定义修改"浮动"到最新的官方代码之上。
+### 第二步：同步 `main` 分支
 ```powershell
+git checkout main
 git rebase upstream/main
 ```
 
@@ -42,17 +65,62 @@ git rebase upstream/main
 > - 解决冲突后建议运行 `go build ./...` 验证编译是否通过
 > - 如果构建失败提示缺少包，使用 `go get <package>` 添加后再提交
 
-### 第三步：推送到 GitHub
-由于变基修改了提交历史，必须使用强制推送。
+### 第三步：验证 `main` 编译
+```powershell
+go build ./...
+```
+
+### 第四步：推送 `main` 到 GitHub
 ```powershell
 git push -f origin main
 ```
 
-## 3. 自定义修改清单 (Custom Modifications)
+### 第五步：同步 `no-model-version` 分支
+```powershell
+git checkout no-model-version
+git rebase upstream/main
+```
+
+> [!NOTE]
+> `no-model-version` 分支没有 Model Version 重写的 commit，所以它的 rebase 应该更简单。
+> 如果上游修改了 4 个 executor 文件，`no-model-version` 通常不会冲突（因为它与上游一致）。
+
+### 第六步：验证 `no-model-version` 编译
+```powershell
+go build ./...
+```
+
+### 第七步：推送 `no-model-version` 到 GitHub
+```powershell
+git push -f origin no-model-version
+```
+
+### 第八步：切回 `main` 并更新本文档
+```powershell
+git checkout main
+```
+更新本文件顶部的 `Last updated` 日期和版本号，然后提交推送：
+```powershell
+git add SYNC_GUIDE.md
+git commit -m "docs: update SYNC_GUIDE last-synced date to vX.X.X"
+git push origin main
+```
+
+### 第九步：验证同步结果
+```powershell
+# 确认 main 与上游的差异文件列表正确
+git diff upstream/main..main --stat
+
+# 确认 no-model-version 的 4 个 executor 文件与上游一致
+git diff upstream/main no-model-version -- internal/runtime/executor/antigravity_executor.go internal/runtime/executor/gemini_cli_executor.go internal/runtime/executor/gemini_executor.go internal/runtime/executor/helps/payload_helpers.go
+# 上面这条命令应该输出为空（无差异）
+```
+
+## 4. 自定义修改清单 (Custom Modifications)
 
 我们维护的自定义修改主要包括：
 
-### 3.1 部署相关 (Deployment)
+### 4.1 部署相关 (Deployment)
 
 | 文件 | 修改内容 |
 |------|----------|
@@ -60,7 +128,7 @@ git push -f origin main
 | `zbpack.json` | 指定 `build_type: dockerfile` 以兼容 Zeabur 构建 |
 | `.dockerignore` | 添加额外忽略项（如编辑器/Agent 目录） |
 
-### 3.2 Bug 修复 (Fixes)
+### 4.2 Bug 修复 (Fixes)
 
 | 文件 | 修改内容 |
 |------|----------|
@@ -71,18 +139,18 @@ git push -f origin main
 | `internal/wsrelay/manager.go` | 将 `fmt.Printf` 替换为 logrus `log.Warnf`，统一日志框架 |
 | `sdk/cliproxy/auth/conductor.go` | 注释 `MarkResult` 中的 `persist` 调用，避免每次请求完成都上传凭证到 COS |
 
-### 3.3 功能增强 (Enhancements)
+### 4.3 功能增强 (Enhancements)
 
-| 文件 | 修改内容 |
-|------|----------|
-| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 |
-| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整 |
-| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 |
-| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor |
-| `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor |
-| `internal/runtime/executor/payload_helpers.go` | `rewriteResponseModelVersion` / `rewriteSSEModelVersion` 辅助函数 |
+| 文件 | 修改内容 | 分支 |
+|------|----------|------|
+| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 | 两个分支共有 |
+| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整 | 两个分支共有 |
+| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 | **仅 `main`** |
+| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor | **仅 `main`** |
+| `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor | **仅 `main`** |
+| `internal/runtime/executor/helps/payload_helpers.go` | `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 辅助函数 | **仅 `main`** |
 
-### 3.4 辅助文件 (Auxiliary)
+### 4.4 辅助文件 (Auxiliary)
 
 | 文件 | 修改内容 |
 |------|----------|
@@ -96,7 +164,7 @@ git push -f origin main
 > [!IMPORTANT]
 > **同步后请检查**：每次 rebase 后，运行 `git diff upstream/main..main --stat` 确认差异文件列表与上述清单一致。如果有新增或消失的差异，请更新本文档。
 
-## 4. 已被上游采纳的修改 (Superseded)
+## 5. 已被上游采纳的修改 (Superseded)
 
 以下修改最初由本 fork 添加，但已被上游 (upstream) 采纳，**不再需要维护**：
 
@@ -107,7 +175,7 @@ git push -f origin main
 > [!TIP]
 > 当上游合并了我们的某个修改后，下次 rebase 时冲突会自动消失。确认采纳后将其移至此表。
 
-## 5. 本地专用文件 (Local-Only Files)
+## 6. 本地专用文件 (Local-Only Files)
 
 以下目录/文件仅存于本地，**不应提交到 Git**（已在 `.gitignore` 中排除）：
 
