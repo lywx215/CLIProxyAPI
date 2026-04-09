@@ -172,6 +172,9 @@ type Server struct {
 
 	localPassword string
 
+	// rateLimiter enforces per-API-key request rate limiting.
+	rateLimiter *middleware.APIKeyRateLimiter
+
 	keepAliveEnabled   bool
 	keepAliveTimeout   time.Duration
 	keepAliveOnTimeout func()
@@ -254,6 +257,8 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		wsRoutes:            make(map[string]struct{}),
 	}
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
+	// Initialize API key rate limiter
+	s.rateLimiter = middleware.NewAPIKeyRateLimiter(buildRateLimitConfig(cfg))
 	// Save initial YAML snapshot
 	s.oldConfigYaml, _ = yaml.Marshal(cfg)
 	s.applyAccessConfig(nil, cfg)
@@ -333,6 +338,7 @@ func (s *Server) setupRoutes() {
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
+	v1.Use(middleware.RateLimitMiddleware(s.rateLimiter))
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
@@ -347,6 +353,7 @@ func (s *Server) setupRoutes() {
 	// Gemini compatible API routes
 	v1beta := s.engine.Group("/v1beta")
 	v1beta.Use(AuthMiddleware(s.accessManager))
+	v1beta.Use(middleware.RateLimitMiddleware(s.rateLimiter))
 	{
 		v1beta.GET("/models", geminiHandlers.GeminiModels)
 		v1beta.POST("/models/*action", geminiHandlers.GeminiHandler)
@@ -964,6 +971,13 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 	}
 
 	s.applyAccessConfig(oldCfg, cfg)
+
+	// Update API key rate limiter configuration on hot-reload
+	if s.rateLimiter != nil {
+		newRLCfg := buildRateLimitConfig(cfg)
+		s.rateLimiter.UpdateConfig(newRLCfg)
+	}
+
 	s.cfg = cfg
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	if oldCfg != nil && s.wsAuthChanged != nil && oldCfg.WebsocketAuth != cfg.WebsocketAuth {
@@ -1096,4 +1110,25 @@ func configuredSignatureBypassStrict(cfg *config.Config) bool {
 		return *cfg.AntigravitySignatureBypassStrict
 	}
 	return false
+}
+
+// buildRateLimitConfig converts the config.APIKeyRateLimit to a middleware.RateLimitConfig.
+func buildRateLimitConfig(cfg *config.Config) middleware.RateLimitConfig {
+	rlCfg := middleware.RateLimitConfig{
+		DefaultRPM: 0,
+	}
+	if cfg == nil {
+		return rlCfg
+	}
+	rlCfg.DefaultRPM = cfg.APIKeyRateLimit.DefaultRPM
+	if len(cfg.APIKeyRateLimit.Overrides) > 0 {
+		rlCfg.Overrides = make(map[string]int, len(cfg.APIKeyRateLimit.Overrides))
+		for _, entry := range cfg.APIKeyRateLimit.Overrides {
+			key := strings.TrimSpace(entry.APIKey)
+			if key != "" {
+				rlCfg.Overrides[key] = entry.RPM
+			}
+		}
+	}
+	return rlCfg
 }

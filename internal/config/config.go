@@ -130,10 +130,33 @@ type Config struct {
 	// gemini-api-key, codex-api-key, claude-api-key, openai-compatibility, vertex-api-key, and ampcode.
 	OAuthModelAlias map[string][]OAuthModelAlias `yaml:"oauth-model-alias,omitempty" json:"oauth-model-alias,omitempty"`
 
+	// APIKeyRateLimit configures per-API-key request rate limiting.
+	// When configured, each client API key is independently rate-limited using a sliding window.
+	APIKeyRateLimit APIKeyRateLimit `yaml:"api-key-rate-limit" json:"api-key-rate-limit"`
+
 	// Payload defines default and override rules for provider payload parameters.
 	Payload PayloadConfig `yaml:"payload" json:"payload"`
 
 	legacyMigrationPending bool `yaml:"-" json:"-"`
+}
+
+// APIKeyRateLimit configures per-API-key request rate limiting.
+type APIKeyRateLimit struct {
+	// DefaultRPM is the default requests-per-minute limit for all API keys not listed in Overrides.
+	// Set to 0 or omit to disable rate limiting by default.
+	DefaultRPM int `yaml:"default-rpm" json:"default-rpm"`
+
+	// Overrides lists per-key RPM overrides. Keys listed here use their own RPM instead of DefaultRPM.
+	Overrides []APIKeyRateLimitEntry `yaml:"overrides,omitempty" json:"overrides,omitempty"`
+}
+
+// APIKeyRateLimitEntry maps a specific API key to a custom RPM limit.
+type APIKeyRateLimitEntry struct {
+	// APIKey is the client API key (must match an entry in the top-level api-keys list).
+	APIKey string `yaml:"api-key" json:"api-key"`
+
+	// RPM is the requests-per-minute limit for this specific key. Set to 0 to disable limiting for this key.
+	RPM int `yaml:"rpm" json:"rpm"`
 }
 
 // ClaudeHeaderDefaults configures default header values injected into Claude API requests.
