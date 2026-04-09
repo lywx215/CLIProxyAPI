@@ -97,6 +97,14 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 		changes = appendPayloadConfigChanges(changes, oldCfg.Payload, newCfg.Payload)
 	}
 
+	// API key rate limiting
+	if oldCfg.APIKeyRateLimit.DefaultRPM != newCfg.APIKeyRateLimit.DefaultRPM {
+		changes = append(changes, fmt.Sprintf("api-key-rate-limit.default-rpm: %d -> %d", oldCfg.APIKeyRateLimit.DefaultRPM, newCfg.APIKeyRateLimit.DefaultRPM))
+	}
+	if !reflect.DeepEqual(oldCfg.APIKeyRateLimit.Overrides, newCfg.APIKeyRateLimit.Overrides) {
+		changes = append(changes, fmt.Sprintf("api-key-rate-limit.overrides: updated (%d -> %d entries)", len(oldCfg.APIKeyRateLimit.Overrides), len(newCfg.APIKeyRateLimit.Overrides)))
+	}
+
 	// API keys (redacted) and counts
 	if len(oldCfg.APIKeys) != len(newCfg.APIKeys) {
 		changes = append(changes, fmt.Sprintf("api-keys count: %d -> %d", len(oldCfg.APIKeys), len(newCfg.APIKeys)))
