@@ -26,7 +26,7 @@ import (
 
 const (
 	defaultManagementReleaseURL  = "https://api.github.com/repos/router-for-me/Cli-Proxy-API-Management-Center/releases/latest"
-	defaultManagementFallbackURL = "https://cpamc.router-for.me/"
+	defaultManagementFallbackURL = "https://raw.githubusercontent.com/lywx215/Cli-Proxy-API-Management-Center/main/dist/index.html"
 	managementAssetName          = "management.html"
 	httpUserAgent                = "CLIProxyAPI-management-updater"
 	managementSyncMinInterval    = 30 * time.Second
@@ -234,14 +234,10 @@ func EnsureLatestManagementHTML(ctx context.Context, staticDir string, proxyURL 
 
 		asset, remoteHash, err := fetchLatestAsset(ctx, client, releaseURL)
 		if err != nil {
-			if localFileMissing {
-				log.WithError(err).Warn("failed to fetch latest management release information, trying fallback page")
-				if ensureFallbackManagementHTML(ctx, client, localPath) {
-					return nil, nil
-				}
+			log.WithError(err).Warn("failed to fetch latest management release information, trying fallback page")
+			if ensureFallbackManagementHTML(ctx, client, localPath) {
 				return nil, nil
 			}
-			log.WithError(err).Warn("failed to fetch latest management release information")
 			return nil, nil
 		}
 
