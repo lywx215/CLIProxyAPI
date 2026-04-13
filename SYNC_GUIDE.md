@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-04-10 — 基于 upstream `v6.9.22` 校验
+> **Last updated**: 2026-04-13 — 基于 upstream `v6.9.24` 校验
 
 ## 1. 分支说明 (Branch Overview)
 
