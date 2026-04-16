@@ -19,6 +19,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
 	responsesconverter "github.com/router-for-me/CLIProxyAPI/v6/internal/translator/openai/openai/responses"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
+	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -99,6 +100,7 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 	rawJSON, err := c.GetRawData()
 	// If data retrieval fails, return a 400 Bad Request error.
 	if err != nil {
+		log.Debugf("[DEBUG] ChatCompletions: failed to read request body: %v", err)
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{
 				Message: fmt.Sprintf("Invalid request: %v", err),
@@ -108,21 +110,32 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	modelName := gjson.GetBytes(rawJSON, "model").String()
 	// Check if the client requested a streaming response.
 	streamResult := gjson.GetBytes(rawJSON, "stream")
 	stream := streamResult.Type == gjson.True
 
+	// Log request summary for debugging
+	bodyPreview := string(rawJSON)
+	if len(bodyPreview) > 500 {
+		bodyPreview = bodyPreview[:500] + "...(truncated)"
+	}
+	log.Debugf("[DEBUG] ChatCompletions: model=%q stream=%v bodySize=%d User-Agent=%s", modelName, stream, len(rawJSON), c.GetHeader("User-Agent"))
+	log.Debugf("[DEBUG] ChatCompletions: body preview: %s", bodyPreview)
+
 	// Some clients send OpenAI Responses-format payloads to /v1/chat/completions.
 	// Convert them to Chat Completions so downstream translators preserve tool metadata.
 	if shouldTreatAsResponsesFormat(rawJSON) {
-		modelName := gjson.GetBytes(rawJSON, "model").String()
+		log.Debugf("[DEBUG] ChatCompletions: converting Responses-format payload to ChatCompletions format")
 		rawJSON = responsesconverter.ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName, rawJSON, stream)
 		stream = gjson.GetBytes(rawJSON, "stream").Bool()
 	}
 
 	if stream {
+		log.Debugf("[DEBUG] ChatCompletions: dispatching to streaming handler for model=%q", modelName)
 		h.handleStreamingResponse(c, rawJSON)
 	} else {
+		log.Debugf("[DEBUG] ChatCompletions: dispatching to non-streaming handler for model=%q", modelName)
 		h.handleNonStreamingResponse(c, rawJSON)
 	}
 
@@ -430,13 +443,16 @@ func (h *OpenAIAPIHandler) handleNonStreamingResponse(c *gin.Context, rawJSON []
 	c.Header("Content-Type", "application/json")
 
 	modelName := gjson.GetBytes(rawJSON, "model").String()
+	log.Debugf("[DEBUG] handleNonStreamingResponse: starting for model=%q", modelName)
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, h.GetAlt(c))
 	if errMsg != nil {
+		log.Debugf("[DEBUG] handleNonStreamingResponse: error for model=%q: status=%d error=%v", modelName, errMsg.StatusCode, errMsg.Error)
 		h.WriteErrorResponse(c, errMsg)
 		cliCancel(errMsg.Error)
 		return
 	}
+	log.Debugf("[DEBUG] handleNonStreamingResponse: success for model=%q responseSize=%d", modelName, len(resp))
 	handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 	_, _ = c.Writer.Write(resp)
 	cliCancel()

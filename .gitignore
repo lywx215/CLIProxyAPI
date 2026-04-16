@@ -50,6 +50,9 @@ _bmad-output/*
 # Deploy scripts (contains sensitive config)
 zeaburcli/
 
+# Local test scripts
+UnitTest/
+
 # macOS
 .DS_Store
 ._*

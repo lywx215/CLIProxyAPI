@@ -22,6 +22,7 @@ import (
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
 
@@ -469,8 +470,10 @@ func appendAPIResponse(c *gin.Context, data []byte) {
 // ExecuteWithAuthManager executes a non-streaming request via the core auth manager.
 // This path is the only supported execution route.
 func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string) ([]byte, http.Header, *interfaces.ErrorMessage) {
+	log.Debugf("[DEBUG] ExecuteWithAuthManager: handlerType=%s model=%q alt=%q payloadSize=%d", handlerType, modelName, alt, len(rawJSON))
 	providers, normalizedModel, errMsg := h.getRequestDetails(modelName)
 	if errMsg != nil {
+		log.Debugf("[DEBUG] ExecuteWithAuthManager: getRequestDetails failed: %v", errMsg.Error)
 		return nil, nil, errMsg
 	}
 	reqMeta := requestExecutionMetadata(ctx)
@@ -490,6 +493,7 @@ func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType
 		SourceFormat:    sdktranslator.FromString(handlerType),
 	}
 	opts.Metadata = reqMeta
+	log.Debugf("[DEBUG] ExecuteWithAuthManager: calling AuthManager.Execute providers=%v model=%q stream=false", providers, normalizedModel)
 	resp, err := h.AuthManager.Execute(ctx, providers, req, opts)
 	if err != nil {
 		err = enrichAuthSelectionError(err, providers, normalizedModel)
@@ -499,6 +503,7 @@ func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType
 				status = code
 			}
 		}
+		log.Debugf("[DEBUG] ExecuteWithAuthManager: Execute FAILED status=%d error=%v", status, err)
 		var addon http.Header
 		if he, ok := err.(interface{ Headers() http.Header }); ok && he != nil {
 			if hdr := he.Headers(); hdr != nil {
@@ -507,6 +512,7 @@ func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType
 		}
 		return nil, nil, &interfaces.ErrorMessage{StatusCode: status, Error: err, Addon: addon}
 	}
+	log.Debugf("[DEBUG] ExecuteWithAuthManager: Execute OK responseSize=%d", len(resp.Payload))
 	if !PassthroughHeadersEnabled(h.Cfg) {
 		return resp.Payload, nil, nil
 	}
@@ -564,8 +570,10 @@ func (h *BaseAPIHandler) ExecuteCountWithAuthManager(ctx context.Context, handle
 // This path is the only supported execution route.
 // The returned http.Header carries upstream response headers captured before streaming begins.
 func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string) (<-chan []byte, http.Header, <-chan *interfaces.ErrorMessage) {
+	log.Debugf("[DEBUG] ExecuteStreamWithAuthManager: handlerType=%s model=%q alt=%q payloadSize=%d", handlerType, modelName, alt, len(rawJSON))
 	providers, normalizedModel, errMsg := h.getRequestDetails(modelName)
 	if errMsg != nil {
+		log.Debugf("[DEBUG] ExecuteStreamWithAuthManager: getRequestDetails failed: %v", errMsg.Error)
 		errChan := make(chan *interfaces.ErrorMessage, 1)
 		errChan <- errMsg
 		close(errChan)
@@ -588,6 +596,7 @@ func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handl
 		SourceFormat:    sdktranslator.FromString(handlerType),
 	}
 	opts.Metadata = reqMeta
+	log.Debugf("[DEBUG] ExecuteStreamWithAuthManager: calling AuthManager.ExecuteStream providers=%v model=%q stream=true", providers, normalizedModel)
 	streamResult, err := h.AuthManager.ExecuteStream(ctx, providers, req, opts)
 	if err != nil {
 		err = enrichAuthSelectionError(err, providers, normalizedModel)
@@ -598,6 +607,7 @@ func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handl
 				status = code
 			}
 		}
+		log.Debugf("[DEBUG] ExecuteStreamWithAuthManager: ExecuteStream FAILED status=%d error=%v", status, err)
 		var addon http.Header
 		if he, ok := err.(interface{ Headers() http.Header }); ok && he != nil {
 			if hdr := he.Headers(); hdr != nil {
@@ -608,6 +618,7 @@ func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handl
 		close(errChan)
 		return nil, nil, errChan
 	}
+	log.Debugf("[DEBUG] ExecuteStreamWithAuthManager: stream established OK for model=%q", normalizedModel)
 	passthroughHeadersEnabled := PassthroughHeadersEnabled(h.Cfg)
 	// Capture upstream headers from the initial connection synchronously before the goroutine starts.
 	// Keep a mutable map so bootstrap retries can replace it before first payload is sent.
@@ -788,12 +799,17 @@ func (h *BaseAPIHandler) getRequestDetails(modelName string) (providers []string
 		} else {
 			resolvedModelName = resolvedBase
 		}
+		log.Debugf("[DEBUG] getRequestDetails: auto model resolved %q -> %q", modelName, resolvedModelName)
 	} else {
 		resolvedModelName = util.ResolveAutoModel(modelName)
+		if resolvedModelName != modelName {
+			log.Debugf("[DEBUG] getRequestDetails: model alias resolved %q -> %q", modelName, resolvedModelName)
+		}
 	}
 
 	parsed := thinking.ParseSuffix(resolvedModelName)
 	baseModel := strings.TrimSpace(parsed.ModelName)
+	log.Debugf("[DEBUG] getRequestDetails: parsed model=%q base=%q hasSuffix=%v rawSuffix=%q", resolvedModelName, baseModel, parsed.HasSuffix, parsed.RawSuffix)
 
 	if strings.EqualFold(baseModel, "gpt-image-2") {
 		return nil, "", &interfaces.ErrorMessage{
@@ -810,11 +826,15 @@ func (h *BaseAPIHandler) getRequestDetails(modelName string) (providers []string
 	// custom model registrations that include thinking suffixes.
 	if len(providers) == 0 && baseModel != resolvedModelName {
 		providers = util.GetProviderName(resolvedModelName)
+		log.Debugf("[DEBUG] getRequestDetails: fallback provider lookup for full model name %q -> providers=%v", resolvedModelName, providers)
 	}
 
 	if len(providers) == 0 {
+		log.Debugf("[DEBUG] getRequestDetails: NO providers found for model=%q (original=%q)", baseModel, modelName)
 		return nil, "", &interfaces.ErrorMessage{StatusCode: http.StatusBadGateway, Error: fmt.Errorf("unknown provider for model %s", modelName)}
 	}
+
+	log.Debugf("[DEBUG] getRequestDetails: model=%q -> providers=%v normalizedModel=%q", modelName, providers, resolvedModelName)
 
 	// The thinking suffix is preserved in the model name itself, so no
 	// metadata-based configuration passing is needed.

@@ -51,6 +51,15 @@ func GinLogrusLogger() gin.HandlerFunc {
 			SetGinRequestID(c, requestID)
 			ctx := WithRequestID(c.Request.Context(), requestID)
 			c.Request = c.Request.WithContext(ctx)
+
+			// Debug-level request header dump for AI API requests
+			authHeader := c.GetHeader("Authorization")
+			if len(authHeader) > 15 {
+				authHeader = authHeader[:15] + "...(masked)"
+			}
+			log.Debugf("[DEBUG] GinLogger: AI request %s %s | reqID=%s | Auth=%s | User-Agent=%s | Content-Type=%s | Content-Length=%d",
+				c.Request.Method, path, requestID, authHeader,
+				c.GetHeader("User-Agent"), c.GetHeader("Content-Type"), c.Request.ContentLength)
 		}
 
 		c.Next()

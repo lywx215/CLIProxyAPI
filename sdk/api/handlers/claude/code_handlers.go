@@ -67,6 +67,7 @@ func (h *ClaudeCodeAPIHandler) ClaudeMessages(c *gin.Context) {
 	rawJSON, err := c.GetRawData()
 	// If data retrieval fails, return a 400 Bad Request error.
 	if err != nil {
+		log.Debugf("[DEBUG] ClaudeMessages: failed to read request body: %v", err)
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{
 				Message: fmt.Sprintf("Invalid request: %v", err),
@@ -76,11 +77,18 @@ func (h *ClaudeCodeAPIHandler) ClaudeMessages(c *gin.Context) {
 		return
 	}
 
+	modelName := gjson.GetBytes(rawJSON, "model").String()
 	// Check if the client requested a streaming response.
 	streamResult := gjson.GetBytes(rawJSON, "stream")
-	if !streamResult.Exists() || streamResult.Type == gjson.False {
+	stream := streamResult.Exists() && streamResult.Type != gjson.False
+
+	log.Debugf("[DEBUG] ClaudeMessages: model=%q stream=%v bodySize=%d User-Agent=%s", modelName, stream, len(rawJSON), c.GetHeader("User-Agent"))
+
+	if !stream {
+		log.Debugf("[DEBUG] ClaudeMessages: dispatching to non-streaming handler for model=%q", modelName)
 		h.handleNonStreamingResponse(c, rawJSON)
 	} else {
+		log.Debugf("[DEBUG] ClaudeMessages: dispatching to streaming handler for model=%q", modelName)
 		h.handleStreamingResponse(c, rawJSON)
 	}
 }
@@ -165,18 +173,23 @@ func (h *ClaudeCodeAPIHandler) handleNonStreamingResponse(c *gin.Context, rawJSO
 	stopKeepAlive := h.StartNonStreamingKeepAlive(c, cliCtx)
 
 	modelName := gjson.GetBytes(rawJSON, "model").String()
+	log.Debugf("[DEBUG] Claude.handleNonStreamingResponse: starting for model=%q", modelName)
 
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 	stopKeepAlive()
 	if errMsg != nil {
+		log.Debugf("[DEBUG] Claude.handleNonStreamingResponse: error for model=%q: status=%d error=%v", modelName, errMsg.StatusCode, errMsg.Error)
 		h.WriteErrorResponse(c, errMsg)
 		cliCancel(errMsg.Error)
 		return
 	}
 
+	log.Debugf("[DEBUG] Claude.handleNonStreamingResponse: success for model=%q responseSize=%d", modelName, len(resp))
+
 	// Decompress gzipped responses - Claude API sometimes returns gzip without Content-Encoding header
 	// This fixes title generation and other non-streaming responses that arrive compressed
 	if len(resp) >= 2 && resp[0] == 0x1f && resp[1] == 0x8b {
+		log.Debugf("[DEBUG] Claude.handleNonStreamingResponse: decompressing gzipped response")
 		gzReader, errGzip := gzip.NewReader(bytes.NewReader(resp))
 		if errGzip != nil {
 			log.Warnf("failed to decompress gzipped Claude response: %v", errGzip)

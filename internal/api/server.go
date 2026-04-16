@@ -785,10 +785,10 @@ func (s *Server) unifiedModelsHandler(openaiHandler *openai.OpenAIAPIHandler, cl
 
 		// Route to Claude handler if User-Agent starts with "claude-cli"
 		if strings.HasPrefix(userAgent, "claude-cli") {
-			// log.Debugf("Routing /v1/models to Claude handler for User-Agent: %s", userAgent)
+			log.Debugf("[DEBUG] Routing /v1/models to Claude handler for User-Agent: %s", userAgent)
 			claudeHandler.ClaudeModels(c)
 		} else {
-			// log.Debugf("Routing /v1/models to OpenAI handler for User-Agent: %s", userAgent)
+			log.Debugf("[DEBUG] Routing /v1/models to OpenAI handler for User-Agent: %s", userAgent)
 			openaiHandler.OpenAIModels(c)
 		}
 	}
@@ -1051,9 +1051,12 @@ func (s *Server) SetWebsocketAuthChangeHandler(fn func(bool, bool)) {
 func AuthMiddleware(manager *sdkaccess.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if manager == nil {
+			log.Debugf("[DEBUG] AuthMiddleware: no access manager configured, skipping auth for %s %s", c.Request.Method, c.Request.URL.Path)
 			c.Next()
 			return
 		}
+
+		log.Debugf("[DEBUG] AuthMiddleware: authenticating request %s %s | User-Agent: %s | ClientIP: %s", c.Request.Method, c.Request.URL.Path, c.GetHeader("User-Agent"), c.ClientIP())
 
 		result, err := manager.Authenticate(c.Request.Context(), c.Request)
 		if err == nil {
@@ -1063,12 +1066,16 @@ func AuthMiddleware(manager *sdkaccess.Manager) gin.HandlerFunc {
 				if len(result.Metadata) > 0 {
 					c.Set("accessMetadata", result.Metadata)
 				}
+				log.Debugf("[DEBUG] AuthMiddleware: authenticated OK | principal=%s | provider=%s | metadata_keys=%d", result.Principal, result.Provider, len(result.Metadata))
+			} else {
+				log.Debugf("[DEBUG] AuthMiddleware: authenticated OK (nil result, no auth required)")
 			}
 			c.Next()
 			return
 		}
 
 		statusCode := err.HTTPStatusCode()
+		log.Debugf("[DEBUG] AuthMiddleware: authentication FAILED | status=%d | error=%v", statusCode, err)
 		if statusCode >= http.StatusInternalServerError {
 			log.Errorf("authentication middleware error: %v", err)
 		}
@@ -1117,6 +1124,9 @@ func buildRateLimitConfig(cfg *config.Config) middleware.RateLimitConfig {
 	}
 	if cfg == nil {
 		return rlCfg
+	}
+	if !cfg.APIKeyRateLimit.Enabled {
+		return rlCfg // rate limiting disabled — return zero config (no-op)
 	}
 	rlCfg.DefaultRPM = cfg.APIKeyRateLimit.DefaultRPM
 	if len(cfg.APIKeyRateLimit.Overrides) > 0 {

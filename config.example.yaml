@@ -42,6 +42,7 @@ api-keys:
 # API key rate limiting (per-key sliding window)
 # Each API key is independently rate-limited. Requests exceeding the limit receive 429 Too Many Requests.
 api-key-rate-limit:
+  enabled: false                   # Set to true to activate per-key rate limiting
   default-rpm: 60                # Default requests-per-minute for all keys (0 = no limit)
   overrides:                     # Per-key overrides
     - api-key: "!!!"

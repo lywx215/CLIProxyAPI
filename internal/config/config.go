@@ -146,6 +146,9 @@ type Config struct {
 
 // APIKeyRateLimit configures per-API-key request rate limiting.
 type APIKeyRateLimit struct {
+	// Enabled controls whether per-API-key rate limiting is active. Default is false (disabled).
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
 	// DefaultRPM is the default requests-per-minute limit for all API keys not listed in Overrides.
 	// Set to 0 or omit to disable rate limiting by default.
 	DefaultRPM int `yaml:"default-rpm" json:"default-rpm"`
