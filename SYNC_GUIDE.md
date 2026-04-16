@@ -6,15 +6,16 @@
 
 ## 1. 分支说明 (Branch Overview)
 
-本 fork 维护 **两个分支**：
+本 fork 维护 **三个分支**：
 
 | 分支 | 说明 |
 |------|------|
 | `main` | 包含所有自定义修改（含 Model Version 别名重写功能） |
 | `no-model-version` | 与 `main` 相同，但**去除了 Model Version 别名重写功能**（4 个 executor 文件与上游一致） |
+| `debug` | 与 `main` 相同，但**加入了详细的调试信息**（`[DEBUG]` 前缀日志），用于临时调试 |
 
 > [!IMPORTANT]
-> **每次同步上游时，必须同时更新两个分支。**
+> **每次同步上游时，必须同时更新三个分支。**
 
 ### `no-model-version` 与 `main` 的差异
 
@@ -26,6 +27,23 @@
 | `internal/runtime/executor/gemini_cli_executor.go` | 同上 | 同上 |
 | `internal/runtime/executor/gemini_executor.go` | 同上 | 同上 |
 | `internal/runtime/executor/helps/payload_helpers.go` | 包含 `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 函数 | 不包含这些函数（与上游一致） |
+
+### `debug` 与 `main` 的差异
+
+`debug` 分支在以下文件中添加了 `[DEBUG]` 前缀的 `log.Debugf` 调试日志：
+
+| 文件 | 新增调试信息 |
+|------|-------------|
+| `config.yaml` | `debug: true`（本地文件，gitignored） |
+| `internal/api/server.go` | AuthMiddleware 认证流程、请求-响应详情 |
+| `internal/logging/gin_logger.go` | AI API 请求的 Header 信息（Authorization/User-Agent/Content-Type） |
+| `sdk/api/handlers/handlers.go` | 模型解析、Provider 选择、Execute 执行结果 |
+| `sdk/api/handlers/openai/openai_handlers.go` | ChatCompletions 入口、请求体预览、流/非流分发 |
+| `sdk/api/handlers/claude/code_handlers.go` | ClaudeMessages 入口、模型信息、执行结果 |
+
+> [!TIP]
+> `debug` 分支的所有调试日志仅在 `config.yaml` 中 `debug: true` 时可见。
+> 部署到生产环境前，请确保使用 `main` 或 `no-model-version` 分支。
 
 ## 2. 初始设置 (Initial Setup)
 
@@ -40,7 +58,7 @@ git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git
 
 ## 3. 日常同步流程 (Routine Sync)
 
-当原项目有更新时，请按照以下步骤同步 **两个分支**：
+当原项目有更新时，请按照以下步骤同步 **三个分支**：
 
 ### 第一步：获取更新
 ```powershell
@@ -93,6 +111,27 @@ go build ./...
 ### 第七步：推送 `no-model-version` 到 GitHub
 ```powershell
 git push -f origin no-model-version
+```
+
+### 第七步半：同步 `debug` 分支
+```powershell
+git checkout debug
+git rebase main
+```
+
+> [!NOTE]
+> `debug` 分支基于 `main`，rebase 到最新 `main` 即可。
+> 如果上游修改了 `handlers.go`、`server.go` 等带有 debug 日志的文件，可能会出现冲突。
+> 解决冲突时保留 `[DEBUG]` 调试日志即可。
+
+### 第七步三：验证 `debug` 编译
+```powershell
+go build ./...
+```
+
+### 第七步四：推送 `debug` 到 GitHub
+```powershell
+git push -f origin debug
 ```
 
 ### 第八步：切回 `main` 并更新本文档
