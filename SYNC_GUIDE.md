@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-04-13 — 基于 upstream `v6.9.24` 校验
+> **Last updated**: 2026-04-16 — 基于 upstream `v6.9.27` 校验
 
 ## 1. 分支说明 (Branch Overview)
 
@@ -134,17 +134,22 @@ git diff upstream/main no-model-version -- internal/runtime/executor/antigravity
 |------|----------|
 | `internal/store/objectstore.go` | 修改 S3 客户端实现以解决腾讯云 COS 兼容性问题 |
 | `internal/watcher/clients.go` | 移除 `persistAuthAsync` 调用以解决日志死循环 |
-| `internal/api/server.go` | 将 `fmt.Printf` 替换为 `log.Debugf`，消除 `UpdateClients` 刷屏日志 |
+| `internal/api/server.go` | 将 `fmt.Printf` 替换为 `log.Debugf`，消除 `UpdateClients` 刷屏日志；集成 rate limit 中间件 |
 | `internal/watcher/events.go` | 将增量处理日志从 `Infof` 降级为 `Debugf`，减少运行时刷屏 |
 | `internal/wsrelay/manager.go` | 将 `fmt.Printf` 替换为 logrus `log.Warnf`，统一日志框架 |
 | `sdk/cliproxy/auth/conductor.go` | 注释 `MarkResult` 中的 `persist` 调用，避免每次请求完成都上传凭证到 COS |
+| `internal/managementasset/updater.go` | 修改 fallback URL 为自托管地址，简化 fallback 逻辑 |
 
 ### 4.3 功能增强 (Enhancements)
 
 | 文件 | 修改内容 | 分支 |
 |------|----------|------|
 | `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 | 两个分支共有 |
-| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整 | 两个分支共有 |
+| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整；新增 `api-key-rate-limit` 配置段 | 两个分支共有 |
+| `internal/api/middleware/ratelimit.go` | 新增 per-API-key 滑动窗口速率限制中间件 | 两个分支共有 |
+| `internal/api/middleware/ratelimit_test.go` | 速率限制中间件单元测试 | 两个分支共有 |
+| `internal/config/config.go` | 新增 `APIKeyRateLimit` 配置结构体 | 两个分支共有 |
+| `internal/watcher/diff/config_diff.go` | 新增 rate limit 配置变更检测 | 两个分支共有 |
 | `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 | **仅 `main`** |
 | `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor | **仅 `main`** |
 | `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor | **仅 `main`** |
