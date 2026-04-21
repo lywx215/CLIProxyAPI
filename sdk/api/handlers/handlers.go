@@ -92,52 +92,99 @@ func WithExecutionSessionID(ctx context.Context, sessionID string) context.Conte
 	return context.WithValue(ctx, executionSessionContextKey{}, sessionID)
 }
 
+// SanitizedErrorMessage returns a fixed, user-facing error message for the given HTTP status code.
+// It never exposes upstream provider error details to downstream clients.
+func SanitizedErrorMessage(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "The request was invalid. Please check your input and try again."
+	case http.StatusUnauthorized:
+		return "Authentication failed. Please check your API key."
+	case http.StatusForbidden:
+		return "Access denied. Your account does not have permission for this operation."
+	case http.StatusNotFound:
+		return "The requested model or resource was not found."
+	case http.StatusRequestTimeout:
+		return "The request timed out. Please try again."
+	case http.StatusTooManyRequests:
+		return "The service is currently rate limited. Please wait a moment and try again."
+	case http.StatusBadGateway:
+		return "The upstream service returned an invalid response. Please try again later."
+	case http.StatusServiceUnavailable:
+		return "No credentials are currently available to serve this request. Please try again later."
+	case http.StatusGatewayTimeout:
+		return "The upstream service did not respond in time. Please try again later."
+	default:
+		if status >= http.StatusInternalServerError {
+			return "An internal server error occurred. Please try again later."
+		}
+		if status >= http.StatusBadRequest {
+			return "The request could not be processed."
+		}
+		return http.StatusText(status)
+	}
+}
+
 // BuildErrorResponseBody builds an OpenAI-compatible JSON error response body.
-// If errText is already valid JSON, it is returned as-is to preserve upstream error payloads.
-func BuildErrorResponseBody(status int, errText string) []byte {
+// All error messages are sanitized: only fixed, status-code-based messages are returned
+// to downstream clients. Raw upstream errors are never exposed.
+func BuildErrorResponseBody(status int, _ string) []byte {
 	if status <= 0 {
 		status = http.StatusInternalServerError
 	}
-	if strings.TrimSpace(errText) == "" {
-		errText = http.StatusText(status)
-	}
 
-	trimmed := strings.TrimSpace(errText)
-	if trimmed != "" && json.Valid([]byte(trimmed)) {
-		return []byte(trimmed)
-	}
-
-	errType := "invalid_request_error"
-	var code string
+	var errType, code string
 	switch status {
+	case http.StatusBadRequest:
+		errType = "invalid_request_error"
+		code = "bad_request"
 	case http.StatusUnauthorized:
 		errType = "authentication_error"
 		code = "invalid_api_key"
 	case http.StatusForbidden:
 		errType = "permission_error"
 		code = "insufficient_quota"
-	case http.StatusTooManyRequests:
-		errType = "rate_limit_error"
-		code = "rate_limit_exceeded"
 	case http.StatusNotFound:
 		errType = "invalid_request_error"
 		code = "model_not_found"
+	case http.StatusRequestTimeout:
+		errType = "request_error"
+		code = "request_timeout"
+	case http.StatusTooManyRequests:
+		errType = "rate_limit_error"
+		code = "rate_limit_exceeded"
+	case http.StatusBadGateway:
+		errType = "server_error"
+		code = "bad_gateway"
+	case http.StatusServiceUnavailable:
+		errType = "server_error"
+		code = "service_unavailable"
+	case http.StatusGatewayTimeout:
+		errType = "server_error"
+		code = "gateway_timeout"
 	default:
 		if status >= http.StatusInternalServerError {
 			errType = "server_error"
 			code = "internal_server_error"
+		} else {
+			errType = "invalid_request_error"
+			code = ""
 		}
 	}
 
+	message := SanitizedErrorMessage(status)
 	payload, err := json.Marshal(ErrorResponse{
 		Error: ErrorDetail{
-			Message: errText,
+			Message: message,
 			Type:    errType,
 			Code:    code,
 		},
 	})
 	if err != nil {
-		return []byte(fmt.Sprintf(`{"error":{"message":%q,"type":"server_error","code":"internal_server_error"}}`, errText))
+		return []byte(fmt.Sprintf(
+			`{"error":{"message":%q,"type":%q,"code":%q}}`,
+			message, errType, code,
+		))
 	}
 	return payload
 }
@@ -918,7 +965,9 @@ func enrichAuthSelectionError(err error, providers []string, model string) error
 	}
 }
 
-// WriteErrorResponse writes an error message to the response writer using the HTTP status embedded in the message.
+// WriteErrorResponse writes a sanitized error response to the client.
+// The raw upstream error is logged internally but is NOT exposed to downstream clients;
+// only a fixed, status-code-based message is returned.
 func (h *BaseAPIHandler) WriteErrorResponse(c *gin.Context, msg *interfaces.ErrorMessage) {
 	status := http.StatusInternalServerError
 	if msg != nil && msg.StatusCode > 0 {
@@ -936,15 +985,17 @@ func (h *BaseAPIHandler) WriteErrorResponse(c *gin.Context, msg *interfaces.Erro
 		}
 	}
 
-	errText := http.StatusText(status)
+	// Log the raw error internally for diagnostics, but do not forward it to the client.
 	if msg != nil && msg.Error != nil {
-		if v := strings.TrimSpace(msg.Error.Error()); v != "" {
-			errText = v
+		if rawErr := strings.TrimSpace(msg.Error.Error()); rawErr != "" {
+			log.Debugf("[error-response] status=%d upstream_error=%s", status, rawErr)
 		}
 	}
 
-	body := BuildErrorResponseBody(status, errText)
-	// Append first to preserve upstream response logs, then drop duplicate payloads if already recorded.
+	// Build a sanitized response body — errText arg is intentionally empty;
+	// BuildErrorResponseBody will use the status-code-derived fixed message.
+	body := BuildErrorResponseBody(status, "")
+
 	var previous []byte
 	if existing, exists := c.Get("API_RESPONSE"); exists {
 		if existingBytes, ok := existing.([]byte); ok && len(existingBytes) > 0 {
@@ -952,13 +1003,9 @@ func (h *BaseAPIHandler) WriteErrorResponse(c *gin.Context, msg *interfaces.Erro
 		}
 	}
 	appendAPIResponse(c, body)
-	trimmedErrText := strings.TrimSpace(errText)
 	trimmedBody := bytes.TrimSpace(body)
-	if len(previous) > 0 {
-		if (trimmedErrText != "" && bytes.Contains(previous, []byte(trimmedErrText))) ||
-			(len(trimmedBody) > 0 && bytes.Contains(previous, trimmedBody)) {
-			c.Set("API_RESPONSE", previous)
-		}
+	if len(previous) > 0 && len(trimmedBody) > 0 && bytes.Contains(previous, trimmedBody) {
+		c.Set("API_RESPONSE", previous)
 	}
 
 	if !c.Writer.Written() {

@@ -686,11 +686,13 @@ func (h *OpenAIAPIHandler) handleStreamResult(c *gin.Context, flusher http.Flush
 			if errMsg.StatusCode > 0 {
 				status = errMsg.StatusCode
 			}
-			errText := http.StatusText(status)
-			if errMsg.Error != nil && errMsg.Error.Error() != "" {
-				errText = errMsg.Error.Error()
+			if errMsg.Error != nil {
+				if raw := errMsg.Error.Error(); raw != "" {
+					log.Debugf("[stream-error] status=%d upstream_error=%s", status, raw)
+				}
 			}
-			body := handlers.BuildErrorResponseBody(status, errText)
+			// Use sanitized body only — never expose upstream error text.
+			body := handlers.BuildErrorResponseBody(status, "")
 			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(body))
 		},
 		WriteDone: func() {

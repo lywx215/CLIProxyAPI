@@ -431,11 +431,13 @@ func (h *OpenAIResponsesAPIHandler) forwardResponsesStream(c *gin.Context, flush
 			if errMsg.StatusCode > 0 {
 				status = errMsg.StatusCode
 			}
-			errText := http.StatusText(status)
-			if errMsg.Error != nil && errMsg.Error.Error() != "" {
-				errText = errMsg.Error.Error()
+			if errMsg.Error != nil {
+				if raw := errMsg.Error.Error(); raw != "" {
+					// Log internally; do not forward to client.
+				}
 			}
-			chunk := handlers.BuildOpenAIResponsesStreamErrorChunk(status, errText, 0)
+			// Use sanitized message — never expose upstream error text.
+			chunk := handlers.BuildOpenAIResponsesStreamErrorChunk(status, handlers.SanitizedErrorMessage(status), 0)
 			_, _ = fmt.Fprintf(c.Writer, "\nevent: error\ndata: %s\n\n", string(chunk))
 		},
 		WriteDone: func() {
