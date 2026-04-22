@@ -25,7 +25,7 @@ echo "[1/4] 📥 拉取最新代码..."
 if [ -d "${REPO_DIR}/.git" ]; then
     cd "${REPO_DIR}"
     git fetch origin
-    git reset --hard origin/main
+    git reset --hard origin/debug
     echo "  ✅ 代码已更新到最新"
 else
     echo "  📂 首次克隆仓库..."
