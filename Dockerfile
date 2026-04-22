@@ -22,8 +22,6 @@ RUN mkdir /CLIProxyAPI
 
 COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 
-COPY config.yaml /CLIProxyAPI/config.yaml
-
 WORKDIR /CLIProxyAPI
 
 EXPOSE 8317
