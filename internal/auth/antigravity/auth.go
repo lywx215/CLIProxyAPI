@@ -159,6 +159,7 @@ func (o *AntigravityAuth) FetchProjectID(ctx context.Context, accessToken string
 			"platform":   "PLATFORM_UNSPECIFIED",
 			"pluginType": "GEMINI",
 		},
+		"mode": "FULL_ELIGIBILITY_CHECK",
 	}
 
 	rawBody, errMarshal := json.Marshal(loadReqBody)
