@@ -166,6 +166,7 @@ func (o *AntigravityAuth) FetchProjectID(ctx context.Context, accessToken string
 			"ide_version": misc.AntigravityVersionFromUserAgent(userAgent),
 			"ide_name":    "antigravity",
 		},
+		"mode": "FULL_ELIGIBILITY_CHECK",
 	}
 
 	rawBody, errMarshal := json.Marshal(loadReqBody)
