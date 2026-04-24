@@ -1763,7 +1763,8 @@ func (e *AntigravityExecutor) updateAntigravityCreditsBalance(ctx context.Contex
 		return
 	}
 
-	loadReqBody := `{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"},"mode":"FULL_ELIGIBILITY_CHECK"}`
+	projectID := metaStringValue(auth.Metadata, "project_id")
+	loadReqBody := fmt.Sprintf(`{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI","duetProject":%q},"mode":"FULL_ELIGIBILITY_CHECK","cloudaicompanionProject":%q}`, projectID, projectID)
 	endpointURL := "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
 	httpReq, errReq := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, strings.NewReader(loadReqBody))
 	if errReq != nil {
