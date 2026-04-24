@@ -228,6 +228,7 @@ func (o *AntigravityAuth) FetchProjectID(ctx context.Context, accessToken string
 	userAgent := o.shortUserAgent()
 	loadReqBody := map[string]any{
 		"metadata": antigravityLoadCodeAssistMetadata(),
+		"mode":     "FULL_ELIGIBILITY_CHECK",
 	}
 
 	rawBody, errMarshal := json.Marshal(loadReqBody)
