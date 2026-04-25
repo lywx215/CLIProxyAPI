@@ -233,6 +233,10 @@ type QuotaExceeded struct {
 	// When all free-tier auths are exhausted (429/503), the conductor retries with
 	// an auth that has available Google One AI credits.
 	AntigravityCredits bool `yaml:"antigravity-credits" json:"antigravity-credits"`
+
+	// AntigravityCreditsForce enables mandatory credits-based consumption for Claude models.
+	// When enabled, every request will consume Google One AI credits, bypassing free-tier quotas.
+	AntigravityCreditsForce bool `yaml:"antigravity-credits-force" json:"antigravity-credits-force"`
 }
 
 // RoutingConfig configures how credentials are selected for requests.
