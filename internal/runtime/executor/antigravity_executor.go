@@ -2461,6 +2461,8 @@ func geminiToAntigravity(modelName string, payload []byte, projectID string) []b
 
 	if projectID != "" {
 		template, _ = sjson.SetBytes(template, "project", projectID)
+	} else if gjson.GetBytes(payload, "enabledCreditTypes").Exists() {
+		template, _ = sjson.SetBytes(template, "project", "")
 	} else {
 		template, _ = sjson.DeleteBytes(template, "project")
 	}
