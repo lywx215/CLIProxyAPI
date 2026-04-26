@@ -109,6 +109,8 @@ type Result struct {
 	Model string
 	// Success marks whether the execution succeeded.
 	Success bool
+	// CreditsUsed indicates the request consumed AI credits rather than free quota.
+	CreditsUsed bool
 	// RetryAfter carries a provider supplied retry hint (e.g. 429 retryDelay).
 	RetryAfter *time.Duration
 	// Error describes the failure when Success is false.
@@ -2258,6 +2260,11 @@ func waitForCooldown(ctx context.Context, wait time.Duration) error {
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
 	if result.AuthID == "" {
 		return
+	}
+
+	// Auto-detect credits usage from gin context if not already set.
+	if !result.CreditsUsed {
+		result.CreditsUsed = AntigravityCreditsRequested(ctx)
 	}
 
 	shouldResumeModel := false
