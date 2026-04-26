@@ -714,6 +714,9 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/xai-auth-url", s.mgmt.RequestXAIToken)
 		mgmt.POST("/oauth-callback", s.mgmt.PostOAuthCallback)
 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+
+		mgmt.GET("/antigravity-stats", s.mgmt.GetAntigravityStats)
+		mgmt.DELETE("/antigravity-stats", s.mgmt.ResetAntigravityStats)
 	}
 }
 
