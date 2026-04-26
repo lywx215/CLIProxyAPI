@@ -2127,6 +2127,9 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 		registry.GetGlobalRegistry().SuspendClientModel(result.AuthID, result.Model, suspendReason)
 	}
 
+	// Record Antigravity request statistics (filtered internally to antigravity provider only).
+	RecordAntigravityResult(result)
+
 	m.hook.OnResult(ctx, result)
 }
 
