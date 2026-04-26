@@ -742,6 +742,9 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/kimi-auth-url", s.mgmt.RequestKimiToken)
 		mgmt.GET("/xai-auth-url", s.mgmt.RequestXAIToken)
 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+
+		mgmt.GET("/antigravity-stats", s.mgmt.GetAntigravityStats)
+		mgmt.DELETE("/antigravity-stats", s.mgmt.ResetAntigravityStats)
 	}
 }
 
