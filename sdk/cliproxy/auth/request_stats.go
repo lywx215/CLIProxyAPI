@@ -15,6 +15,7 @@ type RequestStatEntry struct {
 	TotalCount   int64         `json:"total"`
 	SuccessCount int64         `json:"success"`
 	FailureCount int64         `json:"failure"`
+	CreditsCount int64         `json:"credits_count"`
 	StatusCodes  map[int]int64 `json:"status_codes,omitempty"`
 	FirstSeen    time.Time     `json:"first_seen"`
 	LastSeen     time.Time     `json:"last_seen"`
@@ -26,6 +27,7 @@ type AuthStatSummary struct {
 	TotalCount   int64         `json:"total"`
 	SuccessCount int64         `json:"success"`
 	FailureCount int64         `json:"failure"`
+	CreditsCount int64         `json:"credits_count"`
 	ErrorRate    string        `json:"error_rate"`
 	StatusCodes  map[int]int64 `json:"status_codes,omitempty"`
 	Models       []string      `json:"models"`
@@ -39,6 +41,7 @@ type ModelStatSummary struct {
 	TotalCount   int64         `json:"total"`
 	SuccessCount int64         `json:"success"`
 	FailureCount int64         `json:"failure"`
+	CreditsCount int64         `json:"credits_count"`
 	ErrorRate    string        `json:"error_rate"`
 	StatusCodes  map[int]int64 `json:"status_codes,omitempty"`
 	AuthCount    int           `json:"auth_count"`
@@ -53,6 +56,7 @@ type StatsSummary struct {
 	TotalRequests int64  `json:"total_requests"`
 	TotalSuccess  int64  `json:"total_success"`
 	TotalFailure  int64  `json:"total_failure"`
+	TotalCredits  int64  `json:"total_credits"`
 	ErrorRate     string `json:"error_rate"`
 }
 
@@ -92,10 +96,10 @@ func RecordAntigravityResult(result Result) {
 		statusCode = result.Error.HTTPStatus
 	}
 
-	globalRequestStats.record(authID, model, result.Success, statusCode)
+	globalRequestStats.record(authID, model, result.Success, statusCode, result.CreditsUsed)
 }
 
-func (t *RequestStatsTracker) record(authID, model string, success bool, statusCode int) {
+func (t *RequestStatsTracker) record(authID, model string, success bool, statusCode int, creditsUsed bool) {
 	now := time.Now()
 	key := requestStatsKey(authID, model)
 
@@ -123,6 +127,9 @@ func (t *RequestStatsTracker) record(authID, model string, success bool, statusC
 		if statusCode > 0 {
 			entry.StatusCodes[statusCode]++
 		}
+	}
+	if creditsUsed {
+		entry.CreditsCount++
 	}
 }
 
@@ -198,6 +205,7 @@ func (t *RequestStatsTracker) getAuthSummary() []AuthStatSummary {
 		summary.TotalCount += entry.TotalCount
 		summary.SuccessCount += entry.SuccessCount
 		summary.FailureCount += entry.FailureCount
+		summary.CreditsCount += entry.CreditsCount
 		summary.Models = append(summary.Models, entry.Model)
 		for code, count := range entry.StatusCodes {
 			summary.StatusCodes[code] += count
@@ -253,6 +261,7 @@ func (t *RequestStatsTracker) getModelSummary() []ModelStatSummary {
 		acc.summary.TotalCount += entry.TotalCount
 		acc.summary.SuccessCount += entry.SuccessCount
 		acc.summary.FailureCount += entry.FailureCount
+		acc.summary.CreditsCount += entry.CreditsCount
 		acc.auths[entry.AuthID] = struct{}{}
 		for code, count := range entry.StatusCodes {
 			acc.summary.StatusCodes[code] += count
@@ -288,7 +297,7 @@ func (t *RequestStatsTracker) getStatsSummary() StatsSummary {
 
 	auths := make(map[string]struct{})
 	models := make(map[string]struct{})
-	var total, success, failure int64
+	var total, success, failure, credits int64
 
 	for _, entry := range t.stats {
 		auths[entry.AuthID] = struct{}{}
@@ -296,6 +305,7 @@ func (t *RequestStatsTracker) getStatsSummary() StatsSummary {
 		total += entry.TotalCount
 		success += entry.SuccessCount
 		failure += entry.FailureCount
+		credits += entry.CreditsCount
 	}
 
 	return StatsSummary{
@@ -304,6 +314,7 @@ func (t *RequestStatsTracker) getStatsSummary() StatsSummary {
 		TotalRequests: total,
 		TotalSuccess:  success,
 		TotalFailure:  failure,
+		TotalCredits:  credits,
 		ErrorRate:     formatErrorRate(failure, total),
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/executor/helps"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/usage"
 )
 
@@ -89,12 +90,13 @@ type modelStats struct {
 
 // RequestDetail stores the timestamp, latency, and token usage for a single request.
 type RequestDetail struct {
-	Timestamp time.Time  `json:"timestamp"`
-	LatencyMs int64      `json:"latency_ms"`
-	Source    string     `json:"source"`
-	AuthIndex string     `json:"auth_index"`
-	Tokens    TokenStats `json:"tokens"`
-	Failed    bool       `json:"failed"`
+	Timestamp   time.Time  `json:"timestamp"`
+	LatencyMs   int64      `json:"latency_ms"`
+	Source      string     `json:"source"`
+	AuthIndex   string     `json:"auth_index"`
+	Tokens      TokenStats `json:"tokens"`
+	Failed      bool       `json:"failed"`
+	CreditsUsed bool       `json:"credits_used"`
 }
 
 // TokenStats captures the token usage breakdown for a request.
@@ -192,18 +194,21 @@ func (s *RequestStatistics) Record(ctx context.Context, record coreusage.Record)
 	}
 	s.totalTokens += totalTokens
 
+	creditsUsed := resolveCreditsUsed(ctx)
+
 	stats, ok := s.apis[statsKey]
 	if !ok {
 		stats = &apiStats{Models: make(map[string]*modelStats)}
 		s.apis[statsKey] = stats
 	}
 	s.updateAPIStats(stats, modelName, RequestDetail{
-		Timestamp: timestamp,
-		LatencyMs: normaliseLatency(record.Latency),
-		Source:    record.Source,
-		AuthIndex: record.AuthIndex,
-		Tokens:    detail,
-		Failed:    failed,
+		Timestamp:   timestamp,
+		LatencyMs:   normaliseLatency(record.Latency),
+		Source:      record.Source,
+		AuthIndex:   record.AuthIndex,
+		Tokens:      detail,
+		Failed:      failed,
+		CreditsUsed: creditsUsed,
 	})
 
 	s.requestsByDay[dayKey]++
@@ -440,6 +445,14 @@ func resolveSuccess(ctx context.Context) bool {
 }
 
 const httpStatusBadRequest = 400
+
+// resolveCreditsUsed checks the gin context for the antigravity credits-used flag.
+func resolveCreditsUsed(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	return helps.CreditsUsed(ctx)
+}
 
 func normaliseDetail(detail coreusage.Detail) TokenStats {
 	tokens := TokenStats{
