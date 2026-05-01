@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -115,8 +116,10 @@ func ConvertGeminiRequestToClaude(modelName string, inputRawJSON []byte, stream 
 			out, _ = sjson.SetBytes(out, "max_tokens", maxTokens.Int())
 		}
 		// Temperature setting for controlling response randomness
+		// Claude API only accepts temperature in [0, 1]; clamp values from Gemini's wider [0, 2] range.
 		if temp := genConfig.Get("temperature"); temp.Exists() {
-			out, _ = sjson.SetBytes(out, "temperature", temp.Float())
+			t := math.Min(math.Max(temp.Float(), 0), 1)
+			out, _ = sjson.SetBytes(out, "temperature", t)
 		} else if topP := genConfig.Get("topP"); topP.Exists() {
 			// Top P setting for nucleus sampling (filtered out if temperature is set)
 			out, _ = sjson.SetBytes(out, "top_p", topP.Float())
