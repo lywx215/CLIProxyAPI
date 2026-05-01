@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -516,6 +517,17 @@ func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType
 	}
 	reqMeta := requestExecutionMetadata(ctx)
 	reqMeta[coreexecutor.RequestedModelMetadataKey] = normalizedModel
+
+	// Check input token limit from model name suffix (e.g., "-20m" = 200K tokens).
+	if limit := parseModelTokenLimit(normalizedModel); limit > 0 {
+		if estimated := len(rawJSON) / 4; estimated > limit {
+			return nil, nil, &interfaces.ErrorMessage{
+				StatusCode: http.StatusBadRequest,
+				Error:      fmt.Errorf("estimated input size (%d tokens) exceeds limit (%d) for model %q", estimated, limit, normalizedModel),
+			}
+		}
+	}
+
 	payload := rawJSON
 	if len(payload) == 0 {
 		payload = nil
@@ -616,6 +628,20 @@ func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handl
 	}
 	reqMeta := requestExecutionMetadata(ctx)
 	reqMeta[coreexecutor.RequestedModelMetadataKey] = normalizedModel
+
+	// Check input token limit from model name suffix (e.g., "-20m" = 200K tokens).
+	if limit := parseModelTokenLimit(normalizedModel); limit > 0 {
+		if estimated := len(rawJSON) / 4; estimated > limit {
+			errChan := make(chan *interfaces.ErrorMessage, 1)
+			errChan <- &interfaces.ErrorMessage{
+				StatusCode: http.StatusBadRequest,
+				Error:      fmt.Errorf("estimated input size (%d tokens) exceeds limit (%d) for model %q", estimated, limit, normalizedModel),
+			}
+			close(errChan)
+			return nil, nil, errChan
+		}
+	}
+
 	payload := rawJSON
 	if len(payload) == 0 {
 		payload = nil
@@ -1011,3 +1037,23 @@ func (h *BaseAPIHandler) LoggingAPIResponseError(ctx context.Context, err *inter
 // APIHandlerCancelFunc is a function type for canceling an API handler's context.
 // It can optionally accept parameters, which are used for logging the response.
 type APIHandlerCancelFunc func(params ...interface{})
+
+// parseModelTokenLimit extracts an input token limit from a "-Nm" model name suffix.
+// N represents 万 (10,000) tokens. For example, "-20m" → 200,000 tokens.
+// Returns 0 if no valid limit suffix is found (meaning no limit applies).
+func parseModelTokenLimit(model string) int {
+	model = strings.TrimSpace(model)
+	if len(model) < 3 || model[len(model)-1] != 'm' {
+		return 0
+	}
+	dashIdx := strings.LastIndex(model[:len(model)-1], "-")
+	if dashIdx < 0 {
+		return 0
+	}
+	numStr := model[dashIdx+1 : len(model)-1]
+	n, err := strconv.Atoi(numStr)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n * 10000
+}
