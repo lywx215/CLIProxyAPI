@@ -138,6 +138,7 @@ git diff upstream/main no-model-version -- internal/runtime/executor/antigravity
 | `Dockerfile` | 适配 Zeabur 部署；使用 `config.yaml`（而非 `config.example.yaml`）作为 Bootstrap 模板 |
 | `zbpack.json` | 指定 `build_type: dockerfile` 以兼容 Zeabur 构建 |
 | `.dockerignore` | 添加额外忽略项（如编辑器/Agent 目录） |
+| `config.example.yaml` | 默认追加 `disable-auto-update-panel: true` 防止 Zeabur 覆盖本地前端产物 |
 
 ### 4.2 Bug 修复 (Fixes)
 
@@ -165,6 +166,12 @@ git diff upstream/main no-model-version -- internal/runtime/executor/antigravity
 | `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor | **仅 `main`** |
 | `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor | **仅 `main`** |
 | `internal/runtime/executor/helps/payload_helpers.go` | `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 辅助函数 | **仅 `main`** |
+| `internal/api/handlers/management/usage.go` | 恢复完整的“使用统计”管理 API 端点及导入/导出逻辑 | 两个分支共有 |
+| `internal/api/handlers/management/handler.go` | `Handler` 结构体注入 `usageStats` 状态追踪机制 | 两个分支共有 |
+| `internal/api/server.go` | 重新绑定并注册管理端 `/usage` 相关路由，并加载开关状态 | 两个分支共有 |
+
+> [!NOTE]
+> **前端依赖同步**：在使用统计功能方面，`Cli-Proxy-API-Management-Center` 的 `src/i18n/locales/*.json` (特别是 `zh-CN.json` 和 `en.json`) 中的 `usage_stats` 国际化翻译也为我们独有功能，同步前端仓库时也需务必保留。
 
 ### 4.4 辅助文件 (Auxiliary)
 
