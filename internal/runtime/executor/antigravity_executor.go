@@ -660,10 +660,22 @@ attemptLoop:
 			if useCredits {
 				clearAntigravityCreditsFailureState(auth)
 			}
+			// Deep check: upstream returned 200 but candidates have no actual content
+			if helps.IsUpstreamResponseEmpty(bodyBytes) {
+				log.Warnf("antigravity executor: upstream returned 200 but response has no content in candidates, model: %s", baseModel)
+				err = statusErr{code: 500, msg: "upstream returned empty response"}
+				return resp, err
+			}
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bodyBytes, &param)
-			resp = cliproxyexecutor.Response{Payload: helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
+			convertedBytes := helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel)
+			if helps.IsEmptyPayload(convertedBytes) {
+				log.Warnf("antigravity executor: upstream returned 200 but translated response is empty, model: %s", baseModel)
+				err = statusErr{code: 500, msg: "upstream returned empty response"}
+				return resp, err
+			}
+			resp = cliproxyexecutor.Response{Payload: convertedBytes, Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 			return resp, nil
 		}
@@ -921,10 +933,22 @@ attemptLoop:
 			}
 			resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(buffer.Bytes())}
 
+			// Deep check: assembled stream response has no actual content
+			if helps.IsUpstreamResponseEmpty(resp.Payload) {
+				log.Warnf("antigravity executor (claude): upstream stream returned 200 but response has no content in candidates, model: %s", baseModel)
+				err = statusErr{code: 500, msg: "upstream returned empty response"}
+				return resp, err
+			}
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, resp.Payload, &param)
-			resp = cliproxyexecutor.Response{Payload: helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
+			convertedBytes := helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel)
+			if helps.IsEmptyPayload(convertedBytes) {
+				log.Warnf("antigravity executor (claude): upstream returned 200 but translated response is empty, model: %s", baseModel)
+				err = statusErr{code: 500, msg: "upstream returned empty response"}
+				return resp, err
+			}
+			resp = cliproxyexecutor.Response{Payload: convertedBytes, Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 
 			return resp, nil
@@ -1342,6 +1366,8 @@ attemptLoop:
 				scanner := bufio.NewScanner(resp.Body)
 				scanner.Buffer(nil, streamScannerBuffer)
 				var param any
+				hasContent := false
+				var bufferedPayloads [][]byte
 				for scanner.Scan() {
 					line := scanner.Bytes()
 					helps.AppendAPIResponseChunk(ctx, e.cfg, line)
@@ -1359,20 +1385,34 @@ attemptLoop:
 						reporter.Publish(ctx, detail)
 					}
 
-					chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(payload), &param)
-					for i := range chunks {
-						out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(chunks[i]), requestedModel, baseModel)}
+					if !hasContent {
+						if helps.IsUpstreamResponseEmpty(payload) {
+							bufferedPayloads = append(bufferedPayloads, bytes.Clone(payload))
+							continue
+						}
+						hasContent = true
+						for _, b := range bufferedPayloads {
+							chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, b, &param)
+							helps.SendStreamSegments(out, chunks, requestedModel, baseModel)
+						}
+						bufferedPayloads = nil
 					}
-				}
-				tail := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, []byte("[DONE]"), &param)
-				for i := range tail {
-					out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(tail[i]), requestedModel, baseModel)}
+
+					chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(payload), &param)
+					helps.SendStreamSegments(out, chunks, requestedModel, baseModel)
 				}
 				if errScan := scanner.Err(); errScan != nil {
 					helps.RecordAPIResponseError(ctx, e.cfg, errScan)
 					reporter.PublishFailure(ctx)
 					out <- cliproxyexecutor.StreamChunk{Err: errScan}
 				} else {
+					if !hasContent {
+						log.Warnf("antigravity executor: stream completed but no content found, model: %s", baseModel)
+						out <- helps.EmptyStreamErrorChunk()
+					} else {
+						tail := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, []byte("[DONE]"), &param)
+						helps.SendStreamSegments(out, tail, requestedModel, baseModel)
+					}
 					reporter.EnsurePublished(ctx)
 				}
 			}(httpResp)

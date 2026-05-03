@@ -527,3 +527,116 @@ func RewriteSSEModelVersion(line []byte, requestedModel, baseModel string) []byt
 	out = append(out, rewritten...)
 	return out
 }
+
+// IsEmptyPayload returns true when a translated response payload is effectively empty.
+// This catches cases where the upstream returned valid HTTP 200 but the translator
+// produced no usable content (e.g. missing "response" wrapper, nil chunk, etc.).
+func IsEmptyPayload(payload []byte) bool {
+	if len(payload) == 0 {
+		return true
+	}
+	trimmed := bytes.TrimSpace(payload)
+	if len(trimmed) == 0 {
+		return true
+	}
+	// Treat empty JSON objects/arrays as empty
+	if bytes.Equal(trimmed, []byte("{}")) || bytes.Equal(trimmed, []byte("[]")) || bytes.Equal(trimmed, []byte("null")) {
+		return true
+	}
+	return false
+}
+
+// EmptyResponseErrorPayload returns a structured error JSON body when the upstream
+// returned an empty response. The format follows Gemini API error conventions so
+// that downstream clients (OpenAI-compat, Claude-compat, native Gemini) can parse it.
+func EmptyResponseErrorPayload() []byte {
+	return []byte(`{"error":{"code":500,"message":"upstream returned empty response","status":"INTERNAL"}}`)
+}
+
+// SendStreamSegments sends translated stream segments to the output channel,
+// skipping nil/empty segments. Returns true if at least one non-empty segment was sent.
+func SendStreamSegments(out chan<- cliproxyexecutor.StreamChunk, segments [][]byte, requestedModel, baseModel string) bool {
+	sent := false
+	for i := range segments {
+		if len(segments[i]) == 0 {
+			continue
+		}
+		chunk := RewriteSSEModelVersion([]byte(segments[i]), requestedModel, baseModel)
+		if len(chunk) == 0 {
+			continue
+		}
+		out <- cliproxyexecutor.StreamChunk{Payload: chunk}
+		sent = true
+	}
+	return sent
+}
+
+// EmptyStreamErrorChunk returns a StreamChunk with an error indicating that
+// the upstream stream completed without producing any content.
+func EmptyStreamErrorChunk() cliproxyexecutor.StreamChunk {
+	return cliproxyexecutor.StreamChunk{Payload: EmptyResponseErrorPayload()}
+}
+
+// IsUpstreamResponseEmpty performs a deep check on the raw Gemini/Antigravity
+// upstream response body. It returns true when the response is structurally valid
+// but contains no actual content (empty parts, no text, no function calls, etc.).
+// This catches the case where IsEmptyPayload would pass because the JSON itself
+// is non-empty, but the content within candidates is effectively blank.
+func IsUpstreamResponseEmpty(raw []byte) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || !gjson.ValidBytes(trimmed) {
+		return true
+	}
+
+	// Check for error responses — these are NOT empty, they are errors to propagate
+	if gjson.GetBytes(trimmed, "error").Exists() {
+		return false
+	}
+
+	// Find candidates in both wrapped {"response":{"candidates":...}} and bare {"candidates":...}
+	candidates := gjson.GetBytes(trimmed, "response.candidates")
+	if !candidates.Exists() {
+		candidates = gjson.GetBytes(trimmed, "candidates")
+	}
+
+	// No candidates at all → empty
+	if !candidates.Exists() || !candidates.IsArray() || len(candidates.Array()) == 0 {
+		return true
+	}
+
+	// Check if first candidate has content with actual parts
+	parts := candidates.Get("0.content.parts")
+	if !parts.Exists() || !parts.IsArray() || len(parts.Array()) == 0 {
+		return true
+	}
+
+	// Check if any part has meaningful content
+	for _, part := range parts.Array() {
+		// Non-empty text
+		if part.Get("text").Exists() && strings.TrimSpace(part.Get("text").String()) != "" {
+			return false
+		}
+		// Function call
+		if part.Get("functionCall").Exists() {
+			return false
+		}
+		// Inline data (images etc.)
+		if part.Get("inlineData").Exists() || part.Get("inline_data").Exists() {
+			return false
+		}
+		// Executable code
+		if part.Get("executableCode").Exists() {
+			return false
+		}
+		// Thought content (thinking models)
+		if part.Get("thought").Bool() && part.Get("text").Exists() {
+			return false
+		}
+	}
+
+	// All parts exist but none have content → empty
+	return true
+}

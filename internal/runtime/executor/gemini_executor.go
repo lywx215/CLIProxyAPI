@@ -204,10 +204,21 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		return resp, err
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, data)
+	// Deep check: upstream returned 200 but candidates have no actual content
+	if helps.IsUpstreamResponseEmpty(data) {
+		log.Warnf("gemini executor: upstream returned 200 but response has no content in candidates, model: %s", baseModel)
+		err = statusErr{code: 500, msg: "upstream returned empty response"}
+		return resp, err
+	}
 	reporter.Publish(ctx, helps.ParseGeminiUsage(data))
 	var param any
 	out := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, body, data, &param)
 	outBytes := helps.RewriteResponseModelVersion([]byte(out), requestedModel, baseModel)
+	if helps.IsEmptyPayload(outBytes) {
+		log.Warnf("gemini executor: upstream returned 200 but translated response is empty, model: %s", baseModel)
+		err = statusErr{code: 500, msg: "upstream returned empty response"}
+		return resp, err
+	}
 	resp = cliproxyexecutor.Response{Payload: outBytes, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }
@@ -312,6 +323,8 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		scanner := bufio.NewScanner(httpResp.Body)
 		scanner.Buffer(nil, streamScannerBuffer)
 		var param any
+		hasContent := false
+		var bufferedPayloads [][]byte
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
@@ -323,19 +336,35 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			if detail, ok := helps.ParseGeminiStreamUsage(payload); ok {
 				reporter.Publish(ctx, detail)
 			}
-			lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, bytes.Clone(payload), &param)
-			for i := range lines {
-				out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}
+
+			if !hasContent {
+				if helps.IsUpstreamResponseEmpty(payload) {
+					bufferedPayloads = append(bufferedPayloads, bytes.Clone(payload))
+					continue
+				}
+				hasContent = true
+				for _, b := range bufferedPayloads {
+					lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, b, &param)
+					helps.SendStreamSegments(out, lines, requestedModel, baseModel)
+				}
+				bufferedPayloads = nil
 			}
-		}
-		lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, []byte("[DONE]"), &param)
-		for i := range lines {
-			out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}
+
+			lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, bytes.Clone(payload), &param)
+			helps.SendStreamSegments(out, lines, requestedModel, baseModel)
 		}
 		if errScan := scanner.Err(); errScan != nil {
 			helps.RecordAPIResponseError(ctx, e.cfg, errScan)
 			reporter.PublishFailure(ctx)
 			out <- cliproxyexecutor.StreamChunk{Err: errScan}
+			return
+		}
+		if !hasContent {
+			log.Warnf("gemini executor: stream completed but no content found, model: %s", baseModel)
+			out <- helps.EmptyStreamErrorChunk()
+		} else {
+			lines := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, body, []byte("[DONE]"), &param)
+			helps.SendStreamSegments(out, lines, requestedModel, baseModel)
 		}
 	}()
 	return &cliproxyexecutor.StreamResult{Headers: httpResp.Header.Clone(), Chunks: out}, nil

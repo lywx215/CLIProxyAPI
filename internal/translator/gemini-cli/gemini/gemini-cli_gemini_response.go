@@ -41,10 +41,13 @@ func ConvertGeminiCliResponseToGemini(ctx context.Context, _ string, originalReq
 			responseResult := gjson.GetBytes(rawJSON, "response")
 			if responseResult.Exists() {
 				chunk = []byte(responseResult.Raw)
+			} else if gjson.GetBytes(rawJSON, "candidates").Exists() {
+				// Fallback: upstream returned bare candidates without response wrapper
+				chunk = rawJSON
 			}
 		} else {
 			chunkTemplate := []byte(`[]`)
-			responseResult := gjson.ParseBytes(chunk)
+			responseResult := gjson.ParseBytes(rawJSON)
 			if responseResult.IsArray() {
 				responseResultItems := responseResult.Array()
 				for i := 0; i < len(responseResultItems); i++ {

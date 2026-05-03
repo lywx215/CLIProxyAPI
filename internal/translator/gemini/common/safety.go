@@ -10,22 +10,42 @@ func DefaultSafetySettings() []map[string]string {
 	return []map[string]string{
 		{
 			"category":  "HARM_CATEGORY_HARASSMENT",
-			"threshold": "OFF",
+			"threshold": "BLOCK_NONE",
 		},
 		{
 			"category":  "HARM_CATEGORY_HATE_SPEECH",
-			"threshold": "OFF",
+			"threshold": "BLOCK_NONE",
 		},
 		{
 			"category":  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-			"threshold": "OFF",
+			"threshold": "BLOCK_NONE",
 		},
 		{
 			"category":  "HARM_CATEGORY_DANGEROUS_CONTENT",
-			"threshold": "OFF",
+			"threshold": "BLOCK_NONE",
 		},
 		{
 			"category":  "HARM_CATEGORY_CIVIC_INTEGRITY",
+			"threshold": "BLOCK_NONE",
+		},
+		{
+			"category":  "HARM_CATEGORY_IMAGE_HATE",
+			"threshold": "BLOCK_NONE",
+		},
+		{
+			"category":  "HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT",
+			"threshold": "BLOCK_NONE",
+		},
+		{
+			"category":  "HARM_CATEGORY_IMAGE_HARASSMENT",
+			"threshold": "BLOCK_NONE",
+		},
+		{
+			"category":  "HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT",
+			"threshold": "BLOCK_NONE",
+		},
+		{
+			"category":  "HARM_CATEGORY_JAILBREAK",
 			"threshold": "BLOCK_NONE",
 		},
 	}
