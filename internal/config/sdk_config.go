@@ -55,6 +55,31 @@ type SDKConfig struct {
 	// NonStreamKeepAliveInterval controls how often blank lines are emitted for non-streaming responses.
 	// <= 0 disables keep-alives. Value is in seconds.
 	NonStreamKeepAliveInterval int `yaml:"nonstream-keepalive-interval,omitempty" json:"nonstream-keepalive-interval,omitempty"`
+
+	// SpeedThrottle controls token emission rate throttling to disguise model speeds.
+	SpeedThrottle SpeedThrottleConfig `yaml:"speed-throttle" json:"speed-throttle"`
+}
+
+// SpeedThrottleConfig controls token emission rate throttling.
+type SpeedThrottleConfig struct {
+	// Enabled enables or disables speed throttling.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// MinTokensPerSecond is the lower bound of the random target tokens/s range.
+	// Default: 70.
+	MinTokensPerSecond int `yaml:"min-tokens-per-second,omitempty" json:"min-tokens-per-second,omitempty"`
+
+	// MaxTokensPerSecond is the upper bound of the random target tokens/s range.
+	// Default: 100.
+	MaxTokensPerSecond int `yaml:"max-tokens-per-second,omitempty" json:"max-tokens-per-second,omitempty"`
+
+	// MinFirstTokenDelayMs is the minimum TTFT delay in milliseconds.
+	// Default: 2500.
+	MinFirstTokenDelayMs int `yaml:"min-first-token-delay-ms,omitempty" json:"min-first-token-delay-ms,omitempty"`
+
+	// MaxFirstTokenDelayMs is the maximum TTFT delay in milliseconds.
+	// Default: 3000.
+	MaxFirstTokenDelayMs int `yaml:"max-first-token-delay-ms,omitempty" json:"max-first-token-delay-ms,omitempty"`
 }
 
 // StreamingConfig holds server streaming behavior configuration.

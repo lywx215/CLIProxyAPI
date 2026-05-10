@@ -55,6 +55,9 @@ func BuildOpenAIResponsesStreamErrorChunk(status int, errText string, sequenceNu
 		message = http.StatusText(status)
 	}
 
+	// Sanitise internal details for 5xx errors.
+	message = SanitizeErrorMessage(status, message)
+
 	code := openAIResponsesStreamErrorCode(status)
 
 	trimmed := strings.TrimSpace(errText)
