@@ -174,6 +174,7 @@ func (h *GeminiAPIHandler) GeminiHandler(c *gin.Context) {
 //   - rawJSON: The raw JSON request body containing generation parameters
 func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName string, rawJSON []byte) {
 	alt := h.GetAlt(c)
+	requestStart := time.Now()
 
 	// Get the http.Flusher interface to manually flush the response.
 	flusher, ok := c.Writer.(http.Flusher)
@@ -186,6 +187,8 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 		})
 		return
 	}
+
+	throttler := handlers.NewRequestThrottler(h.Cfg)
 
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
@@ -229,6 +232,12 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 				return
 			}
 
+			// TTFT delay: wait before emitting first chunk
+			if !throttler.ThrottleFirstChunk(cliCtx, requestStart) {
+				cliCancel(cliCtx.Err())
+				return
+			}
+
 			// Success! Set headers.
 			if alt == "" {
 				setSSEHeaders()
@@ -245,8 +254,8 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 			}
 			flusher.Flush()
 
-			// Continue
-			h.forwardGeminiStream(c, flusher, alt, func(err error) { cliCancel(err) }, dataChan, errChan)
+			// Continue with throttled stream
+			h.forwardGeminiStream(c, flusher, alt, func(err error) { cliCancel(err) }, dataChan, errChan, throttler)
 			return
 		}
 	}
@@ -287,6 +296,9 @@ func (h *GeminiAPIHandler) handleCountTokens(c *gin.Context, modelName string, r
 func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName string, rawJSON []byte) {
 	c.Header("Content-Type", "application/json")
 	alt := h.GetAlt(c)
+	requestStart := time.Now()
+	throttler := handlers.NewRequestThrottler(h.Cfg)
+
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	stopKeepAlive := h.StartNonStreamingKeepAlive(c, cliCtx)
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
@@ -296,19 +308,34 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 		cliCancel(errMsg.Error)
 		return
 	}
+
+	// Non-streaming speed throttle: estimate tokens and delay if needed
+	tokenCount := handlers.EstimateNonStreamingTokens(resp)
+	throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount)
+
 	handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 	_, _ = c.Writer.Write(resp)
 	cliCancel()
 }
 
-func (h *GeminiAPIHandler) forwardGeminiStream(c *gin.Context, flusher http.Flusher, alt string, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage) {
+func (h *GeminiAPIHandler) forwardGeminiStream(c *gin.Context, flusher http.Flusher, alt string, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage, throttler *handlers.RequestThrottler) {
 	var keepAliveInterval *time.Duration
 	if alt != "" {
 		keepAliveInterval = new(time.Duration(0))
 	}
 
+	// Build throttle delay callback for subsequent chunks
+	var throttleDelay func(chunk []byte)
+	if throttler != nil {
+		cliCtx := c.Request.Context()
+		throttleDelay = func(chunk []byte) {
+			throttler.ThrottleChunk(cliCtx, chunk)
+		}
+	}
+
 	h.ForwardStream(c, flusher, cancel, data, errs, handlers.StreamForwardOptions{
 		KeepAliveInterval: keepAliveInterval,
+		ThrottleDelay:     throttleDelay,
 		WriteChunk: func(chunk []byte) {
 			if alt == "" {
 				_, _ = c.Writer.Write([]byte("data: "))

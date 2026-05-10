@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -101,8 +102,73 @@ func WithDisallowFreeAuth(ctx context.Context) context.Context {
 	return context.WithValue(ctx, disallowFreeAuthContextKey{}, true)
 }
 
+// internalLeakPatterns detects error messages that contain internal infrastructure
+// details such as upstream URLs, IP addresses, or raw Go network errors.
+// These must never be exposed to API clients.
+var internalLeakPatterns = regexp.MustCompile(
+	`(?i)` +
+		`dial tcp ` +
+		`|connect: connection refused` +
+		`|no such host` +
+		`|i/o timeout` +
+		`|connection reset by peer` +
+		`|TLS handshake timeout` +
+		`|Post "https?://[^"]+"` +
+		`|Get "https?://[^"]+"` +
+		`|Put "https?://[^"]+"`+
+		`|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+\b`,
+)
+
+// SanitizeErrorMessage strips internal network details from error messages
+// when the HTTP status indicates a server-side failure (5xx).
+// For non-5xx errors the message is returned unchanged so that client-facing
+// validation / auth errors remain informative.
+func SanitizeErrorMessage(status int, msg string) string {
+	if status < http.StatusInternalServerError {
+		return msg
+	}
+	if internalLeakPatterns.MatchString(msg) {
+		return "upstream service unavailable"
+	}
+	return msg
+}
+
+// SanitizeJSONErrorPayload sanitises a JSON error body by redacting the
+// "message" field inside {"error":{"message":...}} if it contains internal
+// infrastructure details. Non-JSON or non-5xx inputs are returned as-is.
+func SanitizeJSONErrorPayload(status int, raw []byte) []byte {
+	if status < http.StatusInternalServerError || len(raw) == 0 {
+		return raw
+	}
+	var envelope struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil || envelope.Error == nil {
+		return raw
+	}
+	if !internalLeakPatterns.MatchString(envelope.Error.Message) {
+		return raw
+	}
+	// Redact the message in-place via a generic map to preserve all other fields.
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	if errObj, ok := m["error"].(map[string]any); ok {
+		errObj["message"] = "upstream service unavailable"
+	}
+	result, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return result
+}
+
 // BuildErrorResponseBody builds an OpenAI-compatible JSON error response body.
-// If errText is already valid JSON, it is returned as-is to preserve upstream error payloads.
+// If errText is already valid JSON, it is returned (with sensitive details sanitised
+// for 5xx errors) to preserve upstream error payloads.
 func BuildErrorResponseBody(status int, errText string) []byte {
 	if status <= 0 {
 		status = http.StatusInternalServerError
@@ -113,8 +179,11 @@ func BuildErrorResponseBody(status int, errText string) []byte {
 
 	trimmed := strings.TrimSpace(errText)
 	if trimmed != "" && json.Valid([]byte(trimmed)) {
-		return []byte(trimmed)
+		return SanitizeJSONErrorPayload(status, []byte(trimmed))
 	}
+
+	// Sanitise raw error strings for 5xx to avoid leaking internal details.
+	errText = SanitizeErrorMessage(status, errText)
 
 	errType := "invalid_request_error"
 	var code string
