@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	. "github.com/router-for-me/CLIProxyAPI/v7/internal/constant"
@@ -435,6 +436,9 @@ func (h *OpenAIAPIHandler) handleNonStreamingResponse(c *gin.Context, rawJSON []
 	c.Header("Content-Type", "application/json")
 
 	modelName := gjson.GetBytes(rawJSON, "model").String()
+	requestStart := time.Now()
+	throttler := handlers.NewRequestThrottler(h.Cfg)
+
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, h.GetAlt(c))
 	if errMsg != nil {
@@ -442,6 +446,11 @@ func (h *OpenAIAPIHandler) handleNonStreamingResponse(c *gin.Context, rawJSON []
 		cliCancel(errMsg.Error)
 		return
 	}
+
+	// Non-streaming speed throttle
+	tokenCount := handlers.EstimateNonStreamingTokens(resp)
+	throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount)
+
 	handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 	_, _ = c.Writer.Write(resp)
 	cliCancel()
@@ -468,6 +477,9 @@ func (h *OpenAIAPIHandler) handleStreamingResponse(c *gin.Context, rawJSON []byt
 	}
 
 	modelName := gjson.GetBytes(rawJSON, "model").String()
+	requestStart := time.Now()
+	throttler := handlers.NewRequestThrottler(h.Cfg)
+
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, h.GetAlt(c))
 
@@ -509,6 +521,12 @@ func (h *OpenAIAPIHandler) handleStreamingResponse(c *gin.Context, rawJSON []byt
 				return
 			}
 
+			// TTFT delay
+			if !throttler.ThrottleFirstChunk(cliCtx, requestStart) {
+				cliCancel(cliCtx.Err())
+				return
+			}
+
 			// Success! Commit to streaming headers.
 			setSSEHeaders()
 			handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
@@ -516,8 +534,8 @@ func (h *OpenAIAPIHandler) handleStreamingResponse(c *gin.Context, rawJSON []byt
 			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunk))
 			flusher.Flush()
 
-			// Continue streaming the rest
-			h.handleStreamResult(c, flusher, func(err error) { cliCancel(err) }, dataChan, errChan)
+			// Continue streaming the rest with throttling
+			h.handleStreamResult(c, flusher, func(err error) { cliCancel(err) }, dataChan, errChan, throttler)
 			return
 		}
 	}
@@ -657,13 +675,23 @@ func (h *OpenAIAPIHandler) handleCompletionsStreamingResponse(c *gin.Context, ra
 			h.handleStreamResult(c, flusher, func(err error) {
 				stop()
 				cliCancel(err)
-			}, convertedChan, errChan)
+			}, convertedChan, errChan, nil)
 			return
 		}
 	}
 }
-func (h *OpenAIAPIHandler) handleStreamResult(c *gin.Context, flusher http.Flusher, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage) {
+func (h *OpenAIAPIHandler) handleStreamResult(c *gin.Context, flusher http.Flusher, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage, throttler *handlers.RequestThrottler) {
+	// Build throttle delay callback
+	var throttleDelay func(chunk []byte)
+	if throttler != nil {
+		cliCtx := c.Request.Context()
+		throttleDelay = func(chunk []byte) {
+			throttler.ThrottleChunk(cliCtx, chunk)
+		}
+	}
+
 	h.ForwardStream(c, flusher, cancel, data, errs, handlers.StreamForwardOptions{
+		ThrottleDelay: throttleDelay,
 		WriteChunk: func(chunk []byte) {
 			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunk))
 		},
