@@ -27,6 +27,11 @@ type StreamForwardOptions struct {
 	// WriteKeepAlive optionally writes a keep-alive heartbeat. It should not flush.
 	// When nil, a standard SSE comment heartbeat is used.
 	WriteKeepAlive func()
+
+	// ThrottleDelay is called before each chunk is written (after the first).
+	// It may sleep to enforce a target token emission rate.
+	// When nil, no throttling is applied.
+	ThrottleDelay func(chunk []byte)
 }
 
 func (h *BaseAPIHandler) ForwardStream(c *gin.Context, flusher http.Flusher, cancel func(error), data <-chan []byte, errs <-chan *interfaces.ErrorMessage, opts StreamForwardOptions) {
@@ -93,6 +98,9 @@ func (h *BaseAPIHandler) ForwardStream(c *gin.Context, flusher http.Flusher, can
 				flusher.Flush()
 				cancel(nil)
 				return
+			}
+			if opts.ThrottleDelay != nil {
+				opts.ThrottleDelay(chunk)
 			}
 			writeChunk(chunk)
 			flusher.Flush()
