@@ -53,3 +53,7 @@ zeaburcli/
 # macOS
 .DS_Store
 ._*
+
+UnitTest/
+test/
+sshcli/
