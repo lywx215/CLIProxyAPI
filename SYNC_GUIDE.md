@@ -205,7 +205,8 @@ git diff upstream/main no-model-version -- internal/runtime/executor/antigravity
 | 路径 | 说明 |
 |------|------|
 | `zeaburcli/` | Zeabur 多服务器部署工具，包含 `deploy_config.yaml`（含 API Token 等敏感信息） |
+| `sshcli/` | 包含 SSH/VPS 部署相关脚本和 `vps_deploy_config.yaml` 配置文件等敏感信息 |
 | `.env` | 环境变量配置，包含各类密钥和凭证 |
 | `config.yaml` | 运行时配置，包含服务端口、数据库连接等本地设置 |
 
-> ⚠️ **注意**：如需在新机器上使用部署脚本，请从安全渠道获取 `zeaburcli/` 目录，切勿将其推送到公开仓库。
+> ⚠️ **注意**：如需在新机器上使用部署脚本，请从安全渠道获取 `zeaburcli/` 或 `sshcli/` 目录，切勿将其推送到公开仓库。如果在同步 (rebase) 期间上游删除了这些文件夹或文件（例如为了清理敏感信息），务必**不要**在本地物理删除它们，确保从备份中恢复它们并维持在 `.gitignore` 列表中。
