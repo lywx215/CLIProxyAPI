@@ -1,8 +1,8 @@
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential git && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./
 
@@ -33,13 +33,14 @@ RUN set -e; \
       _date=$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
     fi; \
     echo "Building with VERSION=${_ver} COMMIT=${_commit} BUILD_DATE=${_date}"; \
-    CGO_ENABLED=1 GOOS=linux go build -buildvcs=false \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -buildvcs=false \
       -ldflags="-s -w -X 'main.Version=${_ver}' -X 'main.Commit=${_commit}' -X 'main.BuildDate=${_date}'" \
       -o ./CLIProxyAPI ./cmd/server/
 
-FROM debian:bookworm
+FROM alpine:3.23
 
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache tzdata ca-certificates
 
 RUN mkdir /CLIProxyAPI
 
