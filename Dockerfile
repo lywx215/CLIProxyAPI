@@ -34,6 +34,7 @@ RUN set -e; \
     fi; \
     echo "Building with VERSION=${_ver} COMMIT=${_commit} BUILD_DATE=${_date}"; \
     CGO_ENABLED=0 GOOS=linux go build \
+      -buildvcs=false \
       -ldflags="-s -w -X 'main.Version=${_ver}' -X 'main.Commit=${_commit}' -X 'main.BuildDate=${_date}'" \
       -o ./CLIProxyAPI ./cmd/server/
 
