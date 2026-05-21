@@ -3,9 +3,11 @@ package management
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/usage"
 )
 
@@ -76,4 +78,20 @@ func (h *Handler) ImportUsageStatistics(c *gin.Context) {
 		"total_requests":  snapshot.TotalRequests,
 		"failed_requests": snapshot.FailureCount,
 	})
+}
+
+// GetUsageQueue pops oldest usage records from the redis queue.
+func (h *Handler) GetUsageQueue(c *gin.Context) {
+	countStr := c.DefaultQuery("count", "100")
+	count, err := strconv.Atoi(countStr)
+	if err != nil || count <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid count"})
+		return
+	}
+	records := redisqueue.PopOldest(count)
+	raw := make([]json.RawMessage, len(records))
+	for i, r := range records {
+		raw[i] = json.RawMessage(r)
+	}
+	c.JSON(http.StatusOK, raw)
 }
