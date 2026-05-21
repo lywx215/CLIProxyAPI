@@ -701,5 +701,4 @@ func isObjectNotFoundAWS(err error) bool {
 		return true
 	}
 	return false
-
-
+}

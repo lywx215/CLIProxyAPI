@@ -663,7 +663,7 @@ attemptLoop:
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bodyBytes, &param)
-			resp = cliproxyexecutor.Response{Payload: rewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
+			resp = cliproxyexecutor.Response{Payload: helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 			return resp, nil
 		}
@@ -924,7 +924,7 @@ attemptLoop:
 			reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
 			var param any
 			converted := sdktranslator.TranslateNonStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, resp.Payload, &param)
-			resp = cliproxyexecutor.Response{Payload: rewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
+			resp = cliproxyexecutor.Response{Payload: helps.RewriteResponseModelVersion([]byte(converted), requestedModel, baseModel), Headers: httpResp.Header.Clone()}
 			reporter.EnsurePublished(ctx)
 
 			return resp, nil
@@ -1362,7 +1362,7 @@ attemptLoop:
 					chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(payload), &param)
 					for i := range chunks {
 						select {
-						case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(chunks[i]), requestedModel, baseModel)}:
+						case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(chunks[i]), requestedModel, baseModel)}:
 						case <-ctx.Done():
 							return
 						}
@@ -1371,7 +1371,7 @@ attemptLoop:
 				tail := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, []byte("[DONE]"), &param)
 				for i := range tail {
 					select {
-					case out <- cliproxyexecutor.StreamChunk{Payload: rewriteSSEModelVersion([]byte(tail[i]), requestedModel, baseModel)}:
+					case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(tail[i]), requestedModel, baseModel)}:
 					case <-ctx.Done():
 						return
 					}
