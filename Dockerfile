@@ -45,7 +45,8 @@ RUN mkdir /CLIProxyAPI
 
 COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 
-COPY config.yaml /CLIProxyAPI/config.yaml
+# Use wildcard so it copies config.example.yaml, and config.yaml *if it exists*, avoiding build failures when config.yaml is excluded from git
+COPY config*.yaml /CLIProxyAPI/
 
 WORKDIR /CLIProxyAPI
 
