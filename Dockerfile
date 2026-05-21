@@ -19,9 +19,9 @@ RUN set -e; \
     _ver="$VERSION"; _commit="$COMMIT"; _date="$BUILD_DATE"; \
     if [ -f .build-info ]; then \
       . ./.build-info 2>/dev/null || true; \
-      [ "$_ver" = "dev" ] && [ -n "$BUILD_INFO_VERSION" ] && _ver="$BUILD_INFO_VERSION"; \
-      [ "$_commit" = "none" ] && [ -n "$BUILD_INFO_COMMIT" ] && _commit="$BUILD_INFO_COMMIT"; \
-      [ "$_date" = "unknown" ] && [ -n "$BUILD_INFO_DATE" ] && _date="$BUILD_INFO_DATE"; \
+      if [ "$_ver" = "dev" ] && [ -n "$BUILD_INFO_VERSION" ]; then _ver="$BUILD_INFO_VERSION"; fi; \
+      if [ "$_commit" = "none" ] && [ -n "$BUILD_INFO_COMMIT" ]; then _commit="$BUILD_INFO_COMMIT"; fi; \
+      if [ "$_date" = "unknown" ] && [ -n "$BUILD_INFO_DATE" ]; then _date="$BUILD_INFO_DATE"; fi; \
     fi; \
     if [ "$_ver" = "dev" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then \
       _ver=$(git describe --tags --always 2>/dev/null || echo "dev"); \
