@@ -344,24 +344,26 @@ type claudeErrorResponse struct {
 
 func (h *ClaudeCodeAPIHandler) toClaudeError(msg *interfaces.ErrorMessage) claudeErrorResponse {
 	status := http.StatusInternalServerError
-	errText := http.StatusText(status)
-	if msg != nil {
-		if msg.StatusCode > 0 {
-			status = msg.StatusCode
-			errText = http.StatusText(status)
-		}
-		if msg.Error != nil {
-			if v := strings.TrimSpace(msg.Error.Error()); v != "" {
-				errText = v
-			}
+	if msg != nil && msg.StatusCode > 0 {
+		status = msg.StatusCode
+	}
+
+	// Always use fixed message to prevent upstream error leakage.
+	fixedMessage := handlers.FixedErrorMessage(status)
+	errType := claudeErrorTypeFromStatus(status)
+
+	// Log original error for debugging (never sent to client).
+	if msg != nil && msg.Error != nil {
+		if v := strings.TrimSpace(msg.Error.Error()); v != "" && v != fixedMessage {
+			log.Debugf("[error-sanitize/claude] status=%d, fixed=%q, original=%s", status, fixedMessage, v)
 		}
 	}
-	errType, message := claudeErrorDetailFromText(status, errText)
+
 	return claudeErrorResponse{
 		Type: "error",
 		Error: claudeErrorDetail{
 			Type:    errType,
-			Message: message,
+			Message: fixedMessage,
 		},
 	}
 }
@@ -395,37 +397,10 @@ func (h *ClaudeCodeAPIHandler) WriteErrorResponse(c *gin.Context, msg *interface
 	_, _ = c.Writer.Write(body)
 }
 
-func claudeErrorDetailFromText(status int, errText string) (string, string) {
-	message := strings.TrimSpace(errText)
-	if message == "" {
-		message = http.StatusText(status)
-	}
-	errType := claudeErrorTypeFromStatus(status)
-
-	var payload map[string]any
-	if json.Valid([]byte(message)) {
-		if err := json.Unmarshal([]byte(message), &payload); err == nil {
-			if e, ok := payload["error"].(map[string]any); ok {
-				if t, ok := e["type"].(string); ok && strings.TrimSpace(t) != "" {
-					errType = strings.TrimSpace(t)
-				}
-				if m, ok := e["message"].(string); ok && strings.TrimSpace(m) != "" {
-					message = strings.TrimSpace(m)
-				} else if c, ok := e["code"].(string); ok && strings.TrimSpace(c) != "" {
-					message = strings.TrimSpace(c)
-				}
-			} else {
-				if t, ok := payload["type"].(string); ok && strings.TrimSpace(t) != "" && strings.TrimSpace(t) != "error" {
-					errType = strings.TrimSpace(t)
-				}
-				if m, ok := payload["message"].(string); ok && strings.TrimSpace(m) != "" {
-					message = strings.TrimSpace(m)
-				}
-			}
-		}
-	}
-
-	return errType, message
+// claudeErrorDetailFromText returns a fixed error type and message for the given status.
+// It never exposes upstream error details to the client.
+func claudeErrorDetailFromText(status int, _ string) (string, string) {
+	return claudeErrorTypeFromStatus(status), handlers.FixedErrorMessage(status)
 }
 
 func claudeErrorTypeFromStatus(status int) string {

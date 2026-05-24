@@ -2,9 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type openAIResponsesStreamErrorChunk struct {
@@ -42,6 +43,8 @@ func openAIResponsesStreamErrorCode(status int) string {
 // Important: OpenAI's HTTP error bodies are shaped like {"error":{...}}; those are valid for
 // non-streaming responses, but streaming clients validate SSE `data:` payloads against a union
 // of chunks that requires a top-level `type` field.
+//
+// This function always uses fixed error messages to prevent upstream error leakage.
 func BuildOpenAIResponsesStreamErrorChunk(status int, errText string, sequenceNumber int) []byte {
 	if status <= 0 {
 		status = http.StatusInternalServerError
@@ -50,52 +53,13 @@ func BuildOpenAIResponsesStreamErrorChunk(status int, errText string, sequenceNu
 		sequenceNumber = 0
 	}
 
-	message := strings.TrimSpace(errText)
-	if message == "" {
-		message = http.StatusText(status)
-	}
-
-	// Sanitise internal details for 5xx errors.
-	message = SanitizeErrorMessage(status, message)
-
+	// Always use fixed message to prevent upstream error leakage.
+	message := FixedErrorMessage(status)
 	code := openAIResponsesStreamErrorCode(status)
 
-	trimmed := strings.TrimSpace(errText)
-	if trimmed != "" && json.Valid([]byte(trimmed)) {
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
-			if t, ok := payload["type"].(string); ok && strings.TrimSpace(t) == "error" {
-				if m, ok := payload["message"].(string); ok && strings.TrimSpace(m) != "" {
-					message = strings.TrimSpace(m)
-				}
-				if v, ok := payload["code"]; ok && v != nil {
-					if c, ok := v.(string); ok && strings.TrimSpace(c) != "" {
-						code = strings.TrimSpace(c)
-					} else {
-						code = strings.TrimSpace(fmt.Sprint(v))
-					}
-				}
-				if v, ok := payload["sequence_number"].(float64); ok && sequenceNumber == 0 {
-					sequenceNumber = int(v)
-				}
-			}
-			if e, ok := payload["error"].(map[string]any); ok {
-				if m, ok := e["message"].(string); ok && strings.TrimSpace(m) != "" {
-					message = strings.TrimSpace(m)
-				}
-				if v, ok := e["code"]; ok && v != nil {
-					if c, ok := v.(string); ok && strings.TrimSpace(c) != "" {
-						code = strings.TrimSpace(c)
-					} else {
-						code = strings.TrimSpace(fmt.Sprint(v))
-					}
-				}
-			}
-		}
-	}
-
-	if strings.TrimSpace(code) == "" {
-		code = "unknown_error"
+	// Log the original error for debugging (never sent to client).
+	if trimmed := strings.TrimSpace(errText); trimmed != "" && trimmed != message && trimmed != http.StatusText(status) {
+		log.Debugf("[error-sanitize/responses-stream] status=%d, fixed=%q, original=%s", status, message, summarizeForDebugLog(trimmed, 512))
 	}
 
 	data, err := json.Marshal(openAIResponsesStreamErrorChunk{
@@ -112,7 +76,7 @@ func BuildOpenAIResponsesStreamErrorChunk(status int, errText string, sequenceNu
 	data, _ = json.Marshal(openAIResponsesStreamErrorChunk{
 		Type:           "error",
 		Code:           "internal_server_error",
-		Message:        message,
+		Message:        "Internal server error",
 		SequenceNumber: sequenceNumber,
 	})
 	if len(data) > 0 {
