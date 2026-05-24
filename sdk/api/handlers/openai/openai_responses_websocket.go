@@ -1261,14 +1261,17 @@ func websocketJSONPayloadsFromChunk(chunk []byte) [][]byte {
 
 func writeResponsesWebsocketError(conn *websocket.Conn, wsTimelineLog websocketTimelineAppender, errMsg *interfaces.ErrorMessage) ([]byte, error) {
 	status := http.StatusInternalServerError
-	errText := http.StatusText(status)
-	if errMsg != nil {
-		if errMsg.StatusCode > 0 {
-			status = errMsg.StatusCode
-			errText = http.StatusText(status)
-		}
-		if errMsg.Error != nil && strings.TrimSpace(errMsg.Error.Error()) != "" {
-			errText = errMsg.Error.Error()
+	if errMsg != nil && errMsg.StatusCode > 0 {
+		status = errMsg.StatusCode
+	}
+
+	// Always use a fixed message to prevent upstream error leakage.
+	errText := handlers.FixedErrorMessage(status)
+
+	// Log original error for debugging.
+	if errMsg != nil && errMsg.Error != nil {
+		if v := strings.TrimSpace(errMsg.Error.Error()); v != "" && v != errText {
+			log.Debugf("[error-sanitize/websocket] status=%d, fixed=%q, original=%s", status, errText, v)
 		}
 	}
 
@@ -1291,7 +1294,7 @@ func writeResponsesWebsocketError(conn *websocket.Conn, wsTimelineLog websocketT
 			if len(values) == 0 {
 				continue
 			}
-			headerPath := strings.ReplaceAll(strings.ReplaceAll(key, `\\`, `\\\\`), ".", `\\.`)
+			headerPath := strings.ReplaceAll(strings.ReplaceAll(key, `\\`, `\\\\`), ".", `\.`)
 			headers, errSet = sjson.SetBytes(headers, headerPath, values[0])
 			if errSet != nil {
 				return nil, errSet
