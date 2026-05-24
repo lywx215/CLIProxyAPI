@@ -119,10 +119,11 @@ func (h *GeminiCLIAPIHandler) CLIHandler(c *gin.Context) {
 				}
 			}()
 			bodyBytes, _ := io.ReadAll(resp.Body)
+			log.Debugf("[error-sanitize/gemini-cli] upstream passthrough error status=%d body=%s", resp.StatusCode, string(bodyBytes))
 
-			c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
+			c.JSON(resp.StatusCode, handlers.ErrorResponse{
 				Error: handlers.ErrorDetail{
-					Message: string(bodyBytes),
+					Message: handlers.FixedErrorMessage(resp.StatusCode),
 					Type:    "invalid_request_error",
 				},
 			})
