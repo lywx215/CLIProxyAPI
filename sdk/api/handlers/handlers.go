@@ -28,6 +28,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
+	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"golang.org/x/net/context"
 )
@@ -226,24 +227,68 @@ func SanitizeJSONErrorPayload(status int, raw []byte) []byte {
 	return result
 }
 
+// FixedErrorMessage returns a fixed, safe error message based on HTTP status code.
+// This ensures no upstream error details are ever leaked to clients.
+func FixedErrorMessage(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "The request was invalid or could not be processed"
+	case http.StatusUnauthorized:
+		return "Authentication failed"
+	case http.StatusPaymentRequired:
+		return "Insufficient quota or credits"
+	case http.StatusForbidden:
+		return "Access denied"
+	case http.StatusNotFound:
+		return "The requested resource or model was not found"
+	case http.StatusRequestTimeout:
+		return "Request timed out"
+	case http.StatusRequestEntityTooLarge:
+		return "Request payload is too large"
+	case http.StatusTooManyRequests:
+		return "Rate limit exceeded, please retry later"
+	case http.StatusInternalServerError:
+		return "Internal server error"
+	case http.StatusBadGateway:
+		return "Upstream service error"
+	case http.StatusServiceUnavailable:
+		return "Service temporarily unavailable"
+	case http.StatusGatewayTimeout:
+		return "Gateway timeout"
+	default:
+		if status >= http.StatusInternalServerError {
+			return "Upstream service error"
+		}
+		return http.StatusText(status)
+	}
+}
+
+// summarizeForDebugLog truncates an error string to a reasonable length for debug logging.
+func summarizeForDebugLog(s string, maxLen int) string {
+	if maxLen <= 0 {
+		maxLen = 512
+	}
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...(truncated)"
+}
+
 // BuildErrorResponseBody builds an OpenAI-compatible JSON error response body.
-// If errText is already valid JSON, it is returned (with sensitive details sanitised
-// for 5xx errors) to preserve upstream error payloads.
+// It always uses fixed, safe error messages to prevent upstream error leakage.
+// The original errText is logged at Debug level for troubleshooting.
 func BuildErrorResponseBody(status int, errText string) []byte {
 	if status <= 0 {
 		status = http.StatusInternalServerError
 	}
-	if strings.TrimSpace(errText) == "" {
-		errText = http.StatusText(status)
-	}
 
-	trimmed := strings.TrimSpace(errText)
-	if trimmed != "" && json.Valid([]byte(trimmed)) {
-		return SanitizeJSONErrorPayload(status, []byte(trimmed))
-	}
+	// Always use a fixed message to prevent upstream error leakage.
+	fixedMessage := FixedErrorMessage(status)
 
-	// Sanitise raw error strings for 5xx to avoid leaking internal details.
-	errText = SanitizeErrorMessage(status, errText)
+	// Log the original error for debugging (never sent to client).
+	if trimmed := strings.TrimSpace(errText); trimmed != "" && trimmed != fixedMessage && trimmed != http.StatusText(status) {
+		log.Debugf("[error-sanitize] status=%d, fixed=%q, original=%s", status, fixedMessage, summarizeForDebugLog(trimmed, 512))
+	}
 
 	errType := "invalid_request_error"
 	var code string
@@ -269,13 +314,13 @@ func BuildErrorResponseBody(status int, errText string) []byte {
 
 	payload, err := json.Marshal(ErrorResponse{
 		Error: ErrorDetail{
-			Message: errText,
+			Message: fixedMessage,
 			Type:    errType,
 			Code:    code,
 		},
 	})
 	if err != nil {
-		return []byte(fmt.Sprintf(`{"error":{"message":%q,"type":"server_error","code":"internal_server_error"}}`, errText))
+		return []byte(`{"error":{"message":"internal error","type":"server_error","code":"internal_server_error"}}`)
 	}
 	return payload
 }
