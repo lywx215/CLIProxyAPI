@@ -5,15 +5,17 @@
 > **Last updated**: 2026-06-02 — 基于 upstream `v7.1.40` 校验
 
 > [!CAUTION]
-> ## 🔒 核心原则：禁止覆盖本地修改
+> ## 🔒 核心原则：每次同步必须保留全部自定义修改
 >
-> **同步上游时，严禁自动覆盖本地的任何自定义修改。** 具体规则：
+> **同步上游 (rebase) 时，严禁丢失本地的任何自定义修改。** 具体规则：
 >
 > 1. **Rebase 遇到冲突时，始终优先保留本地修改**（即本 fork 的自定义代码），除非用户明确指令覆盖
 > 2. **第 4 节「自定义修改清单」中列出的所有文件**，在同步过程中必须保持本地版本不变
 > 3. **禁止使用** `git checkout --theirs` 或 `git reset --hard upstream/main` 等会丢弃本地修改的命令
 > 4. 只有在用户明确说「使用上游版本」或「覆盖本地修改」时，才可以采纳上游的变更覆盖本地文件
 > 5. 如果不确定是否应该覆盖某个文件，**必须先询问用户确认**，不得擅自决定
+> 6. **当冲突涉及清单中的文件时**，必须同时保留「我们的自定义逻辑」和「上游新增的功能」，不得二选一丢弃任何一方
+> 7. **rebase 完成后，必须执行第五步的验证命令**，确认所有自定义修改仍然存在于差异列表中
 
 ## 1. 分支说明 (Branch Overview)
 
@@ -45,10 +47,13 @@ git checkout main
 git rebase upstream/main
 ```
 
-> **注意**：如果出现冲突（Conflict），Git 会提示您。
-> 1. 打开冲突文件，手动保留需要的代码。
-> 2. `git add <file>`
-> 3. `git rebase --continue`
+> [!WARNING]
+> **冲突处理原则 — 自定义修改优先：**
+> 1. 打开冲突文件，**优先保留我们的自定义代码**
+> 2. 如果上游也新增了有价值的功能（如新函数、新字段），应**同时保留双方代码**，而非二选一
+> 3. 典型场景：上游在同一位置新增了 `setServiceTierMetadata`，我们有 `parseModelTokenLimit` → **两者都保留**
+> 4. `git add <file>` → `git rebase --continue`
+> 5. 使用 `git -c core.editor=true rebase --continue` 可跳过编辑器弹窗
 
 > [!CAUTION]
 > **处理 `go.mod` 冲突时务必小心！**
@@ -62,23 +67,57 @@ git rebase upstream/main
 go build ./...
 ```
 
-### 第四步：推送 `main` 到 GitHub
+### 第四步：验证自定义修改完整性（必须执行）
+
+> [!IMPORTANT]
+> **此步骤为强制步骤，不得跳过。** 必须确认所有自定义修改仍保留在差异中。
+
+```powershell
+# 1. 查看与上游的差异文件列表
+git diff upstream/main..main --stat
+```
+
+**必须确认以下关键文件出现在差异列表中（缺少任何一个说明自定义修改丢失）：**
+
+| 必须出现的文件 | 自定义功能 |
+|---------------|------------|
+| `Dockerfile` | Zeabur 部署适配 |
+| `zbpack.json` | Zeabur 构建类型 |
+| `config.example.yaml` | 自定义配置项 |
+| `internal/store/objectstore.go` | 腾讯云 COS 兼容 |
+| `internal/watcher/clients.go` | persistAuth 禁用 |
+| `internal/watcher/events.go` | 日志降级 |
+| `sdk/cliproxy/auth/conductor.go` | persist 禁用 + CreditsUsed |
+| `internal/api/middleware/ratelimit.go` | Rate Limit 中间件 |
+| `internal/config/config.go` | APIKeyRateLimit + CreditsForce 配置 |
+| `internal/runtime/executor/antigravity_executor.go` | ModelVersion 重写 |
+| `internal/runtime/executor/gemini_cli_executor.go` | ModelVersion 重写 |
+| `internal/runtime/executor/gemini_executor.go` | ModelVersion 重写 |
+| `internal/runtime/executor/helps/payload_helpers.go` | Rewrite 辅助函数 |
+
+```powershell
+# 2. 快速验证 ModelVersion 重写函数是否存在
+Select-String -Pattern "RewriteResponseModelVersion" internal/runtime/executor/helps/payload_helpers.go
+# 应输出函数定义行，如果无输出说明丢失！
+
+# 3. 快速验证 Rate Limit 中间件是否存在
+Test-Path internal/api/middleware/ratelimit.go
+# 应输出 True
+```
+
+> 如果发现任何自定义修改丢失，**立即执行 `git rebase --abort` 或从 reflog 恢复**，不要推送！
+
+### 第五步：推送 `main` 到 GitHub
 ```powershell
 git push -f origin main
 ```
 
-### 第五步：更新本文档
+### 第六步：更新本文档
 更新本文件顶部的 `Last updated` 日期和版本号，然后提交推送：
 ```powershell
 git add SYNC_GUIDE.md
 git commit -m "docs: update SYNC_GUIDE last-synced date to vX.X.X"
 git push origin main
-```
-
-### 第六步：验证同步结果
-```powershell
-# 确认 main 与上游的差异文件列表正确
-git diff upstream/main..main --stat
 ```
 
 ## 4. 自定义修改清单 (Custom Modifications)
