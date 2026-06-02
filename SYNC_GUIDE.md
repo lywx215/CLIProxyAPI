@@ -17,26 +17,7 @@
 
 ## 1. 分支说明 (Branch Overview)
 
-本 fork 维护 **两个分支**：
-
-| 分支 | 说明 |
-|------|------|
-| `main` | 包含所有自定义修改（含 Model Version 别名重写功能） |
-| `no-model-version` | 与 `main` 相同，但**去除了 Model Version 别名重写功能**（4 个 executor 文件与上游一致） |
-
-> [!IMPORTANT]
-> **每次同步上游时，必须同时更新两个分支。**
-
-### `no-model-version` 与 `main` 的差异
-
-仅以下 4 个文件不同（`no-model-version` 中与上游保持一致）：
-
-| 文件 | `main` 分支 | `no-model-version` 分支 |
-|------|-------------|------------------------|
-| `internal/runtime/executor/antigravity_executor.go` | 调用 `RewriteResponseModelVersion` / `RewriteSSEModelVersion` | 直接传递原始 payload（与上游一致） |
-| `internal/runtime/executor/gemini_cli_executor.go` | 同上 | 同上 |
-| `internal/runtime/executor/gemini_executor.go` | 同上 | 同上 |
-| `internal/runtime/executor/helps/payload_helpers.go` | 包含 `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 函数 | 不包含这些函数（与上游一致） |
+本 fork 仅维护 **`main`** 分支，包含所有自定义修改（含 Model Version 别名重写功能）。
 
 ## 2. 初始设置 (Initial Setup)
 
@@ -51,7 +32,7 @@ git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git
 
 ## 3. 日常同步流程 (Routine Sync)
 
-当原项目有更新时，请按照以下步骤同步 **两个分支**：
+当原项目有更新时，请按照以下步骤同步：
 
 ### 第一步：获取更新
 ```powershell
@@ -86,30 +67,7 @@ go build ./...
 git push -f origin main
 ```
 
-### 第五步：同步 `no-model-version` 分支
-```powershell
-git checkout no-model-version
-git rebase upstream/main
-```
-
-> [!NOTE]
-> `no-model-version` 分支没有 Model Version 重写的 commit，所以它的 rebase 应该更简单。
-> 如果上游修改了 4 个 executor 文件，`no-model-version` 通常不会冲突（因为它与上游一致）。
-
-### 第六步：验证 `no-model-version` 编译
-```powershell
-go build ./...
-```
-
-### 第七步：推送 `no-model-version` 到 GitHub
-```powershell
-git push -f origin no-model-version
-```
-
-### 第八步：切回 `main` 并更新本文档
-```powershell
-git checkout main
-```
+### 第五步：更新本文档
 更新本文件顶部的 `Last updated` 日期和版本号，然后提交推送：
 ```powershell
 git add SYNC_GUIDE.md
@@ -117,14 +75,10 @@ git commit -m "docs: update SYNC_GUIDE last-synced date to vX.X.X"
 git push origin main
 ```
 
-### 第九步：验证同步结果
+### 第六步：验证同步结果
 ```powershell
 # 确认 main 与上游的差异文件列表正确
 git diff upstream/main..main --stat
-
-# 确认 no-model-version 的 4 个 executor 文件与上游一致
-git diff upstream/main no-model-version -- internal/runtime/executor/antigravity_executor.go internal/runtime/executor/gemini_cli_executor.go internal/runtime/executor/gemini_executor.go internal/runtime/executor/helps/payload_helpers.go
-# 上面这条命令应该输出为空（无差异）
 ```
 
 ## 4. 自定义修改清单 (Custom Modifications)
@@ -154,21 +108,21 @@ git diff upstream/main no-model-version -- internal/runtime/executor/antigravity
 
 ### 4.3 功能增强 (Enhancements)
 
-| 文件 | 修改内容 | 分支 |
-|------|----------|------|
-| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 | 两个分支共有 |
-| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整；新增 `api-key-rate-limit` 配置段 | 两个分支共有 |
-| `internal/api/middleware/ratelimit.go` | 新增 per-API-key 滑动窗口速率限制中间件 | 两个分支共有 |
-| `internal/api/middleware/ratelimit_test.go` | 速率限制中间件单元测试 | 两个分支共有 |
-| `internal/config/config.go` | 新增 `APIKeyRateLimit` 配置结构体 | 两个分支共有 |
-| `internal/watcher/diff/config_diff.go` | 新增 rate limit 配置变更检测 | 两个分支共有 |
-| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 | **仅 `main`** |
-| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor | **仅 `main`** |
-| `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor | **仅 `main`** |
-| `internal/runtime/executor/helps/payload_helpers.go` | `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 辅助函数 | **仅 `main`** |
-| `internal/api/handlers/management/usage.go` | 恢复完整的“使用统计”管理 API 端点及导入/导出逻辑 | 两个分支共有 |
-| `internal/api/handlers/management/handler.go` | `Handler` 结构体注入 `usageStats` 状态追踪机制 | 两个分支共有 |
-| `internal/api/server.go` | 重新绑定并注册管理端 `/usage` 相关路由，并加载开关状态 | 两个分支共有 |
+| 文件 | 修改内容 |
+|------|----------|
+| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 |
+| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整；新增 `api-key-rate-limit` 配置段 |
+| `internal/api/middleware/ratelimit.go` | 新增 per-API-key 滑动窗口速率限制中间件 |
+| `internal/api/middleware/ratelimit_test.go` | 速率限制中间件单元测试 |
+| `internal/config/config.go` | 新增 `APIKeyRateLimit` 配置结构体 |
+| `internal/watcher/diff/config_diff.go` | 新增 rate limit 配置变更检测 |
+| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 |
+| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor |
+| `internal/runtime/executor/gemini_executor.go` | 同上，适用于 Gemini executor |
+| `internal/runtime/executor/helps/payload_helpers.go` | `RewriteResponseModelVersion` / `RewriteSSEModelVersion` 辅助函数 |
+| `internal/api/handlers/management/usage.go` | 恢复完整的"使用统计"管理 API 端点及导入/导出逻辑 |
+| `internal/api/handlers/management/handler.go` | `Handler` 结构体注入 `usageStats` 状态追踪机制 |
+| `internal/api/server.go` | 重新绑定并注册管理端 `/usage` 相关路由，并加载开关状态 |
 
 > [!NOTE]
 > **前端依赖同步**：在使用统计功能方面，`Cli-Proxy-API-Management-Center` 的 `src/i18n/locales/*.json` (特别是 `zh-CN.json` 和 `en.json`) 中的 `usage_stats` 国际化翻译也为我们独有功能，同步前端仓库时也需务必保留。
