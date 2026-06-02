@@ -38,8 +38,14 @@ git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git
 
 ### 第一步：获取更新
 ```powershell
-git fetch upstream
+git fetch upstream --no-tags
 ```
+
+> [!WARNING]
+> **必须使用 `--no-tags`**，否则会拉取上游的 tag（如 `v7.1.40`），导致后续发布时：
+> - `git tag v7.1.40` 报 "tag already exists"（指向上游 commit）
+> - 推送该 tag 会触发上游的旧 workflow（DockerHub），而非我们的 GHCR workflow
+> - 如果已经误拉了上游 tag，用 `git tag -d <tagname>` 删除后再创建
 
 ### 第二步：同步 `main` 分支
 ```powershell
