@@ -241,9 +241,29 @@ git push origin main
 > **与后端同步规则完全一致：严禁丢失本地的任何自定义修改。**
 >
 > 1. **Rebase 遇到冲突时，始终优先保留本地修改**
-> 2. **上游删除的文件，如果本地仍有自定义内容，不可以跟随删除** — 必须用 `git checkout --ours` 或手动恢复
+> 2. **上游删除的文件，如果本地仍有自定义内容，不可以跟随删除** — 必须手动恢复
 > 3. 特别注意：上游可能重构或删除了我们仍在使用的组件（如 `PluginsPage`、`usage` 目录），这些必须保留
 > 4. 冲突中如果涉及 i18n 翻译文件，必须合并双方翻译键，不可丢弃我们新增的键
+
+> [!WARNING]
+> ## ⚠️ Rebase 中 `--ours` / `--theirs` 语义反转
+>
+> **在 `git rebase` 中，`--ours` 和 `--theirs` 的含义与 `git merge` 相反！**
+>
+> | 命令 | Rebase 中的含义 |
+> |------|----------------|
+> | `git checkout --ours <file>` | **上游 (upstream)** 的版本 — 会丢失我们的自定义修改！ |
+> | `git checkout --theirs <file>` | **我们的 (fork)** 本地修改 — 这才是要保留的 |
+>
+> **2026-06-15 教训**：使用 `git checkout --ours` 解决 `src/types/visualConfig.ts` 冲突时，
+> 实际采用了上游版本，导致 `ApiKeyRateLimitConfig`、`SpeedThrottleConfig` 等自定义类型定义丢失，
+> `useVisualConfig.ts` 中的 `rateLimit`/`parsedOverrides` 变量声明和 `quotaAntigravityCreditsForce` 字段也被删除，
+> 最终 `bun run build` 失败并需要手动补回所有丢失的类型和字段。
+>
+> **正确做法**：
+> - 需要保留本地修改时，使用 `git checkout --theirs <file>`
+> - 或者手动编辑冲突文件，合并双方内容
+> - **严禁对包含自定义类型定义的文件使用 `--ours`**
 
 ### 7.1 初始设置
 
@@ -306,18 +326,42 @@ git push -f origin main
 | `src/pages/AntigravityStatsPage.module.scss` | 积分统计样式 |
 | `src/services/api/antigravityStats.ts` | 积分统计 API |
 
-#### Rate Limit 配置 UI
+#### Rate Limit 与 Speed Throttle 配置 UI
 
 | 文件 | 说明 |
 |------|------|
-| `src/components/config/VisualConfigEditor.tsx` | 新增 Rate Limit 编辑器集成 |
-| `src/components/config/VisualConfigEditorBlocks.tsx` | Rate Limit 配置块 |
+| `src/components/config/VisualConfigEditor.tsx` | 新增 Rate Limit / Speed Throttle 编辑器集成 |
+| `src/components/config/VisualConfigEditorBlocks.tsx` | Rate Limit 配置块 + Speed Throttle 配置块 |
+
+#### 类型定义（极易在冲突解决中丢失！）
+
+> [!CAUTION]
+> **此文件是冲突高发区**，`--ours` 误用会直接导致以下自定义类型全部丢失，构建必定失败。
+
+| 文件 | 必须包含的自定义内容 |
+|------|---------------------|
+| `src/types/visualConfig.ts` | 必须导出 `ApiKeyRateLimitOverride`、`ApiKeyRateLimitConfig`、`SpeedThrottleConfig` 接口 |
+| `src/types/visualConfig.ts` | `VisualConfigValues` 类型中必须包含 `apiKeyRateLimit: ApiKeyRateLimitConfig` 和 `speedThrottle: SpeedThrottleConfig` 字段 |
+| `src/types/visualConfig.ts` | `DEFAULT_VISUAL_VALUES` 中必须包含 `apiKeyRateLimit` 和 `speedThrottle` 的默认值 |
+
+#### Hook 逻辑（极易在冲突解决中丢失！）
+
+> [!CAUTION]
+> **此文件与 `visualConfig.ts` 配套**，每次冲突解决后必须验证以下内容完整。
+
+| 文件 | 必须包含的自定义内容 |
+|------|---------------------|
+| `src/hooks/useVisualConfig.ts` | YAML 解析部分必须有 `const rateLimit = asRecord(parsed['api-key-rate-limit'])` 变量声明 |
+| `src/hooks/useVisualConfig.ts` | 必须有 `parsedOverrides` 变量（解析 `rateLimit.overrides` 数组） |
+| `src/hooks/useVisualConfig.ts` | `newValues` 对象中必须包含 `quotaAntigravityCreditsForce` 字段 |
+| `src/hooks/useVisualConfig.ts` | `newValues` 对象中必须包含 `apiKeyRateLimit` 和 `speedThrottle` 配置对象 |
+| `src/hooks/useVisualConfig.ts` | `applyVisualChangesToYaml` 中必须有 rate limit YAML 序列化逻辑（`api-key-rate-limit` 部分） |
 
 #### 国际化翻译（关键）
 
 | 文件 | 说明 |
 |------|------|
-| `src/i18n/locales/zh-CN.json` | 中文翻译（含 `usage_stats`、`antigravity_stats`、`api_key_rate_limit` 等键） |
+| `src/i18n/locales/zh-CN.json` | 中文翻译（含 `usage_stats`、`antigravity_stats`、`api_key_rate_limit`、`speed_throttle` 等键） |
 | `src/i18n/locales/en.json` | 英文翻译（同上） |
 | `src/i18n/locales/zh-TW.json` | 繁体中文翻译 |
 
@@ -325,27 +369,39 @@ git push -f origin main
 
 | 文件 | 说明 |
 |------|------|
-| `src/router/MainRoutes.tsx` | 新增使用统计、积分统计路由 |
-| `src/components/layout/MainLayout.tsx` | 侧边栏新增自定义菜单项 |
+| `src/router/MainRoutes.tsx` | 必须同时包含 plugins 路由（上游）和 usage/antigravity-stats 路由（本地自定义） |
+| `src/components/layout/MainLayout.tsx` | 侧边栏必须同时包含 plugins 菜单（上游）和自定义菜单项 |
 
 #### 其他自定义
 
 | 文件 | 说明 |
 |------|------|
 | `src/features/providers/sheets/forms/BaseProviderForm.tsx` | Antigravity credits-force 切换开关 |
-| `src/hooks/useVisualConfig.ts` | 自定义配置项扩展 |
+| `src/hooks/useVisualConfig.ts` | 自定义配置项扩展（Rate Limit / Speed Throttle / Credits Force） |
+| `src/pages/SystemPage.tsx` | 包含插件系统相关 UI + 自定义版本显示逻辑 |
 | `vite.config.ts` | 构建配置调整 |
 
-### 7.4 构建产物更新
+### 7.4 构建与类型验证（必须执行）
 
 > [!WARNING]
-> 前端同步完成后，需要重新构建 `dist/index.html` 并提交，因为后端 Docker 镜像会直接使用此文件。
+> 前端同步完成后，**必须先构建验证，再提交**。构建失败说明类型定义或字段丢失。
 
 ```powershell
-# 构建前端
+# 1. 构建前端（包含 TypeScript 类型检查）
 bun run build
+# 如果构建失败，检查以下常见丢失项：
+#   - src/types/visualConfig.ts 中是否缺少 ApiKeyRateLimitConfig / SpeedThrottleConfig
+#   - src/hooks/useVisualConfig.ts 中是否缺少 rateLimit / parsedOverrides 变量
+#   - newValues 对象中是否缺少 apiKeyRateLimit / speedThrottle / quotaAntigravityCreditsForce
 
-# 提交构建产物
+# 2. 快速验证关键类型是否存在
+Select-String -Pattern 'ApiKeyRateLimitConfig|SpeedThrottleConfig' src/types/visualConfig.ts
+# 应输出至少 4 行（接口定义 + 字段引用），如果无输出说明类型丢失！
+
+Select-String -Pattern 'rateLimit|parsedOverrides|quotaAntigravityCreditsForce' src/hooks/useVisualConfig.ts
+# 应输出多行，如果无输出说明解析逻辑丢失！
+
+# 3. 提交构建产物
 git add dist/
 git commit -m "build: update bundled index.html after upstream sync"
 git push origin main
