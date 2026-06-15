@@ -230,3 +230,139 @@ git push origin main
 | `config.yaml` | 运行时配置，包含服务端口、数据库连接等本地设置 |
 
 > ⚠️ **注意**：如需在新机器上使用部署脚本，请从安全渠道获取 `zeaburcli/` 或 `sshcli/` 目录，切勿将其推送到公开仓库。如果在同步 (rebase) 期间上游删除了这些文件夹或文件（例如为了清理敏感信息），务必**不要**在本地物理删除它们，确保从备份中恢复它们并维持在 `.gitignore` 列表中。
+
+## 7. 前端管理面板同步 (Frontend Management Center Sync)
+
+前端仓库 `Cli-Proxy-API-Management-Center` 也是 fork，包含大量自定义功能（使用统计页面、Antigravity 积分统计、Rate Limit 配置 UI 等），**每次后端同步后也必须同步前端**。
+
+> [!CAUTION]
+> ## 🔒 前端同步核心原则
+>
+> **与后端同步规则完全一致：严禁丢失本地的任何自定义修改。**
+>
+> 1. **Rebase 遇到冲突时，始终优先保留本地修改**
+> 2. **上游删除的文件，如果本地仍有自定义内容，不可以跟随删除** — 必须用 `git checkout --ours` 或手动恢复
+> 3. 特别注意：上游可能重构或删除了我们仍在使用的组件（如 `PluginsPage`、`usage` 目录），这些必须保留
+> 4. 冲突中如果涉及 i18n 翻译文件，必须合并双方翻译键，不可丢弃我们新增的键
+
+### 7.1 初始设置
+
+```powershell
+cd D:\code\gemini\2fa\CLIProxy\Cli-Proxy-API-Management-Center
+
+# 查看远程仓库
+git remote -v
+# 如果没有 upstream，则添加
+git remote add upstream https://github.com/router-for-me/Cli-Proxy-API-Management-Center.git
+```
+
+### 7.2 同步流程
+
+```powershell
+# 第一步：获取上游更新
+git fetch upstream --no-tags
+
+# 第二步：Rebase
+git checkout main
+git rebase upstream/main
+# 冲突处理规则与后端完全相同：优先保留本地，合并上游新功能
+
+# 第三步：构建验证
+bun install
+bun run build
+# 确保构建成功，无 TypeScript 编译错误
+
+# 第四步：验证自定义修改完整性
+git diff upstream/main..main --stat
+# 确认下方清单中所有文件都出现在差异列表中
+
+# 第五步：推送
+git push -f origin main
+```
+
+### 7.3 前端自定义修改清单
+
+> [!IMPORTANT]
+> **以下文件/目录必须在差异列表中出现，缺少任何一个说明自定义修改丢失：**
+
+#### 使用统计页面（完全自定义，上游不存在）
+
+| 文件/目录 | 说明 |
+|-----------|------|
+| `src/pages/UsagePage.tsx` | 使用统计主页面 |
+| `src/pages/UsagePage.module.scss` | 使用统计样式 |
+| `src/components/usage/` （整个目录） | 统计图表组件：CostTrendChart、StatCards、ModelStatsCard 等 |
+| `src/utils/usage.ts` | 使用统计数据处理工具 |
+| `src/utils/usage/` （整个目录） | 图表配置、延迟计算等工具 |
+| `src/stores/useUsageStatsStore.ts` | 使用统计状态管理 |
+| `src/services/api/usage.ts` | 使用统计 API 接口 |
+| `src/types/usage.ts` | 使用统计类型定义 |
+
+#### Antigravity 积分统计（完全自定义）
+
+| 文件 | 说明 |
+|------|------|
+| `src/pages/AntigravityStatsPage.tsx` | Antigravity 积分统计页面 |
+| `src/pages/AntigravityStatsPage.module.scss` | 积分统计样式 |
+| `src/services/api/antigravityStats.ts` | 积分统计 API |
+
+#### Rate Limit 配置 UI
+
+| 文件 | 说明 |
+|------|------|
+| `src/components/config/VisualConfigEditor.tsx` | 新增 Rate Limit 编辑器集成 |
+| `src/components/config/VisualConfigEditorBlocks.tsx` | Rate Limit 配置块 |
+
+#### 国际化翻译（关键）
+
+| 文件 | 说明 |
+|------|------|
+| `src/i18n/locales/zh-CN.json` | 中文翻译（含 `usage_stats`、`antigravity_stats`、`api_key_rate_limit` 等键） |
+| `src/i18n/locales/en.json` | 英文翻译（同上） |
+| `src/i18n/locales/zh-TW.json` | 繁体中文翻译 |
+
+#### 路由与布局
+
+| 文件 | 说明 |
+|------|------|
+| `src/router/MainRoutes.tsx` | 新增使用统计、积分统计路由 |
+| `src/components/layout/MainLayout.tsx` | 侧边栏新增自定义菜单项 |
+
+#### 其他自定义
+
+| 文件 | 说明 |
+|------|------|
+| `src/features/providers/sheets/forms/BaseProviderForm.tsx` | Antigravity credits-force 切换开关 |
+| `src/hooks/useVisualConfig.ts` | 自定义配置项扩展 |
+| `vite.config.ts` | 构建配置调整 |
+
+### 7.4 构建产物更新
+
+> [!WARNING]
+> 前端同步完成后，需要重新构建 `dist/index.html` 并提交，因为后端 Docker 镜像会直接使用此文件。
+
+```powershell
+# 构建前端
+bun run build
+
+# 提交构建产物
+git add dist/
+git commit -m "build: update bundled index.html after upstream sync"
+git push origin main
+```
+
+### 7.5 同步到后端仓库
+
+构建完成后，需要将 `dist/index.html` 复制到后端仓库的 `static/management.html`：
+
+```powershell
+# 复制构建产物到后端
+Copy-Item -Path "dist/index.html" -Destination "D:\code\gemini\2fa\CLIProxy\CLIProxyAPI\static\management.html" -Force
+
+# 在后端仓库提交
+cd D:\code\gemini\2fa\CLIProxy\CLIProxyAPI
+git add static/management.html
+git commit -m "build: update management.html from frontend sync"
+git push origin main
+```
+
