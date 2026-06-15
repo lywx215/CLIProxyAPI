@@ -611,8 +611,15 @@ func antigravityHasExplicitCreditsBalanceExhaustedReason(body []byte) bool {
 func newAntigravityStatusErr(statusCode int, body []byte) statusErr {
 	err := statusErr{code: statusCode, msg: string(body)}
 	if statusCode == http.StatusTooManyRequests {
-		if retryAfter, parseErr := parseRetryDelay(body); parseErr == nil && retryAfter != nil {
-			err.retryAfter = retryAfter
+		decision := decideAntigravity429(body)
+		if decision.retryAfter != nil {
+			err.retryAfter = decision.retryAfter
+		} else if decision.kind == antigravity429DecisionSoftRetry {
+			// An unclassified/transient Antigravity 429 should not trigger the
+			// conductor's exponential quota cooldown. A zero retry duration
+			// keeps the credential immediately eligible for later requests.
+			retryImmediately := time.Duration(0)
+			err.retryAfter = &retryImmediately
 		}
 	}
 	return err
