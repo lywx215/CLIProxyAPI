@@ -48,6 +48,8 @@ COPY --from=builder ./app/CLIProxyAPI /CLIProxyAPI/CLIProxyAPI
 
 # Use wildcard so it copies config.example.yaml, and config.yaml *if it exists*, avoiding build failures when config.yaml is excluded from git
 COPY config*.yaml /CLIProxyAPI/
+# Copy the static directory to ensure local frontend modifications are baked into Zeabur/Docker images
+COPY static/ /CLIProxyAPI/static/
 
 WORKDIR /CLIProxyAPI
 
@@ -55,6 +57,7 @@ EXPOSE 8317
 
 ENV TZ=Asia/Shanghai
 ENV OBJECTSTORE_LOCAL_PATH=/data
+ENV MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static/management.html
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
