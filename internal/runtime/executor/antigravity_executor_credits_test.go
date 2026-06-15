@@ -208,6 +208,32 @@ func TestClassifyAntigravity429(t *testing.T) {
 	})
 }
 
+func TestNewAntigravityStatusErrSoft429DoesNotScheduleCooldown(t *testing.T) {
+	err := newAntigravityStatusErr(http.StatusTooManyRequests, []byte(`{"error":{"message":"too many requests"}}`))
+	if err.RetryAfter() == nil {
+		t.Fatal("RetryAfter() = nil, want explicit zero duration")
+	}
+	if got := *err.RetryAfter(); got != 0 {
+		t.Fatalf("RetryAfter() = %v, want 0", got)
+	}
+
+	quotaErr := newAntigravityStatusErr(http.StatusTooManyRequests, []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "QUOTA_EXHAUSTED"},
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "10m"}
+			]
+		}
+	}`))
+	if quotaErr.RetryAfter() == nil {
+		t.Fatal("quota RetryAfter() = nil, want upstream retry duration")
+	}
+	if got := *quotaErr.RetryAfter(); got != 10*time.Minute {
+		t.Fatalf("quota RetryAfter() = %v, want 10m", got)
+	}
+}
+
 func TestAntigravityShouldRetryNoCapacity_Standard503(t *testing.T) {
 	body := []byte(`{
 		"error": {

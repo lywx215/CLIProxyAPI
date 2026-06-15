@@ -901,6 +901,47 @@ func TestManager_Execute_DisableCooling_DoesNotBlackoutAfter429RetryAfter(t *tes
 	}
 }
 
+func TestManager_Execute_ZeroRetryAfterDoesNotBlackoutAfter429(t *testing.T) {
+	prev := quotaCooldownDisabled.Load()
+	quotaCooldownDisabled.Store(false)
+	t.Cleanup(func() { quotaCooldownDisabled.Store(prev) })
+
+	m := NewManager(nil, nil, nil)
+	executor := &authFallbackExecutor{
+		id: "antigravity",
+		executeErrors: map[string]error{
+			"auth-soft-429": &retryAfterStatusError{
+				status:     http.StatusTooManyRequests,
+				message:    "transient rate limit",
+				retryAfter: 0,
+			},
+		},
+	}
+	m.RegisterExecutor(executor)
+
+	auth := &Auth{ID: "auth-soft-429", Provider: "antigravity"}
+	if _, errRegister := m.Register(context.Background(), auth); errRegister != nil {
+		t.Fatalf("register auth: %v", errRegister)
+	}
+
+	model := "gemini-image-model"
+	reg := registry.GetGlobalRegistry()
+	reg.RegisterClient(auth.ID, auth.Provider, []*registry.ModelInfo{{ID: model}})
+	t.Cleanup(func() { reg.UnregisterClient(auth.ID) })
+
+	req := cliproxyexecutor.Request{Model: model}
+	for i := 0; i < 2; i++ {
+		_, errExecute := m.Execute(context.Background(), []string{auth.Provider}, req, cliproxyexecutor.Options{})
+		if statusCodeFromError(errExecute) != http.StatusTooManyRequests {
+			t.Fatalf("execute %d status = %d, want %d", i+1, statusCodeFromError(errExecute), http.StatusTooManyRequests)
+		}
+	}
+
+	if calls := executor.ExecuteCalls(); len(calls) != 2 {
+		t.Fatalf("execute calls = %d, want 2", len(calls))
+	}
+}
+
 func TestManager_Execute_DisableCooling_RetriesAfter429RetryAfter(t *testing.T) {
 	prev := quotaCooldownDisabled.Load()
 	quotaCooldownDisabled.Store(false)

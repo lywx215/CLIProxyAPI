@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-06-02 — 基于 upstream `v7.1.40` 校验
+> **Last updated**: 2026-06-15 — 基于 upstream `f33bc56b` (post v7.1.18) 校验
 
 > [!CAUTION]
 > ## 🔒 核心原则：每次同步必须保留全部自定义修改
@@ -118,7 +118,28 @@ Test-Path internal/api/middleware/ratelimit.go
 git push -f origin main
 ```
 
-### 第六步：更新本文档
+### 第六步：发布新版本（必须执行）
+
+> [!IMPORTANT]
+> **每次同步完成并推送后，必须创建并推送版本 tag 以触发 GHCR Docker 镜像构建。**
+
+```powershell
+# 1. 查看上游最新 tag
+git ls-remote --tags upstream | Select-Object -Last 5
+
+# 2. 创建与上游相同的版本 tag（指向我们的 main HEAD）
+git tag v7.x.x
+
+# 3. 推送 tag 到 origin，触发 GitHub Actions 构建
+git push origin v7.x.x
+```
+
+> [!WARNING]
+> - Tag 名称应与上游最新版本保持一致（如上游发布 `v7.2.4`，我们也打 `v7.2.4`）
+> - 如果本地已存在同名 tag（从上游误拉），先用 `git tag -d v7.x.x` 删除再重建
+> - 推送 tag 后检查 GitHub Actions 页面确认 workflow 正常触发
+
+### 第七步：更新本文档
 更新本文件顶部的 `Last updated` 日期和版本号，然后提交推送：
 ```powershell
 git add SYNC_GUIDE.md

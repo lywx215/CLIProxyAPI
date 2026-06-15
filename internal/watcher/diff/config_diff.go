@@ -117,6 +117,9 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 	}
 
 	// API key rate limiting
+	if oldCfg.APIKeyRateLimit.Enabled != newCfg.APIKeyRateLimit.Enabled {
+		changes = append(changes, fmt.Sprintf("api-key-rate-limit.enabled: %t -> %t", oldCfg.APIKeyRateLimit.Enabled, newCfg.APIKeyRateLimit.Enabled))
+	}
 	if oldCfg.APIKeyRateLimit.DefaultRPM != newCfg.APIKeyRateLimit.DefaultRPM {
 		changes = append(changes, fmt.Sprintf("api-key-rate-limit.default-rpm: %d -> %d", oldCfg.APIKeyRateLimit.DefaultRPM, newCfg.APIKeyRateLimit.DefaultRPM))
 	}

@@ -1839,6 +1839,9 @@ func buildRateLimitConfig(cfg *config.Config) middleware.RateLimitConfig {
 	if cfg == nil {
 		return rlCfg
 	}
+	if !cfg.APIKeyRateLimit.Enabled {
+		return rlCfg
+	}
 	rlCfg.DefaultRPM = cfg.APIKeyRateLimit.DefaultRPM
 	if len(cfg.APIKeyRateLimit.Overrides) > 0 {
 		rlCfg.Overrides = make(map[string]int, len(cfg.APIKeyRateLimit.Overrides))

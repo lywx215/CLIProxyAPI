@@ -84,6 +84,16 @@ func TestBuildConfigChangeDetails(t *testing.T) {
 	expectContains(t, details, "  provider updated: compat-a (models 1 -> 2)")
 }
 
+func TestBuildConfigChangeDetailsAPIKeyRateLimitEnabled(t *testing.T) {
+	oldCfg := &config.Config{}
+	newCfg := &config.Config{
+		APIKeyRateLimit: config.APIKeyRateLimit{Enabled: true},
+	}
+
+	changes := BuildConfigChangeDetails(oldCfg, newCfg)
+	expectContains(t, changes, "api-key-rate-limit.enabled: false -> true")
+}
+
 func TestBuildConfigChangeDetails_NoChanges(t *testing.T) {
 	cfg := &config.Config{
 		Port: 8080,
