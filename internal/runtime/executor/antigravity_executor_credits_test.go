@@ -496,6 +496,52 @@ func TestAntigravityExecute_CreditsAlwaysInjectedWhenConfigEnabled(t *testing.T)
 	}
 }
 
+func TestAntigravityExecute_CreditsForceDoesNotInjectForNonClaude(t *testing.T) {
+	resetAntigravityCreditsRetryState()
+	t.Cleanup(resetAntigravityCreditsRetryState)
+
+	var requestBodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		requestBodies = append(requestBodies, string(body))
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"status":"RESOURCE_EXHAUSTED","message":"QUOTA_EXHAUSTED"}}`))
+	}))
+	defer server.Close()
+
+	exec := NewAntigravityExecutor(&config.Config{
+		QuotaExceeded: config.QuotaExceeded{AntigravityCreditsForce: true},
+	})
+	auth := &cliproxyauth.Auth{
+		ID: "auth-non-claude-force",
+		Attributes: map[string]string{
+			"base_url": server.URL,
+		},
+		Metadata: map[string]any{
+			"access_token": "token",
+			"project_id":   "project-1",
+			"expired":      time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	_, err := exec.Execute(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "gemini-2.5-pro",
+		Payload: []byte(`{"request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`),
+	}, cliproxyexecutor.Options{
+		SourceFormat: sdktranslator.FormatAntigravity,
+	})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want 429")
+	}
+	if len(requestBodies) != 1 {
+		t.Fatalf("request count = %d, want 1", len(requestBodies))
+	}
+	if strings.Contains(requestBodies[0], `"enabledCreditTypes"`) {
+		t.Fatalf("non-Claude request should not contain enabledCreditTypes when config flag is enabled: %s", requestBodies[0])
+	}
+}
+
 func TestAntigravityAuthHasCredits(t *testing.T) {
 	t.Run("sufficient balance", func(t *testing.T) {
 		resetAntigravityCreditsRetryState()
