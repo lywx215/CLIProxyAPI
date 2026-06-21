@@ -21,4 +21,7 @@ const (
 
 	// Antigravity represents the Antigravity response format identifier.
 	Antigravity = "antigravity"
+
+	// GeminiCLI represents the Google Gemini CLI provider identifier.
+	GeminiCLI = "gemini-cli"
 )

@@ -58,6 +58,9 @@ type SDKConfig struct {
 
 	// SpeedThrottle controls token emission rate throttling to disguise model speeds.
 	SpeedThrottle SpeedThrottleConfig `yaml:"speed-throttle" json:"speed-throttle"`
+
+	// EnableGeminiCLIEndpoint controls whether the Gemini CLI proxy endpoint is accessible.
+	EnableGeminiCLIEndpoint bool `yaml:"enable-gemini-cli-endpoint" json:"enable-gemini-cli-endpoint"`
 }
 
 // SpeedThrottleConfig controls token emission rate throttling.
