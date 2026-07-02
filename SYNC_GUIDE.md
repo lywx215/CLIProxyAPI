@@ -2,7 +2,7 @@
 
 此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
 
-> **Last updated**: 2026-06-15 — 基于 upstream `f33bc56b` (post v7.1.18) 校验
+> **Last updated**: 2026-07-02 — 基于 upstream `cde9336b` (`v7.2.49`，从 `v7.2.23` 同步) 校验
 
 > [!CAUTION]
 > ## 🔒 核心原则：每次同步必须保留全部自定义修改
@@ -147,192 +147,15 @@ git commit -m "docs: update SYNC_GUIDE last-synced date to vX.X.X"
 git push origin main
 ```
 
-## 4. 自定义修改清单 (Custom Modifications)
+## 3.1 2026-07-02 稳定版同步记录
 
-我们维护的自定义修改主要包括：
-
-### 4.1 部署相关 (Deployment)
-
-| 文件 | 修改内容 |
-|------|----------|
-| `Dockerfile` | 适配 Zeabur 部署；使用 `config.yaml`（而非 `config.example.yaml`）作为 Bootstrap 模板 |
-| `zbpack.json` | 指定 `build_type: dockerfile` 以兼容 Zeabur 构建 |
-| `.dockerignore` | 添加额外忽略项（如编辑器/Agent 目录） |
-| `config.example.yaml` | 默认追加 `disable-auto-update-panel: true` 防止 Zeabur 覆盖本地前端产物 |
-
-### 4.2 Bug 修复 (Fixes)
-
-| 文件 | 修改内容 |
-|------|----------|
-| `internal/store/objectstore.go` | 修改 S3 客户端实现以解决腾讯云 COS 兼容性问题 |
-| `internal/watcher/clients.go` | 移除 `persistAuthAsync` 调用以解决日志死循环 |
-| `internal/api/server.go` | 将 `fmt.Printf` 替换为 `log.Debugf`，消除 `UpdateClients` 刷屏日志；集成 rate limit 中间件 |
-| `internal/watcher/events.go` | 将增量处理日志从 `Infof` 降级为 `Debugf`，减少运行时刷屏 |
-| `internal/wsrelay/manager.go` | 将 `fmt.Printf` 替换为 logrus `log.Warnf`，统一日志框架 |
-| `sdk/cliproxy/auth/conductor.go` | 注释 `MarkResult` 中的 `persist` 调用，避免每次请求完成都上传凭证到 COS |
-| `internal/managementasset/updater.go` | 修改 fallback URL 为自托管地址，简化 fallback 逻辑 |
-
-### 4.3 功能增强 (Enhancements)
-
-| 文件 | 修改内容 |
-|------|----------|
-| `cmd/server/main.go` | 支持 `OBJECTSTORE_PREFIX` 环境变量，实现多服务器对象存储隔离 |
-| `config.example.yaml` | 与 `cmd/server/main.go` 配合的配置项调整；新增 `api-key-rate-limit` 配置段 |
-| `internal/api/middleware/ratelimit.go` | 新增 per-API-key 滑动窗口速率限制中间件 |
-| `internal/api/middleware/ratelimit_test.go` | 速率限制中间件单元测试 |
-| `internal/config/config.go` | 新增 `APIKeyRateLimit` 配置结构体 |
-| `internal/watcher/diff/config_diff.go` | 新增 rate limit 配置变更检测 |
-| `internal/runtime/executor/antigravity_executor.go` | 在 non-stream 和 stream 响应中重写 modelVersion 为客户端请求的别名 |
-| `internal/runtime/executor/gemini_cli_executor.go` | 同上，适用于 Gemini CLI executor |
-# Fork Synchronization Guide
-
-此文档记录了如何维护本项目（Fork 版本），使其既能保留自定义修改（如 Zeabur 部署配置、COS 修复），又能同步原项目的最新功能。
-
-> **Last updated**: 2026-06-15 — 基于 upstream `f33bc56b` (post v7.1.18) 校验
-
-> [!CAUTION]
-> ## 🔒 核心原则：每次同步必须保留全部自定义修改
->
-> **同步上游 (rebase) 时，严禁丢失本地的任何自定义修改。** 具体规则：
->
-> 1. **Rebase 遇到冲突时，始终优先保留本地修改**（即本 fork 的自定义代码），除非用户明确指令覆盖
-> 2. **第 4 节「自定义修改清单」中列出的所有文件**，在同步过程中必须保持本地版本不变
-> 3. **禁止使用** `git checkout --theirs` 或 `git reset --hard upstream/main` 等会丢弃本地修改的命令
-> 4. 只有在用户明确说「使用上游版本」或「覆盖本地修改」时，才可以采纳上游的变更覆盖本地文件
-> 5. 如果不确定是否应该覆盖某个文件，**必须先询问用户确认**，不得擅自决定
-> 6. **当冲突涉及清单中的文件时**，必须同时保留「我们的自定义逻辑」和「上游新增的功能」，不得二选一丢弃任何一方
-> 7. **rebase 完成后，必须执行第五步的验证命令**，确认所有自定义修改仍然存在于差异列表中
-
-## 1. 分支说明 (Branch Overview)
-
-本 fork 仅维护 **`main`** 分支，包含所有自定义修改（含 Model Version 别名重写功能）。
-
-## 2. 初始设置 (Initial Setup)
-
-如果我们在换了新环境，或者还没配置过 upstream，请执行：
-
-```powershell
-# 查看当前远程仓库
-git remote -v
-# 如果没有 upstream，则添加原仓库地址
-git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git
-```
-
-## 3. 日常同步流程 (Routine Sync)
-
-当原项目有更新时，请按照以下步骤同步：
-
-### 第一步：获取更新
-```powershell
-git fetch upstream --no-tags
-```
-
-> [!WARNING]
-> **必须使用 `--no-tags`**，否则会拉取上游的 tag（如 `v7.1.40`），导致后续发布时：
-> - `git tag v7.1.40` 报 "tag already exists"（指向上游 commit）
-> - 推送该 tag 会触发上游的旧 workflow（DockerHub），而非我们的 GHCR workflow
-> - 如果已经误拉了上游 tag，用 `git tag -d <tagname>` 删除后再创建
-
-### 第二步：同步 `main` 分支
-```powershell
-git checkout main
-git rebase upstream/main
-```
-
-> [!WARNING]
-> **冲突处理原则 — 自定义修改优先：**
-> 1. 打开冲突文件，**优先保留我们的自定义代码**
-> 2. 如果上游也新增了有价值的功能（如新函数、新字段），应**同时保留双方代码**，而非二选一
-> 3. 典型场景：上游在同一位置新增了 `setServiceTierMetadata`，我们有 `parseModelTokenLimit` → **两者都保留**
-> 4. `git add <file>` → `git rebase --continue`
-> 5. 使用 `git -c core.editor=true rebase --continue` 可跳过编辑器弹窗
-
-> [!CAUTION]
-> **处理 `go.mod` 冲突时务必小心！**
-> - 冲突标记之间可能同时包含**我们要删除的依赖**和**上游新增的依赖**
-> - 仔细检查每一行，确保不要误删上游需要的包（如 `utls`、`minio-go` 等）
-> - 解决冲突后建议运行 `go build ./...` 验证编译是否通过
-> - 如果构建失败提示缺少包，使用 `go get <package>` 添加后再提交
-
-### 第三步：验证 `main` 编译
-```powershell
-go build ./...
-```
-
-### 第四步：验证自定义修改完整性（必须执行）
-
-> [!IMPORTANT]
-> **此步骤为强制步骤，不得跳过。** 必须确认所有自定义修改仍保留在差异中。
-
-```powershell
-# 1. 查看与上游的差异文件列表
-git diff upstream/main..main --stat
-```
-
-**必须确认以下关键文件出现在差异列表中（缺少任何一个说明自定义修改丢失）：**
-
-| 必须出现的文件 | 自定义功能 |
-|---------------|------------|
-| `Dockerfile` | Zeabur 部署适配 |
-| `zbpack.json` | Zeabur 构建类型 |
-| `config.example.yaml` | 自定义配置项 |
-| `internal/store/objectstore.go` | 腾讯云 COS 兼容 |
-| `internal/watcher/clients.go` | persistAuth 禁用 |
-| `internal/watcher/events.go` | 日志降级 |
-| `sdk/cliproxy/auth/conductor.go` | persist 禁用 + CreditsUsed |
-| `internal/api/middleware/ratelimit.go` | Rate Limit 中间件 |
-| `internal/config/config.go` | APIKeyRateLimit + CreditsForce 配置 |
-| `internal/runtime/executor/antigravity_executor.go` | ModelVersion 重写 |
-| `internal/runtime/executor/gemini_cli_executor.go` | ModelVersion 重写 |
-| `internal/runtime/executor/gemini_executor.go` | ModelVersion 重写 |
-| `internal/runtime/executor/helps/payload_helpers.go` | Rewrite 辅助函数 |
-
-```powershell
-# 2. 快速验证 ModelVersion 重写函数是否存在
-Select-String -Pattern "RewriteResponseModelVersion" internal/runtime/executor/helps/payload_helpers.go
-# 应输出函数定义行，如果无输出说明丢失！
-
-# 3. 快速验证 Rate Limit 中间件是否存在
-Test-Path internal/api/middleware/ratelimit.go
-# 应输出 True
-```
-
-> 如果发现任何自定义修改丢失，**立即执行 `git rebase --abort` 或从 reflog 恢复**，不要推送！
-
-### 第五步：推送 `main` 到 GitHub
-```powershell
-git push -f origin main
-```
-
-### 第六步：发布新版本（必须执行）
-
-> [!IMPORTANT]
-> **每次同步完成并推送后，必须创建并推送版本 tag 以触发 GHCR Docker 镜像构建。**
-
-```powershell
-# 1. 查看上游最新 tag
-git ls-remote --tags upstream | Select-Object -Last 5
-
-# 2. 创建与上游相同的版本 tag（指向我们的 main HEAD）
-git tag v7.x.x
-
-# 3. 推送 tag 到 origin，触发 GitHub Actions 构建
-git push origin v7.x.x
-```
-
-> [!WARNING]
-> - Tag 名称应与上游最新版本保持一致（如上游发布 `v7.2.4`，我们也打 `v7.2.4`）
-> - 如果本地已存在同名 tag（从上游误拉），先用 `git tag -d v7.x.x` 删除再重建
-> - 推送 tag 后检查 GitHub Actions 页面确认 workflow 正常触发
-
-### 第七步：更新本文档
-更新本文件顶部的 `Last updated` 日期和版本号，然后提交推送：
-```powershell
-git add SYNC_GUIDE.md
-git commit -m "docs: update SYNC_GUIDE last-synced date to vX.X.X"
-git push origin main
-```
-
+- 后端：`v7.2.23` → `v7.2.49` (`cde9336b`)，保留 61 个 fork 提交并完成重放。
+- 管理前端：`v1.16.6` → `v1.17.8` (`e9817a8c`)，保留 28 个 fork 提交并新增同步修复提交。
+- 后端上游改动与 fork 的重叠热点包括 `config.example.yaml`、`internal/config/config.go`、`internal/store/objectstore.go`、`sdk/cliproxy/auth/conductor.go`、Antigravity executor、服务入口和 Responses WebSocket。
+- 前端冲突热点包括 Visual Config 编辑器及类型、Quota 配置及类型、OAuth、i18n、路由和布局。必须同时保留上游的插件商店/配置编辑器重构，以及 fork 的 Rate Limit、Speed Throttle、Credits Force、Usage/Antigravity 统计。
+- 上游 `v1.17.x` 删除了 Gemini CLI 管理引用；本 fork 因后端仍支持 Gemini CLI，明确恢复其 OAuth、配额、凭证类型、配置项和翻译。
+- 本次没有确认可完全删除的 fork 功能。上游新增的 OAuth 模型别名响应重写与本地 ModelVersion 重写存在功能重叠，但本地实现仍覆盖多个 executor，继续保留并测试。
+- 前端构建产物必须先生成 `dist/index.html`，再同步到后端 `static/management.html`，两者 SHA-256 必须一致。
 ## 4. 自定义修改清单 (Custom Modifications)
 
 我们维护的自定义修改主要包括：
