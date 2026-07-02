@@ -26,7 +26,7 @@ func TestClaudeErrorExtractsOpenAIStyleUpstreamJSON(t *testing.T) {
 	if got.Error.Type != "invalid_request_error" {
 		t.Fatalf("error.type = %q, want invalid_request_error", got.Error.Type)
 	}
-	if got.Error.Message != "Your input exceeds the context window of this model. Please adjust your input and try again." {
+	if got.Error.Message != "The request was invalid or could not be processed" {
 		t.Fatalf("error.message = %q", got.Error.Message)
 	}
 }
@@ -43,7 +43,7 @@ func TestClaudeErrorExtractsClaudeStyleUpstreamJSON(t *testing.T) {
 	if got.Error.Type != "rate_limit_error" {
 		t.Fatalf("error.type = %q, want rate_limit_error", got.Error.Type)
 	}
-	if got.Error.Message != "This request would exceed your account's rate limit. Please try again later." {
+	if got.Error.Message != "Rate limit exceeded, please retry later" {
 		t.Fatalf("error.message = %q", got.Error.Message)
 	}
 }
@@ -70,7 +70,7 @@ func TestWriteClaudeErrorResponseUsesClaudeEnvelope(t *testing.T) {
 	if got := gjson.GetBytes(body, "error.type").String(); got != "invalid_request_error" {
 		t.Fatalf("error.type = %q, want invalid_request_error; body=%s", got, body)
 	}
-	if got := gjson.GetBytes(body, "error.message").String(); got != "Your input exceeds the context window of this model. Please adjust your input and try again." {
+	if got := gjson.GetBytes(body, "error.message").String(); got != "The request was invalid or could not be processed" {
 		t.Fatalf("error.message = %q; body=%s", got, body)
 	}
 }

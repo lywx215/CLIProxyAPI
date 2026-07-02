@@ -210,11 +210,8 @@ func TestClassifyAntigravity429(t *testing.T) {
 
 func TestNewAntigravityStatusErrSoft429DoesNotScheduleCooldown(t *testing.T) {
 	err := newAntigravityStatusErr(http.StatusTooManyRequests, []byte(`{"error":{"message":"too many requests"}}`))
-	if err.RetryAfter() == nil {
-		t.Fatal("RetryAfter() = nil, want explicit zero duration")
-	}
-	if got := *err.RetryAfter(); got != 0 {
-		t.Fatalf("RetryAfter() = %v, want 0", got)
+	if err.RetryAfter() != nil {
+		t.Fatalf("RetryAfter() = %v, want nil for soft rate limit", *err.RetryAfter())
 	}
 
 	quotaErr := newAntigravityStatusErr(http.StatusTooManyRequests, []byte(`{

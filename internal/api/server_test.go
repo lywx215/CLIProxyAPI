@@ -14,6 +14,7 @@ import (
 	managementHandlers "github.com/router-for-me/CLIProxyAPI/v7/internal/api/handlers/management"
 	proxyconfig "github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	internallogging "github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v7/sdk/access"
@@ -22,6 +23,11 @@ import (
 )
 
 func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	return newTestServerWithOptions(t)
+}
+
+func newTestServerWithOptions(t *testing.T, opts ...ServerOption) *Server {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -47,7 +53,7 @@ func newTestServer(t *testing.T) *Server {
 	accessManager := sdkaccess.NewManager()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	return NewServer(cfg, authManager, accessManager, configPath)
+	return NewServer(cfg, authManager, accessManager, configPath, opts...)
 }
 
 func TestHealthz(t *testing.T) {
@@ -143,8 +149,22 @@ func TestNewServerWithPluginHostInjectsHandlerInterceptors(t *testing.T) {
 	if server.handlers == nil {
 		t.Fatal("server handlers = nil")
 	}
+	got, ok := server.handlers.PluginHost.(*pluginhost.Host)
+	if !ok || got != host {
+		t.Fatalf("handler plugin host = %#v, want configured host", server.handlers.PluginHost)
+	}
 }
 
+func TestNewServerWithoutPluginHostLeavesHandlerInterceptorsDisabled(t *testing.T) {
+	server := newTestServer(t)
+
+	if server.handlers == nil {
+		t.Fatal("server handlers = nil")
+	}
+	if server.handlers.PluginHost != nil {
+		t.Fatalf("handler plugin host = %#v, want nil", server.handlers.PluginHost)
+	}
+}
 func TestManagementUsageRequiresManagementAuthAndPopsArray(t *testing.T) {
 	t.Setenv("MANAGEMENT_PASSWORD", "test-management-key")
 
@@ -325,72 +345,6 @@ func TestModelsDispatchByAnthropicVersionHeader(t *testing.T) {
 			}
 		}
 	})
-=======
-func TestAmpProviderModelRoutes(t *testing.T) {
-	testCases := []struct {
-		name         string
-		path         string
-		wantStatus   int
-		wantContains string
-	}{
-		{
-			name:         "openai root models",
-			path:         "/api/provider/openai/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"object":"list"`,
-		},
-		{
-			name:         "groq root models",
-			path:         "/api/provider/groq/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"object":"list"`,
-		},
-		{
-			name:         "openai models",
-			path:         "/api/provider/openai/v1/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"object":"list"`,
-		},
-		{
-			name:         "anthropic models",
-			path:         "/api/provider/anthropic/v1/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"data"`,
-		},
-		{
-			name:         "google models v1",
-			path:         "/api/provider/google/v1/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"models"`,
-		},
-		{
-			name:         "google models v1beta",
-			path:         "/api/provider/google/v1beta/models",
-			wantStatus:   http.StatusOK,
-			wantContains: `"models"`,
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			server := newTestServer(t)
-
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-			req.Header.Set("Authorization", "Bearer test-key")
-
-			rr := httptest.NewRecorder()
-			server.engine.ServeHTTP(rr, req)
-
-			if rr.Code != tc.wantStatus {
-				t.Fatalf("unexpected status code for %s: got %d want %d; body=%s", tc.path, rr.Code, tc.wantStatus, rr.Body.String())
-			}
-			if body := rr.Body.String(); !strings.Contains(body, tc.wantContains) {
-				t.Fatalf("response body for %s missing %q: %s", tc.path, tc.wantContains, body)
-			}
-		})
-	}
->>>>>>> 3eaf1082 (docs: add mandatory version release step to SYNC_GUIDE (step 6))
 }
 
 func TestModelsWithClientVersionReturnsCodexCatalog(t *testing.T) {
