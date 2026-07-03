@@ -387,7 +387,7 @@ git push -f origin main
 
 | 文件 | 说明 |
 |------|------|
-| `src/features/providers/sheets/forms/BaseProviderForm.tsx` | Antigravity credits-force 切换开关 |
+| `src/components/quota/quotaConfigs.ts` | Antigravity / Gemini CLI credits 余额展示；必须汇总所有 credit 类型，不可仅过滤 `GOOGLE_ONE_AI` |
 | `src/hooks/useVisualConfig.ts` | 自定义配置项扩展（Rate Limit / Speed Throttle / Credits Force） |
 | `src/pages/SystemPage.tsx` | 包含插件系统相关 UI + 自定义版本显示逻辑 |
 | `vite.config.ts` | 构建配置调整 |
