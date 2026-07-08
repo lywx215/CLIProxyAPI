@@ -103,8 +103,44 @@ func (t *RequestThrottler) ThrottleFirstChunk(ctx context.Context, requestStartT
 	}
 }
 
+// ThrottleFirstChunkWithPayload enforces the TTFT delay and accounts for the
+// first payload chunk when it already contains generated text. This is useful
+// for stream formats such as Gemini SSE where the first upstream chunk may be
+// large enough to exceed the configured token rate by itself.
+func (t *RequestThrottler) ThrottleFirstChunkWithPayload(ctx context.Context, requestStartTime time.Time, chunk []byte) bool {
+	if t == nil {
+		return true
+	}
+
+	tokens := EstimateChunkTokens(chunk)
+	if tokens <= 0 {
+		return t.ThrottleFirstChunk(ctx, requestStartTime)
+	}
+
+	rateDelay := time.Duration(float64(tokens) / t.targetRate * float64(time.Second))
+	targetDelay := t.ttftDelay
+	if rateDelay > targetDelay {
+		targetDelay = rateDelay
+	}
+
+	elapsed := time.Since(requestStartTime)
+	remaining := targetDelay - elapsed
+	if remaining > 0 {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(remaining):
+		}
+	}
+
+	t.startTime = requestStartTime
+	t.totalTokens = tokens
+	t.firstChunkSent = true
+	return true
+}
+
 // ThrottleChunk enforces the target token rate for subsequent chunks.
-// Call this BEFORE writing each chunk (after the first).
+// Call this BEFORE writing each chunk after the first, or after ThrottleFirstChunkWithPayload.
 // Returns false if the context was cancelled during the wait.
 func (t *RequestThrottler) ThrottleChunk(ctx context.Context, chunk []byte) bool {
 	if t == nil || !t.firstChunkSent {

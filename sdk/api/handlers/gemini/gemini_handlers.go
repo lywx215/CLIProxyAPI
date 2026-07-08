@@ -232,8 +232,10 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 				return
 			}
 
-			// TTFT delay: wait before emitting first chunk
-			if !throttler.ThrottleFirstChunk(cliCtx, requestStart) {
+			// TTFT and first payload delay: original Gemini streams can put a
+			// large amount of generated text in the first chunk, so account for
+			// that payload before emitting it.
+			if !throttler.ThrottleFirstChunkWithPayload(cliCtx, requestStart, chunk) {
 				cliCancel(cliCtx.Err())
 				return
 			}

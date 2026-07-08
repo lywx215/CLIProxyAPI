@@ -1,6 +1,10 @@
 package handlers
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+)
 
 func TestSpeedThrottleEstimateChunkTokensRecognizesResponsesOutputTextDelta(t *testing.T) {
 	chunk := []byte(`data: {"type":"response.output_text.delta","delta":"abcdefghijkl"}`)
@@ -28,6 +32,28 @@ func TestSpeedThrottleEstimateChunkTokensSumsGeminiCandidates(t *testing.T) {
 	chunk := []byte(`{"candidates":[{"content":{"parts":[{"text":"abcdefgh"},{"text":"ijkl"}]}},{"content":{"parts":[{"text":"mnop"}]}}]}`)
 	if got := EstimateChunkTokens(chunk); got != 4 {
 		t.Fatalf("EstimateChunkTokens() = %d, want 4", got)
+	}
+}
+
+func TestSpeedThrottleFirstChunkWithPayloadAccountsGeminiCandidateTokens(t *testing.T) {
+	throttler := &RequestThrottler{
+		targetRate: 1,
+		ttftDelay:  1,
+	}
+	requestStart := time.Now().Add(-10 * time.Second)
+	chunk := []byte(`{"candidates":[{"content":{"parts":[{"text":"abcdefgh"}]}}]}`)
+
+	if ok := throttler.ThrottleFirstChunkWithPayload(context.Background(), requestStart, chunk); !ok {
+		t.Fatal("ThrottleFirstChunkWithPayload() = false, want true")
+	}
+	if !throttler.firstChunkSent {
+		t.Fatal("firstChunkSent = false, want true")
+	}
+	if throttler.totalTokens != 2 {
+		t.Fatalf("totalTokens = %d, want 2", throttler.totalTokens)
+	}
+	if !throttler.startTime.Equal(requestStart) {
+		t.Fatalf("startTime = %v, want %v", throttler.startTime, requestStart)
 	}
 }
 
