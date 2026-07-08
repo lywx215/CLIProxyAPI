@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
 	"time"
@@ -11,8 +12,8 @@ import (
 
 // SpeedThrottleDefaults
 const (
-	defaultMinTokensPerSecond  = 70
-	defaultMaxTokensPerSecond  = 100
+	defaultMinTokensPerSecond   = 70
+	defaultMaxTokensPerSecond   = 100
 	defaultMinFirstTokenDelayMs = 2500
 	defaultMaxFirstTokenDelayMs = 3000
 )
@@ -175,25 +176,22 @@ func EstimateChunkTokens(chunk []byte) int {
 		return 0
 	}
 
-	// Strip "data: " prefix if present for cleaner parsing/checking
-	payload := chunk
-	if len(payload) >= 6 && string(payload[:6]) == "data: " {
-		payload = payload[6:]
-	} else if len(payload) >= 5 && string(payload[:5]) == "data:" {
-		payload = payload[5:]
-	}
+	payload := speedThrottleJSONPayload(chunk)
 
 	var textLen int
-
-	// Try Gemini format: candidates[0].content.parts[0].text
-	if text := gjson.GetBytes(payload, "candidates.0.content.parts.0.text"); text.Exists() {
-		textLen = len(text.String())
-	} else if text := gjson.GetBytes(payload, "choices.0.delta.content"); text.Exists() {
-		// Try OpenAI format: choices[0].delta.content
-		textLen = len(text.String())
-	} else if text := gjson.GetBytes(payload, "response.output.0.content.0.text"); text.Exists() {
-		// Try Responses format
-		textLen = len(text.String())
+	if gjson.ValidBytes(payload) {
+		root := gjson.ParseBytes(payload)
+		if root.Get("type").String() == "response.output_text.delta" {
+			textLen += stringResultLength(root.Get("delta"))
+		}
+		// Try OpenAI Responses stream/event and completed formats.
+		textLen += stringResultLength(root.Get("response.output_text.delta.delta"))
+		textLen += stringResultLength(root.Get("response.output.#.content.#.text"))
+		// Try OpenAI chat-completions stream format.
+		textLen += stringResultLength(root.Get("choices.#.delta.content"))
+		// Try Gemini and Gemini wrapped response formats.
+		textLen += stringResultLength(root.Get("candidates.#.content.parts.#.text"))
+		textLen += stringResultLength(root.Get("response.candidates.#.content.parts.#.text"))
 	}
 
 	// If we found text, use it for estimation
@@ -205,17 +203,14 @@ func EstimateChunkTokens(chunk []byte) int {
 		return tokens
 	}
 
-	// Skip leading whitespace on payload for JSON check
-	for len(payload) > 0 && (payload[0] == ' ' || payload[0] == '\t' || payload[0] == '\n' || payload[0] == '\r') {
-		payload = payload[1:]
-	}
+	payload = bytes.TrimSpace(payload)
 
 	// If it's a JSON object or array, but we found no text, don't count it.
 	// E.g., usage metadata chunks, tool calls, or empty chunks.
 	if len(payload) > 0 && (payload[0] == '{' || payload[0] == '[') {
 		return 0
 	}
-	
+
 	// Also ignore "[DONE]" chunks
 	if len(payload) >= 6 && string(payload[:6]) == "[DONE]" {
 		return 0
@@ -230,26 +225,93 @@ func EstimateChunkTokens(chunk []byte) int {
 }
 
 // EstimateNonStreamingTokens extracts or estimates the completion token count
-// from a non-streaming response body. It tries Gemini format first
-// (usageMetadata.candidatesTokenCount), then OpenAI format (usage.completion_tokens),
-// and falls back to a byte-length estimate.
+// from a non-streaming response body. It tries known output-token usage fields
+// first, then falls back to a byte-length estimate.
 func EstimateNonStreamingTokens(resp []byte) int {
 	if len(resp) == 0 {
 		return 1
 	}
 
-	// Try Gemini format: usageMetadata.candidatesTokenCount
+	if gjson.ValidBytes(resp) {
+		root := gjson.ParseBytes(resp)
+		for _, path := range []string{
+			"response.usage.output_tokens",
+			"usage.output_tokens",
+			"response.usage.completion_tokens",
+			"usage.completion_tokens",
+			"response.usageMetadata.candidatesTokenCount",
+			"usageMetadata.candidatesTokenCount",
+			"response.usage_metadata.candidatesTokenCount",
+			"usage_metadata.candidatesTokenCount",
+		} {
+			if value := root.Get(path); value.Exists() && value.Int() > 0 {
+				return int(value.Int())
+			}
+		}
+	}
+
+	// Fallback for legacy/simple JSON shapes.
 	if idx := findJSONIntField(resp, "candidatesTokenCount"); idx > 0 {
 		return idx
 	}
-
-	// Try OpenAI format: usage.completion_tokens
 	if idx := findJSONIntField(resp, "completion_tokens"); idx > 0 {
+		return idx
+	}
+	if idx := findJSONIntField(resp, "output_tokens"); idx > 0 {
 		return idx
 	}
 
 	// Fallback: estimate from response body size
 	return EstimateChunkTokens(resp)
+}
+
+func speedThrottleJSONPayload(chunk []byte) []byte {
+	payload := bytes.TrimSpace(chunk)
+	if len(payload) == 0 {
+		return payload
+	}
+	if bytes.HasPrefix(payload, []byte("data: ")) {
+		return bytes.TrimSpace(payload[len("data: "):])
+	}
+	if bytes.HasPrefix(payload, []byte("data:")) {
+		return bytes.TrimSpace(payload[len("data:"):])
+	}
+	if !bytes.Contains(payload, []byte("\ndata:")) && !bytes.Contains(payload, []byte("\r\ndata:")) {
+		return payload
+	}
+
+	lines := bytes.Split(payload, []byte("\n"))
+	var dataLines [][]byte
+	for _, line := range lines {
+		line = bytes.TrimSpace(bytes.TrimSuffix(line, []byte("\r")))
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			dataLines = append(dataLines, bytes.TrimSpace(line[len("data: "):]))
+		} else if bytes.HasPrefix(line, []byte("data:")) {
+			dataLines = append(dataLines, bytes.TrimSpace(line[len("data:"):]))
+		}
+	}
+	if len(dataLines) == 0 {
+		return payload
+	}
+	return bytes.TrimSpace(bytes.Join(dataLines, []byte("\n")))
+}
+
+func stringResultLength(result gjson.Result) int {
+	if !result.Exists() {
+		return 0
+	}
+	if result.Type == gjson.String {
+		return len(result.String())
+	}
+	if result.IsArray() || result.IsObject() {
+		total := 0
+		result.ForEach(func(_, value gjson.Result) bool {
+			total += stringResultLength(value)
+			return true
+		})
+		return total
+	}
+	return 0
 }
 
 // findJSONIntField is a lightweight helper to extract an integer value
