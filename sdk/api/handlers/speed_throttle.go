@@ -23,7 +23,7 @@ const (
 type RequestThrottler struct {
 	targetRate     float64       // tokens per second for this request
 	ttftDelay      time.Duration // TTFT delay for this request
-	startTime      time.Time     // when the first chunk was sent
+	startTime      time.Time     // request start time used for cumulative throttling
 	totalTokens    int           // total tokens sent so far
 	firstChunkSent bool          // whether the first chunk has been sent
 }
@@ -88,7 +88,7 @@ func (t *RequestThrottler) ThrottleFirstChunk(ctx context.Context, requestStartT
 	elapsed := time.Since(requestStartTime)
 	remaining := t.ttftDelay - elapsed
 	if remaining <= 0 {
-		t.startTime = time.Now()
+		t.startTime = requestStartTime
 		t.firstChunkSent = true
 		return true
 	}
@@ -97,7 +97,7 @@ func (t *RequestThrottler) ThrottleFirstChunk(ctx context.Context, requestStartT
 	case <-ctx.Done():
 		return false
 	case <-time.After(remaining):
-		t.startTime = time.Now()
+		t.startTime = requestStartTime
 		t.firstChunkSent = true
 		return true
 	}

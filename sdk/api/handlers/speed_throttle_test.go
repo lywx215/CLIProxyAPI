@@ -35,6 +35,40 @@ func TestSpeedThrottleEstimateChunkTokensSumsGeminiCandidates(t *testing.T) {
 	}
 }
 
+func TestSpeedThrottleFirstChunkKeepsRequestStartForCumulativeRate(t *testing.T) {
+	throttler := &RequestThrottler{
+		targetRate: 1,
+		ttftDelay:  1,
+	}
+	requestStart := time.Now().Add(-10 * time.Second)
+
+	if ok := throttler.ThrottleFirstChunk(context.Background(), requestStart); !ok {
+		t.Fatal("ThrottleFirstChunk() = false, want true")
+	}
+	if !throttler.startTime.Equal(requestStart) {
+		t.Fatalf("startTime = %v, want %v", throttler.startTime, requestStart)
+	}
+}
+
+func TestSpeedThrottleSlowRequestDoesNotThrottleAgainOnFinalUsage(t *testing.T) {
+	throttler := &RequestThrottler{
+		targetRate: 1,
+		ttftDelay:  1,
+	}
+	requestStart := time.Now().Add(-10 * time.Second)
+	if ok := throttler.ThrottleFirstChunk(context.Background(), requestStart); !ok {
+		t.Fatal("ThrottleFirstChunk() = false, want true")
+	}
+
+	start := time.Now()
+	chunk := []byte(`{"usageMetadata":{"candidatesTokenCount":7,"thoughtsTokenCount":3}}`)
+	if ok := throttler.ThrottleChunk(context.Background(), chunk); !ok {
+		t.Fatal("ThrottleChunk() = false, want true")
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("ThrottleChunk() slept for %v, want no extra throttle", elapsed)
+	}
+}
 func TestSpeedThrottleFirstChunkWithPayloadAccountsGeminiCandidateTokens(t *testing.T) {
 	throttler := &RequestThrottler{
 		targetRate: 1,
