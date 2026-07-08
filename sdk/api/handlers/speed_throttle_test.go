@@ -57,6 +57,29 @@ func TestSpeedThrottleFirstChunkWithPayloadAccountsGeminiCandidateTokens(t *test
 	}
 }
 
+func TestSpeedThrottleEstimateChunkTokenTotalIncludesGeminiThoughts(t *testing.T) {
+	chunk := []byte(`data: {"usageMetadata":{"candidatesTokenCount":30,"thoughtsTokenCount":12}}`)
+	if got := EstimateChunkTokenTotal(chunk); got != 42 {
+		t.Fatalf("EstimateChunkTokenTotal() = %d, want 42", got)
+	}
+}
+
+func TestSpeedThrottleChunkUsesGeminiUsageMetadataTotal(t *testing.T) {
+	throttler := &RequestThrottler{
+		targetRate:     1,
+		startTime:      time.Now().Add(-10 * time.Second),
+		totalTokens:    2,
+		firstChunkSent: true,
+	}
+	chunk := []byte(`{"usageMetadata":{"candidatesTokenCount":7,"thoughtsTokenCount":3}}`)
+
+	if ok := throttler.ThrottleChunk(context.Background(), chunk); !ok {
+		t.Fatal("ThrottleChunk() = false, want true")
+	}
+	if throttler.totalTokens != 10 {
+		t.Fatalf("totalTokens = %d, want 10", throttler.totalTokens)
+	}
+}
 func TestSpeedThrottleEstimateChunkTokensIgnoresDoneAndMetadataOnlyJSON(t *testing.T) {
 	if got := EstimateChunkTokens([]byte("data: [DONE]")); got != 0 {
 		t.Fatalf("EstimateChunkTokens([DONE]) = %d, want 0", got)
@@ -76,10 +99,10 @@ func TestSpeedThrottleEstimateNonStreamingTokensRecognizesOutputTokenFields(t *t
 		{name: "usage output tokens", resp: `{"usage":{"output_tokens":234}}`, want: 234},
 		{name: "responses usage completion tokens", resp: `{"response":{"usage":{"completion_tokens":345}}}`, want: 345},
 		{name: "usage completion tokens", resp: `{"usage":{"completion_tokens":456}}`, want: 456},
-		{name: "wrapped gemini usage metadata", resp: `{"response":{"usageMetadata":{"candidatesTokenCount":567}}}`, want: 567},
-		{name: "gemini usage metadata", resp: `{"usageMetadata":{"candidatesTokenCount":678}}`, want: 678},
-		{name: "wrapped gemini snake usage metadata", resp: `{"response":{"usage_metadata":{"candidatesTokenCount":789}}}`, want: 789},
-		{name: "gemini snake usage metadata", resp: `{"usage_metadata":{"candidatesTokenCount":890}}`, want: 890},
+		{name: "wrapped gemini usage metadata with thoughts", resp: `{"response":{"usageMetadata":{"candidatesTokenCount":567,"thoughtsTokenCount":12}}}`, want: 579},
+		{name: "gemini usage metadata with thoughts", resp: `{"usageMetadata":{"candidatesTokenCount":678,"thoughtsTokenCount":13}}`, want: 691},
+		{name: "wrapped gemini snake usage metadata with thoughts", resp: `{"response":{"usage_metadata":{"candidatesTokenCount":789,"thoughtsTokenCount":14}}}`, want: 803},
+		{name: "gemini snake usage metadata with thoughts", resp: `{"usage_metadata":{"candidatesTokenCount":890,"thoughtsTokenCount":15}}`, want: 905},
 	}
 
 	for _, tc := range tests {

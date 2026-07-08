@@ -112,7 +112,10 @@ func (t *RequestThrottler) ThrottleFirstChunkWithPayload(ctx context.Context, re
 		return true
 	}
 
-	tokens := EstimateChunkTokens(chunk)
+	tokens := EstimateChunkTokenTotal(chunk)
+	if tokens <= 0 {
+		tokens = EstimateChunkTokens(chunk)
+	}
 	if tokens <= 0 {
 		return t.ThrottleFirstChunk(ctx, requestStartTime)
 	}
@@ -147,12 +150,17 @@ func (t *RequestThrottler) ThrottleChunk(ctx context.Context, chunk []byte) bool
 		return true
 	}
 
-	tokens := EstimateChunkTokens(chunk)
-	if tokens <= 0 {
-		return true
+	if total := EstimateChunkTokenTotal(chunk); total > 0 {
+		if total > t.totalTokens {
+			t.totalTokens = total
+		}
+	} else {
+		tokens := EstimateChunkTokens(chunk)
+		if tokens <= 0 {
+			return true
+		}
+		t.totalTokens += tokens
 	}
-
-	t.totalTokens += tokens
 
 	// Calculate expected time for this many tokens at target rate
 	expectedDuration := time.Duration(float64(t.totalTokens) / t.targetRate * float64(time.Second))
@@ -202,6 +210,20 @@ func (t *RequestThrottler) ThrottleNonStreaming(ctx context.Context, requestStar
 	case <-time.After(remaining):
 		return true
 	}
+}
+
+// EstimateChunkTokenTotal returns an authoritative cumulative output token count
+// when a streaming chunk carries final usage metadata. Gemini reports hidden
+// thinking tokens separately, so include both visible candidates and thoughts.
+func EstimateChunkTokenTotal(chunk []byte) int {
+	if len(chunk) == 0 {
+		return 0
+	}
+	payload := speedThrottleJSONPayload(chunk)
+	if !gjson.ValidBytes(payload) {
+		return 0
+	}
+	return geminiUsageOutputTokenTotal(gjson.ParseBytes(payload))
 }
 
 // EstimateChunkTokens estimates the number of tokens in a streaming chunk.
@@ -270,6 +292,9 @@ func EstimateNonStreamingTokens(resp []byte) int {
 
 	if gjson.ValidBytes(resp) {
 		root := gjson.ParseBytes(resp)
+		if total := geminiUsageOutputTokenTotal(root); total > 0 {
+			return total
+		}
 		for _, path := range []string{
 			"response.usage.output_tokens",
 			"usage.output_tokens",
@@ -332,6 +357,46 @@ func speedThrottleJSONPayload(chunk []byte) []byte {
 	return bytes.TrimSpace(bytes.Join(dataLines, []byte("\n")))
 }
 
+func geminiUsageOutputTokenTotal(root gjson.Result) int {
+	for _, pair := range [][2]string{
+		{"usageMetadata.candidatesTokenCount", "usageMetadata.thoughtsTokenCount"},
+		{"usage_metadata.candidatesTokenCount", "usage_metadata.thoughtsTokenCount"},
+		{"usage_metadata.candidates_token_count", "usage_metadata.thoughts_token_count"},
+		{"response.usageMetadata.candidatesTokenCount", "response.usageMetadata.thoughtsTokenCount"},
+		{"response.usage_metadata.candidatesTokenCount", "response.usage_metadata.thoughtsTokenCount"},
+		{"response.usage_metadata.candidates_token_count", "response.usage_metadata.thoughts_token_count"},
+		{"#.usageMetadata.candidatesTokenCount", "#.usageMetadata.thoughtsTokenCount"},
+		{"#.usage_metadata.candidatesTokenCount", "#.usage_metadata.thoughtsTokenCount"},
+		{"#.usage_metadata.candidates_token_count", "#.usage_metadata.thoughts_token_count"},
+		{"#.response.usageMetadata.candidatesTokenCount", "#.response.usageMetadata.thoughtsTokenCount"},
+		{"#.response.usage_metadata.candidatesTokenCount", "#.response.usage_metadata.thoughtsTokenCount"},
+		{"#.response.usage_metadata.candidates_token_count", "#.response.usage_metadata.thoughts_token_count"},
+	} {
+		total := intResultSum(root.Get(pair[0])) + intResultSum(root.Get(pair[1]))
+		if total > 0 {
+			return total
+		}
+	}
+	return 0
+}
+
+func intResultSum(result gjson.Result) int {
+	if !result.Exists() {
+		return 0
+	}
+	if result.Type == gjson.Number {
+		return int(result.Int())
+	}
+	if result.IsArray() || result.IsObject() {
+		total := 0
+		result.ForEach(func(_, value gjson.Result) bool {
+			total += intResultSum(value)
+			return true
+		})
+		return total
+	}
+	return 0
+}
 func stringResultLength(result gjson.Result) int {
 	if !result.Exists() {
 		return 0
