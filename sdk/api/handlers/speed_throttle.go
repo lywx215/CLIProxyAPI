@@ -112,10 +112,7 @@ func (t *RequestThrottler) ThrottleFirstChunkWithPayload(ctx context.Context, re
 		return true
 	}
 
-	tokens := EstimateChunkTokenTotal(chunk)
-	if tokens <= 0 {
-		tokens = EstimateChunkTokens(chunk)
-	}
+	tokens := EstimateChunkTokens(chunk)
 	if tokens <= 0 {
 		return t.ThrottleFirstChunk(ctx, requestStartTime)
 	}
@@ -150,17 +147,11 @@ func (t *RequestThrottler) ThrottleChunk(ctx context.Context, chunk []byte) bool
 		return true
 	}
 
-	if total := EstimateChunkTokenTotal(chunk); total > 0 {
-		if total > t.totalTokens {
-			t.totalTokens = total
-		}
-	} else {
-		tokens := EstimateChunkTokens(chunk)
-		if tokens <= 0 {
-			return true
-		}
-		t.totalTokens += tokens
+	tokens := EstimateChunkTokens(chunk)
+	if tokens <= 0 {
+		return true
 	}
+	t.totalTokens += tokens
 
 	// Calculate expected time for this many tokens at target rate
 	expectedDuration := time.Duration(float64(t.totalTokens) / t.targetRate * float64(time.Second))
@@ -236,29 +227,8 @@ func EstimateChunkTokens(chunk []byte) int {
 
 	payload := speedThrottleJSONPayload(chunk)
 
-	var textLen int
 	if gjson.ValidBytes(payload) {
-		root := gjson.ParseBytes(payload)
-		if root.Get("type").String() == "response.output_text.delta" {
-			textLen += stringResultLength(root.Get("delta"))
-		}
-		// Try OpenAI Responses stream/event and completed formats.
-		textLen += stringResultLength(root.Get("response.output_text.delta.delta"))
-		textLen += stringResultLength(root.Get("response.output.#.content.#.text"))
-		// Try OpenAI chat-completions stream format.
-		textLen += stringResultLength(root.Get("choices.#.delta.content"))
-		// Try Gemini and Gemini wrapped response formats.
-		textLen += stringResultLength(root.Get("candidates.#.content.parts.#.text"))
-		textLen += stringResultLength(root.Get("response.candidates.#.content.parts.#.text"))
-	}
-
-	// If we found text, use it for estimation
-	if textLen > 0 {
-		tokens := textLen / 4
-		if tokens <= 0 {
-			tokens = 1
-		}
-		return tokens
+		return estimateTextTokens(gjson.ParseBytes(payload))
 	}
 
 	payload = bytes.TrimSpace(payload)
@@ -290,9 +260,13 @@ func EstimateNonStreamingTokens(resp []byte) int {
 		return 1
 	}
 
-	if gjson.ValidBytes(resp) {
-		root := gjson.ParseBytes(resp)
-		if total := geminiUsageOutputTokenTotal(root); total > 0 {
+	payload := speedThrottleJSONPayload(resp)
+	if gjson.ValidBytes(payload) {
+		root := gjson.ParseBytes(payload)
+		if tokens := estimateTextTokens(root); tokens > 0 {
+			return tokens
+		}
+		if total := geminiUsageCandidateTokenTotal(root); total > 0 {
 			return total
 		}
 		for _, path := range []string{
@@ -300,15 +274,12 @@ func EstimateNonStreamingTokens(resp []byte) int {
 			"usage.output_tokens",
 			"response.usage.completion_tokens",
 			"usage.completion_tokens",
-			"response.usageMetadata.candidatesTokenCount",
-			"usageMetadata.candidatesTokenCount",
-			"response.usage_metadata.candidatesTokenCount",
-			"usage_metadata.candidatesTokenCount",
 		} {
 			if value := root.Get(path); value.Exists() && value.Int() > 0 {
 				return int(value.Int())
 			}
 		}
+		return 0
 	}
 
 	// Fallback for legacy/simple JSON shapes.
@@ -324,6 +295,53 @@ func EstimateNonStreamingTokens(resp []byte) int {
 
 	// Fallback: estimate from response body size
 	return EstimateChunkTokens(resp)
+}
+
+func estimateTextTokens(root gjson.Result) int {
+	if root.Get("type").String() == "response.output_text.delta" {
+		return estimateTextLengthTokens(stringResultLength(root.Get("delta")))
+	}
+
+	if root.Get("choices").Exists() {
+		textLen := stringResultLength(root.Get("choices.#.delta.content"))
+		if textLen == 0 {
+			textLen = stringResultLength(root.Get("choices.#.message.content"))
+		}
+		return estimateTextLengthTokens(textLen)
+	}
+
+	if root.Get("response").Exists() {
+		textLen := stringResultLength(root.Get("response.output_text.delta.delta"))
+		if textLen == 0 {
+			textLen = stringResultLength(root.Get("response.output.#.content.#.text"))
+		}
+		if textLen == 0 {
+			textLen = stringResultLength(root.Get("response.candidates.#.content.parts.#.text"))
+		}
+		return estimateTextLengthTokens(textLen)
+	}
+
+	if root.Get("output").Exists() {
+		return estimateTextLengthTokens(stringResultLength(root.Get("output.#.content.#.text")))
+	}
+
+	// Gemini thought summaries and final answers are both text emitted to
+	// clients, so parts marked with thought=true remain included.
+	if root.Get("candidates").Exists() {
+		return estimateTextLengthTokens(stringResultLength(root.Get("candidates.#.content.parts.#.text")))
+	}
+	return 0
+}
+
+func estimateTextLengthTokens(textLen int) int {
+	if textLen <= 0 {
+		return 0
+	}
+	tokens := textLen / 4
+	if tokens <= 0 {
+		return 1
+	}
+	return tokens
 }
 
 func speedThrottleJSONPayload(chunk []byte) []byte {
@@ -373,6 +391,29 @@ func geminiUsageOutputTokenTotal(root gjson.Result) int {
 		{"#.response.usage_metadata.candidates_token_count", "#.response.usage_metadata.thoughts_token_count"},
 	} {
 		total := intResultSum(root.Get(pair[0])) + intResultSum(root.Get(pair[1]))
+		if total > 0 {
+			return total
+		}
+	}
+	return 0
+}
+
+func geminiUsageCandidateTokenTotal(root gjson.Result) int {
+	for _, path := range []string{
+		"usageMetadata.candidatesTokenCount",
+		"usage_metadata.candidatesTokenCount",
+		"usage_metadata.candidates_token_count",
+		"response.usageMetadata.candidatesTokenCount",
+		"response.usage_metadata.candidatesTokenCount",
+		"response.usage_metadata.candidates_token_count",
+		"#.usageMetadata.candidatesTokenCount",
+		"#.usage_metadata.candidatesTokenCount",
+		"#.usage_metadata.candidates_token_count",
+		"#.response.usageMetadata.candidatesTokenCount",
+		"#.response.usage_metadata.candidatesTokenCount",
+		"#.response.usage_metadata.candidates_token_count",
+	} {
+		total := intResultSum(root.Get(path))
 		if total > 0 {
 			return total
 		}

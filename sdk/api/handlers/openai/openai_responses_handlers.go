@@ -538,8 +538,8 @@ func (h *OpenAIResponsesAPIHandler) handleStreamingResponse(c *gin.Context, rawJ
 				return
 			}
 
-			// TTFT delay
-			if !throttler.ThrottleFirstChunk(cliCtx, requestStart) {
+			// TTFT and first payload delay.
+			if !throttler.ThrottleFirstChunkWithPayload(cliCtx, requestStart, chunk) {
 				cliCancel(cliCtx.Err())
 				return
 			}
