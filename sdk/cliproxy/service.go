@@ -2504,17 +2504,13 @@ func buildConfigModels[T modelEntry](models []T, ownedBy, modelType string) []*M
 			continue
 		}
 		seen[key] = struct{}{}
-		display := name
-		if display == "" {
-			display = alias
-		}
 		info := &ModelInfo{
 			ID:          alias,
 			Object:      "model",
 			Created:     now,
 			OwnedBy:     ownedBy,
 			Type:        modelType,
-			DisplayName: display,
+			DisplayName: alias,
 			UserDefined: true,
 		}
 		if name != "" {
