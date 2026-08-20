@@ -26,7 +26,7 @@ type RateLimitConfig struct {
 // APIKeyRateLimiter provides per-API-key sliding-window rate limiting.
 type APIKeyRateLimiter struct {
 	mu       sync.Mutex
-	requests map[string][]time.Time       // apiKey -> request timestamps
+	requests map[string][]time.Time          // apiKey -> request timestamps
 	config   atomic.Pointer[RateLimitConfig] // supports hot-reload
 }
 
@@ -120,7 +120,10 @@ func RateLimitMiddleware(limiter *APIKeyRateLimiter) gin.HandlerFunc {
 			return
 		}
 
-		apiKeyVal, exists := c.Get("apiKey")
+		apiKeyVal, exists := c.Get("userApiKey")
+		if !exists {
+			apiKeyVal, exists = c.Get("apiKey")
+		}
 		if !exists {
 			// No API key in context (unauthenticated or auth disabled) — skip rate limiting
 			c.Next()
