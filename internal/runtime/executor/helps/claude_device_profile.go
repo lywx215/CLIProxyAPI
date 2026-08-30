@@ -602,26 +602,12 @@ func ApplyClaudeLegacyDeviceHeaders(r *http.Request, incomingHeaders http.Header
 		return
 	}
 	profile := defaultClaudeDeviceProfile(cfg)
-	configuredOS := ""
-	configuredArch := ""
 	explicitlyDisabled := false
 	if cfg != nil {
-		configuredOS = strings.TrimSpace(cfg.ClaudeHeaderDefaults.OS)
-		configuredArch = strings.TrimSpace(cfg.ClaudeHeaderDefaults.Arch)
 		explicitlyDisabled = cfg.ClaudeHeaderDefaults.StabilizeDeviceProfile != nil && !*cfg.ClaudeHeaderDefaults.StabilizeDeviceProfile
 	}
-	osFallback := configuredOS
-	if osFallback == "" {
-		osFallback = mapStainlessOS()
-	}
-	archFallback := configuredArch
-	if archFallback == "" {
-		archFallback = mapStainlessArch()
-	}
-	if explicitlyDisabled && !confirmedClaudeCode {
-		osFallback = mapStainlessOS()
-		archFallback = mapStainlessArch()
-	}
+	osFallback := profile.OS
+	archFallback := profile.Arch
 	incomingOrFallback := func(name, fallback string) string {
 		if incoming := strings.TrimSpace(incomingHeaders.Get(name)); incoming != "" {
 			return incoming
