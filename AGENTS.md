@@ -5,6 +5,10 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 ## Repository
 - GitHub: https://github.com/router-for-me/CLIProxyAPI
 
+## Cross-Repository Development
+
+For changes that affect both this backend and the management frontend, consult the [cross-repository integration guide](https://github.com/lywx215/CLIProxyAPI/blob/main/INTEGRATION_GUIDE_CN.md) as an advisory checklist. It is designed for a single-developer workflow: use engineering judgment, allow scoped work to continue when the companion repository or full integration environment is temporarily unavailable, and complete the affected integration checks before release. Upstream fork synchronization remains governed separately by `SYNC_GUIDE.md`.
+
 ## Commands
 ```bash
 gofmt -w . # Format (required after Go changes)

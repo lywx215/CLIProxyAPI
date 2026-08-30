@@ -2,6 +2,8 @@
 
 本文档定义后端 `CLIProxyAPI` 与自定义管理前端 `Cli-Proxy-API-Management-Center` 的上游同步规则。
 
+日常前后端功能联动开发可参考 [前后端联动开发指南](INTEGRATION_GUIDE_CN.md)。该指南为单人开发提供建议性清单，不替代本文的 fork 同步安全规则。
+
 > Last updated: 2026-08-30
 > Backend upstream: `f0de1d00` / after `v7.2.145`
 > Management frontend upstream: `d249ff00` / `v1.22.9`
@@ -175,12 +177,28 @@ git diff --check
 
 ### 6.3 嵌入管理页
 
-前端构建成功后，将单文件产物复制到后端并核验哈希：
+前端构建成功后，将单文件产物复制到后端并核验哈希。不要假设两个仓库具有固定盘符或相邻目录名称；先把实际仓库路径赋给变量：
 
 ```powershell
-Copy-Item -LiteralPath ..\management-center\dist\index.html -Destination .\static\management.html -Force
-Get-FileHash -Algorithm SHA256 ..\management-center\dist\index.html
-Get-FileHash -Algorithm SHA256 .\static\management.html
+$FrontendRepoPath = '<frontend-repository-path>'
+$BackendRepoPath = '<backend-repository-path>'
+$FrontendAssetPath = Join-Path $FrontendRepoPath 'dist/index.html'
+$BackendAssetPath = Join-Path $BackendRepoPath 'static/management.html'
+
+Copy-Item -LiteralPath $FrontendAssetPath -Destination $BackendAssetPath -Force
+Get-FileHash -Algorithm SHA256 $FrontendAssetPath
+Get-FileHash -Algorithm SHA256 $BackendAssetPath
+```
+
+macOS/Linux 可使用：
+
+```bash
+FRONTEND_REPO_PATH='<frontend-repository-path>'
+BACKEND_REPO_PATH='<backend-repository-path>'
+
+cp "$FRONTEND_REPO_PATH/dist/index.html" "$BACKEND_REPO_PATH/static/management.html"
+sha256sum "$FRONTEND_REPO_PATH/dist/index.html"
+sha256sum "$BACKEND_REPO_PATH/static/management.html"
 ```
 
 两个 SHA-256 必须完全一致。前端构建时间会改变产物内容，因此应在最后一次成功构建后再复制和暂存。
