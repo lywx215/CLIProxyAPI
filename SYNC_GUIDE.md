@@ -2,9 +2,9 @@
 
 本文档定义后端 `CLIProxyAPI` 与自定义管理前端 `Cli-Proxy-API-Management-Center` 的上游同步规则。
 
-> Last updated: 2026-08-20
-> Backend upstream: `85d2fadd` / `v7.2.137`
-> Management frontend upstream: `6586f888` / `v1.22.6`
+> Last updated: 2026-08-30
+> Backend upstream: `f0de1d00` / after `v7.2.145`
+> Management frontend upstream: `d249ff00` / `v1.22.9`
 
 ## 1. 核心原则
 
@@ -106,10 +106,12 @@ git merge --ff-only codex/sync-upstream-<version>
 ### 4.2 Antigravity、Usage 与认证
 
 - `antigravity-credits-force`、Credits 请求选择、`CreditsUsed` 记录和全部 credit 类型统计。
+- Antigravity 使用上游单请求、quota signal 和 retry-round 语义；不得重新引入已移除的跨 endpoint fallback。
 - Usage 与 Antigravity Stats 管理端点、导入/导出/重置和统计日志。
 - Gemini CLI OAuth、配额与 usage 解析。
 - Vertex ADC `authorized_user` 导入、刷新与 executor 支持，同时保留 service account。
 - Claude translator 不转发 `temperature`，采用上游兼容性修复。
+- Claude `fingerprint-profile=claude-code-cli`、request-scoped errors 和稳定的配置/默认设备指纹；显式配置优先，未配置时不得泄露宿主机 OS/Arch。
 - 保留上游自包含、无外部敏感 fixture 的 Claude Code sentinel 测试。
 
 ### 4.3 存储、配置与部署
@@ -134,6 +136,7 @@ git merge --ff-only codex/sync-upstream-<version>
 - `/usage`、`/antigravity-stats` 路由及 Usage store 导出。
 - Windows 构建兼容逻辑、前后端独立 build time。
 - 四种语言的所有本地独有键；同名等价键采用上游最新措辞，语义变化必须再次确认。
+- Claude provider 的 `fingerprint-profile=claude-code-cli` 配置、展示和 YAML 往返，以及上游最新 Codex 配额 User-Agent。
 
 `package.json` 使用上游的 `0.0.0`，正式版本由 Git tag/VERSION 注入；依赖以上游为基线，保留 `chart.js` 和 `react-chartjs-2`，使用 Bun 重新生成 `bun.lock`。
 
@@ -200,3 +203,13 @@ Get-FileHash -Algorithm SHA256 .\static\management.html
 - 后端 22 个、前端 24 个预测冲突均按功能组确认后手工解决；未使用整文件 `ours`/`theirs`。
 - 前端采用上游 feature 架构并迁移全部 fork 行为，版本为 `0.0.0`，保留图表依赖。
 - 本次只交付本地同步分支；没有更新 `main`、推送、创建 tag 或发布。
+
+## 9. 2026-08-30 同步记录
+
+- 后端从 fork `d00c5927` 合并固定 upstream `f0de1d00`（位于 `v7.2.145` 之后），使用本地分支 `codex/sync-upstream-20260830-f0de1d00`。
+- 管理前端从 fork `869b9deb` 合并固定 upstream `d249ff00`（`v1.22.9`），使用本地分支 `codex/sync-upstream-v1.22.9`。
+- 后端预演和真实合并均产生 5 个冲突：配置、Antigravity credits 测试、execute、stream 与 conductor cooldown；前端为 0 个冲突。
+- 后端冲突按用户确认采用上游 quota signal、单请求/no-fallback 和 retry-round 架构，同时恢复 `CreditsForce`、`CreditsUsed`、Usage 统计与 ModelVersion 回写；conductor 不进行每请求 auth 持久化，但保留 cooldown 持久化。
+- 前端采用上游 Claude fingerprint profile 和 Codex 配额 User-Agent，同时保留全部 fork 配置、Usage/Stats、Quota/OAuth、Vertex ADC、路由、图表和四语言行为。
+- Windows 验证中，gitstore 的 3 个损坏仓库恢复子测试因 Windows 拒绝重命名临时 `.git` 目录而阻断；另有部分测试二进制被 Application Control 阻断。其余已运行测试和全部构建通过。
+- 本次只交付本地同步分支；没有更新 `main`、推送、创建 tag 或发布。Linux 全量/race 测试与 Docker 构建仍是发布前阻断项。
