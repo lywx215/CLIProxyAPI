@@ -25,7 +25,7 @@ func TestParseModelTokenLimit(t *testing.T) {
 		{"", 0},
 		{"m", 0},
 		{"-m", 0},
-		{"model-0m", 0},   // 0 is not valid
+		{"model-0m", 0},      // 0 is not valid
 		{"model--5m", 50000}, // edge case: parses "5" after last "-", acceptable
 	}
 	for _, tt := range tests {

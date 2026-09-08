@@ -123,4 +123,3 @@ func GeminiCLIUserAgent(model string) string {
 	}
 	return fmt.Sprintf("GeminiCLI/%s/%s (%s; %s; terminal)", GeminiCLIVersion, model, geminiCLIOS(), geminiCLIArch())
 }
-

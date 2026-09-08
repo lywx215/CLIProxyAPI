@@ -335,10 +335,11 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		selectionHeaders.Set("X-Session-ID", sessionID)
 	}
 	ctx := context.WithValue(c.Request.Context(), "gin", c)
+	ctx = handlers.EnrichContextWithSessionHierarchy(ctx, selectionHeaders, body, nil)
 	selectionModel, errRoute := s.codexAlphaSearchSelectionModel(ctx, c, body, strings.TrimSpace(routing.Model))
 	if errRoute != nil {
 		log.WithError(errRoute).Warn("codex alpha search: model router returned an unsupported target")
-		c.JSON(clienterror.HTTPStatusFromErrorOr(errRoute, http.StatusServiceUnavailable), gin.H{"error": errRoute.Error()})
+		writeCodexAlphaSearchError(c, clienterror.HTTPStatusFromErrorOr(errRoute, http.StatusServiceUnavailable))
 		return
 	}
 	selectionOpts := coreexecutor.Options{Headers: selectionHeaders, OriginalRequest: body}
@@ -357,7 +358,7 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		for _, value := range auth.SafeResponseHeaders(err).Values("Retry-After") {
 			c.Writer.Header().Add("Retry-After", value)
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		writeCodexAlphaSearchError(c, status)
 		return
 	}
 	if selected == nil {
@@ -367,12 +368,25 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Codex auth unavailable"})
 		return
 	}
+	if selection != nil && selection.CanonicalSessionID != "" {
+		meta := logging.GetClientRequestMetadata(ctx)
+		meta.SessionID = selection.CanonicalSessionID
+		if selection.ParentSessionID != "" {
+			meta.ParentSessionID = selection.ParentSessionID
+		} else {
+			meta.ParentSessionID = ""
+		}
+		if meta.SessionID == meta.ParentSessionID {
+			meta.ParentSessionID = ""
+		}
+		ctx = logging.WithClientRequestMetadata(ctx, meta)
+	}
 	var releaseAttempt func()
 	if selection != nil {
 		attemptCtx, release, errBind := homeSelectionAttemptContext(ctx, selection)
 		if errBind != nil {
 			selection.End("attempt_bind_failed")
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errBind.Error()})
+			writeCodexAlphaSearchError(c, http.StatusServiceUnavailable)
 			return
 		}
 		ctx = attemptCtx
@@ -441,7 +455,7 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 		if selection != nil {
 			selection.End("attempt_canceled")
 		}
-		c.JSON(clienterror.HTTPStatusFromErrorOr(errCtx, http.StatusRequestTimeout), gin.H{"error": errCtx.Error()})
+		writeCodexAlphaSearchError(c, clienterror.HTTPStatusFromErrorOr(errCtx, http.StatusRequestTimeout))
 		return
 	}
 	resp, err := performRequest(selected)
@@ -450,51 +464,15 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 			if selection != nil {
 				selection.End("missing_base_url")
 			}
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+			writeCodexAlphaSearchError(c, http.StatusServiceUnavailable)
 			return
 		}
 		if selection != nil {
 			selection.End("request_failed")
 		}
 		helps.RecordAPIResponseError(ctx, s.cfg, err)
-		c.JSON(clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway), gin.H{"error": err.Error()})
+		writeCodexAlphaSearchError(c, clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway))
 		return
-	}
-	if selection != nil && resp.StatusCode == http.StatusUnauthorized {
-		s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel)
-		helps.RecordAPIResponseMetadata(ctx, s.cfg, resp.StatusCode, resp.Header.Clone())
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-		if errClose := resp.Body.Close(); errClose != nil {
-			log.Errorf("codex alpha search: close unauthorized response body error: %v", errClose)
-		}
-		refreshed, didRefresh, errRefresh := s.handlers.AuthManager.RefreshHomeSelectionAfterUnauthorized(ctx, selection, selected)
-		if errRefresh != nil {
-			selection.End("refresh_failed")
-			c.JSON(clienterror.HTTPStatusFromErrorOr(errRefresh, http.StatusServiceUnavailable), gin.H{"error": errRefresh.Error()})
-			return
-		}
-		if !didRefresh || refreshed == nil {
-			selection.End("refresh_unavailable")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Codex credential unauthorized"})
-			return
-		}
-		selected = refreshed
-		logging.SetGinCPATraceID(c, selected.EnsureIndex())
-		resp, err = performRequest(selected)
-		if err != nil {
-			if errors.Is(err, errMissingBaseURL) {
-				selection.End("missing_base_url")
-				c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
-				return
-			}
-			selection.End("retry_failed")
-			helps.RecordAPIResponseError(ctx, s.cfg, err)
-			c.JSON(clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway), gin.H{"error": err.Error()})
-			return
-		}
-		if resp.StatusCode == http.StatusUnauthorized {
-			s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel)
-		}
 	}
 	closeResponseBody := func() error {
 		errClose := resp.Body.Close()
@@ -505,8 +483,11 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 	}
 	if selection != nil {
 		if errBind := selection.Bind(closeResponseBody); errBind != nil {
+			if resp.StatusCode == http.StatusUnauthorized {
+				s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel)
+			}
 			selection.End("response_bind_failed")
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errBind.Error()})
+			writeCodexAlphaSearchError(c, http.StatusServiceUnavailable)
 			return
 		}
 		defer selection.End("response_closed")
@@ -516,11 +497,23 @@ func (s *Server) codexAlphaSearch(c *gin.Context) {
 	helps.RecordAPIResponseMetadata(ctx, s.cfg, resp.StatusCode, resp.Header.Clone())
 	upstreamBody, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
+		helps.AppendAPIResponseChunk(ctx, s.cfg, upstreamBody)
+		if selection != nil && resp.StatusCode == http.StatusUnauthorized {
+			s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel, upstreamBody)
+		}
 		helps.RecordAPIResponseError(ctx, s.cfg, err)
 		c.JSON(clienterror.HTTPStatusFromErrorOr(err, http.StatusBadGateway), gin.H{"error": "Failed to read Codex search response"})
 		return
 	}
 	helps.AppendAPIResponseChunk(ctx, s.cfg, upstreamBody)
+	if selection != nil && resp.StatusCode == http.StatusUnauthorized {
+		s.handlers.AuthManager.ReportHomeUnauthorized(ctx, selected, "codex", selectionModel, upstreamBody)
+		log.WithField("status", resp.StatusCode).Warnf("codex alpha search upstream request failed: %s", logging.SafeDiagnosticForLog(string(upstreamBody)))
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		writeCodexAlphaSearchError(c, resp.StatusCode)
+		return
+	}
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
 		c.Header("Content-Type", contentType)
 	}
@@ -665,27 +658,37 @@ func (s *Server) handleHomeCodexClientModels(c *gin.Context, clientVersion strin
 
 	models := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
-		model := map[string]any{
-			"id":     entry.id,
-			"object": "model",
-		}
-		if entry.created > 0 {
-			model["created"] = entry.created
-		}
-		if entry.ownedBy != "" {
-			model["owned_by"] = entry.ownedBy
-		}
-		if entry.displayName != "" {
-			model["display_name"] = entry.displayName
-			model["description"] = entry.displayName
-		}
-		if entry.maxCompletionTokens > 0 {
-			model["max_completion_tokens"] = entry.maxCompletionTokens
-		}
-		models = append(models, model)
+		models = append(models, formatHomeCodexModel(entry))
 	}
 
 	c.JSON(http.StatusOK, codexmodels.BuildResponseForClient(models, nil, s.cfg.Codex.OptimizeMultiAgentV2, clientVersion))
+}
+
+func formatHomeCodexModel(entry homeModelEntry) map[string]any {
+	model := map[string]any{
+		"id":     entry.id,
+		"object": "model",
+	}
+	if entry.created > 0 {
+		model["created"] = entry.created
+	}
+	if entry.ownedBy != "" {
+		model["owned_by"] = entry.ownedBy
+	}
+	if entry.displayName != "" {
+		model["display_name"] = entry.displayName
+		model["description"] = entry.displayName
+	}
+	if entry.contextLength > 0 {
+		model["context_length"] = entry.contextLength
+	}
+	if entry.maxCompletionTokens > 0 {
+		model["max_completion_tokens"] = entry.maxCompletionTokens
+	}
+	if entry.thinking != nil {
+		model["thinking"] = entry.thinking
+	}
+	return model
 }
 
 func (s *Server) geminiModelsHandler(geminiHandler *gemini.GeminiAPIHandler) gin.HandlerFunc {
@@ -717,6 +720,7 @@ type homeModelEntry struct {
 	displayName         string
 	contextLength       int
 	maxCompletionTokens int
+	thinking            *registry.ThinkingSupport
 }
 
 func (s *Server) handleHomeModels(c *gin.Context) {
@@ -1012,6 +1016,7 @@ func decodeHomeModels(raw []byte) ([]homeModelEntry, error) {
 				displayName, _ = model["displayName"].(string)
 				displayName = strings.TrimSpace(displayName)
 			}
+			thinking := homeModelThinkingSupport(model)
 
 			out = append(out, homeModelEntry{
 				id:                  id,
@@ -1020,6 +1025,7 @@ func decodeHomeModels(raw []byte) ([]homeModelEntry, error) {
 				displayName:         displayName,
 				contextLength:       int(homeModelInt64Value(model, "context_length", "contextLength", "inputTokenLimit", "max_input_tokens")),
 				maxCompletionTokens: int(homeModelInt64Value(model, "max_completion_tokens", "maxCompletionTokens", "outputTokenLimit", "max_tokens")),
+				thinking:            thinking,
 			})
 		}
 	}
@@ -1029,6 +1035,22 @@ func decodeHomeModels(raw []byte) ([]homeModelEntry, error) {
 		return nil, fmt.Errorf("home models payload contains no models")
 	}
 	return out, nil
+}
+
+func homeModelThinkingSupport(model map[string]any) *registry.ThinkingSupport {
+	raw, ok := model["thinking"]
+	if !ok || raw == nil {
+		return nil
+	}
+	data, errMarshal := json.Marshal(raw)
+	if errMarshal != nil {
+		return nil
+	}
+	var thinking registry.ThinkingSupport
+	if errUnmarshal := json.Unmarshal(data, &thinking); errUnmarshal != nil {
+		return nil
+	}
+	return &thinking
 }
 
 func homeModelInt64Value(model map[string]any, keys ...string) int64 {
@@ -1051,4 +1073,9 @@ func homeModelInt64Value(model map[string]any, keys ...string) int64 {
 		}
 	}
 	return 0
+}
+
+// writeCodexAlphaSearchError keeps upstream details out of client responses.
+func writeCodexAlphaSearchError(c *gin.Context, status int) {
+	c.Data(status, "application/json", handlers.BuildErrorResponseBody(status, ""))
 }

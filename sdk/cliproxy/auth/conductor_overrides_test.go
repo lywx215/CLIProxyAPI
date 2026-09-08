@@ -1254,10 +1254,10 @@ func TestManager_MarkResult_CloudflareChallenge_On403(t *testing.T) {
 		t.Fatalf("expected StatusMessage to be 'cloudflare challenge', got %s", state.StatusMessage)
 	}
 
-	// Because Cloudflare Challenge is treated as transient (no suspension),
-	// the model should NOT be suspended in the global registry, so count > 0.
-	if count := reg.GetModelCount(model); count <= 0 {
-		t.Fatalf("expected model count > 0 for cloudflare challenge transient cooldown, got %d", count)
+	// Cloudflare Challenge sets Unavailable and NextRetryAfter on ModelState,
+	// so the model SHOULD be suspended in the global registry for this client.
+	if !reg.IsModelSuspendedForClient(auth.ID, model) {
+		t.Fatalf("expected model to be suspended in registry for cloudflare challenge")
 	}
 }
 
@@ -1381,7 +1381,7 @@ func TestManager_Execute_DisableCooling_DoesNotBlackoutAfter429RetryAfter(t *tes
 	}
 }
 
-func TestManager_Execute_ZeroRetryAfterDoesNotBlackoutAfter429(t *testing.T) {
+func TestManager_Execute_ZeroRetryAfterHonorsMinimumCooldownAfter429(t *testing.T) {
 	prev := quotaCooldownDisabled.Load()
 	quotaCooldownDisabled.Store(false)
 	t.Cleanup(func() { quotaCooldownDisabled.Store(prev) })
@@ -1417,8 +1417,12 @@ func TestManager_Execute_ZeroRetryAfterDoesNotBlackoutAfter429(t *testing.T) {
 		}
 	}
 
-	if calls := executor.ExecuteCalls(); len(calls) != 2 {
-		t.Fatalf("execute calls = %d, want 2", len(calls))
+	if calls := executor.ExecuteCalls(); len(calls) != 1 {
+		t.Fatalf("execute calls = %d, want 1 while credential is cooling", len(calls))
+	}
+	updated, ok := m.GetByID(auth.ID)
+	if !ok || updated.ModelStates[model] == nil || updated.ModelStates[model].NextRetryAfter.IsZero() {
+		t.Fatal("expected zero Retry-After to retain the upstream minimum cooldown")
 	}
 }
 
