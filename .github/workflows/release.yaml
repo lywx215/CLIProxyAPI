@@ -131,9 +131,6 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Refresh models catalog
-        shell: bash
-        run: bash .github/scripts/refresh-model-catalogs.sh
       - name: Fetch tags
         shell: bash
         run: git fetch --force --tags
@@ -178,10 +175,12 @@ jobs:
             -o "$archive_dir/$binary_name" ./cmd/server/
 
           cp LICENSE README.md README_CN.md config.example.yaml "$archive_dir/"
+          mkdir -p "$archive_dir/static"
+          cp static/management.html "$archive_dir/static/management.html"
           if [[ "$ARCHIVE_FORMAT" == "zip" ]]; then
             powershell -NoProfile -Command "Compress-Archive -Path '${archive_dir}/*' -DestinationPath 'dist/${archive_name}' -Force"
           else
-            tar -C "$archive_dir" -czf "dist/$archive_name" "$binary_name" LICENSE README.md README_CN.md config.example.yaml
+            tar -C "$archive_dir" -czf "dist/$archive_name" "$binary_name" LICENSE README.md README_CN.md config.example.yaml static/management.html
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -258,9 +257,6 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Refresh models catalog
-        shell: bash
-        run: bash .github/scripts/refresh-model-catalogs.sh
       - name: Fetch tags
         shell: bash
         run: git fetch --force --tags
@@ -318,7 +314,9 @@ jobs:
             '
 
           cp LICENSE README.md README_CN.md config.example.yaml "$archive_dir/"
-          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml
+          mkdir -p "$archive_dir/static"
+          cp static/management.html "$archive_dir/static/management.html"
+          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml static/management.html
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
@@ -390,9 +388,6 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Refresh models catalog
-        shell: bash
-        run: bash .github/scripts/refresh-model-catalogs.sh
       - name: Fetch tags
         shell: bash
         run: git fetch --force --tags
@@ -437,7 +432,9 @@ jobs:
           fi
 
           cp LICENSE README.md README_CN.md config.example.yaml "$archive_dir/"
-          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml
+          mkdir -p "$archive_dir/static"
+          cp static/management.html "$archive_dir/static/management.html"
+          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml static/management.html
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
@@ -518,8 +515,6 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Refresh models catalog
-        run: bash .github/scripts/refresh-model-catalogs.sh
       - name: Fetch tags
         run: git fetch --force --tags
       - uses: actions/cache@v4
@@ -638,7 +633,9 @@ jobs:
           echo "Packaging ${archive_name}"
           cp "dist/${TARGET}/bin/cli-proxy-api" "$archive_dir/cli-proxy-api"
           cp LICENSE README.md README_CN.md config.example.yaml "$archive_dir/"
-          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml
+          mkdir -p "$archive_dir/static"
+          cp static/management.html "$archive_dir/static/management.html"
+          tar -C "$archive_dir" -czf "dist/$archive_name" cli-proxy-api LICENSE README.md README_CN.md config.example.yaml static/management.html
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}

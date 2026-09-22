@@ -1,0 +1,32 @@
+name: release-preflight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - name: Full Linux tests
+        run: go test -count=1 ./...
+      - name: Race tests
+        run: go test -race -count=1 -p 2 ./...
+      - name: Build server
+        run: go build -o /tmp/cli-proxy-api ./cmd/server
+      - name: Isolated server smoke
+        run: python3 .github/scripts/release-smoke.py --binary /tmp/cli-proxy-api
+      - name: Build Docker image without publishing
+        run: docker build --build-arg VERSION=preflight --build-arg COMMIT="$GITHUB_SHA" -t cliproxyapi-preflight .
+      - name: Isolated Docker smoke
+        run: python3 .github/scripts/release-smoke.py --image cliproxyapi-preflight

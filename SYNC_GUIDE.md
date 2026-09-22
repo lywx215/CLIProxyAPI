@@ -352,3 +352,15 @@ sha256sum "$BACKEND_REPO_PATH/static/management.html"
 - 发布前仍需在 Linux/可用 Docker 环境完成全量、race、镜像构建，以及受控测试账号的真实 OAuth/ADC 刷新、插件配额和 credits/stream 联调。当前浏览器和 HTTP 检查使用临时配置、空 auths、随机回环端口、合成 key，关闭插件和页面自动更新，并使用 `--local-model`。
 - 第 10.4 节记录的 Speed Throttle 并发/队列和 Usage queue 新维度展示缺口仍保留给独立功能任务；本轮不宣称已实现。四语言原有缺译仍使用既有回退机制；Vite 的 native config loader 未来兼容提示不影响本次构建。
 - 两边 `.codex/sync-20260922/` 保存预演、验证和冒烟证据，后端 `.codex/sync-upstream-progress.md` 保存最终提交及恢复信息。本地同步完成不等于发布前检查全部完成。
+
+## 12. 2026-09-22 发布装配（v2026.9.22）
+
+用户在本地同步完成后另行授权更新 main、推送、创建 tag 和发布，并确认前后端均使用 `v2026.9.22`。
+
+- 重新获取 origin 后，两边远程 main 均未出现额外提交。前端 main 快进至 `fb802786583e88e047c47efa0f803307a8bda27c` 并推送，Linux CI 通过；该提交上的 `v2026.9.22` tag 已由前端 workflow 构建并发布。
+- 前端 Release 会使用 `VERSION=v2026.9.22` 和新的构建时间重建页面，因此第 11.4 节的同步阶段 HTML 哈希不再代表发布产物。后端已装配前端 Release 的实际 `management.html`；下载文件、GitHub asset digest 和后端页面的 SHA-256 一致：`3F396CC6CCB6B71181DDA904A28AB26343BAF9EC1980650E8BC4B19F9636D556`。未手工修改 HTML，前端 tag 指向的源码未变化。
+- 后端所有平台的 release 压缩包补充 `static/management.html`，Docker 镜像继续携带同一文件。发布构建使用 tag 内的模型目录，停止构建过程中拉取浮动 models/main；运行时的模型更新机制不受影响。
+- `.github/workflows/release-preflight.yml` 在 main 推送时执行 Linux 全量、全量 race、server 编译、Docker 构建及二进制/镜像的隔离冒烟。后端 tag 必须等本轮预检通过后再推送；执行结果、Actions 链接和最终后端 SHA 记录在本地 `.codex/release-v2026.9.22/` 及同步进度文件，发布说明同步列出。
+- 新增可复用隔离冒烟脚本 `.github/scripts/release-smoke.py`，在临时目录使用合成 key、空 auths、随机回环端口、关闭插件/管理页自动更新和 `--local-model`，核验 29 项 API/HTML 契约；Windows server 与正式前端 Release 页面组合已通过。
+- 配套版本依赖当前页面文件及 `remote-management.disable-auto-update-panel: true`。配置模板已启用该设置；旧部署自己的配置不会自动改写，若开启自动更新，未来前端 Release 可能替换页面。页面缺失时首次下载仍可能发生，因此部署时应保留包内页面。
+- 本次不改动正在运行的服务。回滚源码可使用两个原 main 基线（后端 `6cf4871e`、前端 `e699ef52`）；上一正式 Release 为后端 `v7.2.49-speed-throttle.5`、前端 `v1.17.8`。已有 tag 均不移动、不覆盖。
