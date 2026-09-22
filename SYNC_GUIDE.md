@@ -364,3 +364,5 @@ sha256sum "$BACKEND_REPO_PATH/static/management.html"
 - 新增可复用隔离冒烟脚本 `.github/scripts/release-smoke.py`，在临时目录使用合成 key、空 auths、随机回环端口、关闭插件/管理页自动更新和 `--local-model`，核验 29 项 API/HTML 契约；Windows server 与正式前端 Release 页面组合已通过。
 - 配套版本依赖当前页面文件及 `remote-management.disable-auto-update-panel: true`。配置模板已启用该设置；旧部署自己的配置不会自动改写，若开启自动更新，未来前端 Release 可能替换页面。页面缺失时首次下载仍可能发生，因此部署时应保留包内页面。
 - 本次不改动正在运行的服务。回滚源码可使用两个原 main 基线（后端 `6cf4871e`、前端 `e699ef52`）；上一正式 Release 为后端 `v7.2.49-speed-throttle.5`、前端 `v1.17.8`。已有 tag 均不移动、不覆盖。
+
+- Linux preflight initially exposed a scheduling assumption in the Antigravity concurrent pool tests: fast responses can race with pending speculative dials. Both pool-limit tests now hold each wave until every request has acquired a connection, without changing production pooling or weakening assertions. Both tests passed 100 Windows repetitions and server compilation passed. Full Linux and race checks must pass again before the backend tag is pushed.

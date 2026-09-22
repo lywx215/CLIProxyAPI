@@ -219,12 +219,33 @@ func TestNewAntigravityHTTPClientKeepsForeignRoundTripper(t *testing.T) {
 // the pool limit: with Go's default of 2 idle connections per host, repeated waves of
 // concurrent requests on one credential keep re-handshaking.
 func TestAntigravityConcurrentRequestsReusePooledConnections(t *testing.T) {
+	const (
+		waves      = 3
+		perWave    = 8
+		totalConns = waves * perWave
+	)
 	var mu sync.Mutex
 	remotes := map[string]struct{}{}
+	arrived := 0
+	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		remotes[r.RemoteAddr] = struct{}{}
+		// Hold each wave until all requests own a connection. Otherwise fast replies
+		// can satisfy queued requests while speculative dials finish in later waves.
+		wait := release
+		arrived++
+		if arrived == perWave {
+			close(release)
+			release = make(chan struct{})
+			arrived = 0
+		}
 		mu.Unlock()
+		select {
+		case <-wait:
+		case <-r.Context().Done():
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -240,13 +261,9 @@ func TestAntigravityConcurrentRequestsReusePooledConnections(t *testing.T) {
 			},
 		},
 	}
-	client := &http.Client{Transport: antigravityHTTP11Transport(auth, http.DefaultTransport.(*http.Transport), poolCfg)}
+	client := &http.Client{Transport: antigravityHTTP11Transport(auth, http.DefaultTransport.(*http.Transport), poolCfg), Timeout: 10 * time.Second}
+	defer client.CloseIdleConnections()
 
-	const (
-		waves      = 3
-		perWave    = 8
-		totalConns = waves * perWave
-	)
 	for wave := 0; wave < waves; wave++ {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
@@ -287,12 +304,33 @@ func TestAntigravityConcurrentRequestsReusePooledConnections(t *testing.T) {
 // TestAntigravityConcurrentRequestsDefaultPoolLimitsToTwo verifies that when pooling is enabled
 // without specifying max-idle-conns-per-host, it defaults to 2 (matching Go's default and official agy).
 func TestAntigravityConcurrentRequestsDefaultPoolLimitsToTwo(t *testing.T) {
+	const (
+		waves      = 3
+		perWave    = 8
+		totalConns = waves * perWave
+	)
 	var mu sync.Mutex
 	remotes := map[string]struct{}{}
+	arrived := 0
+	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		remotes[r.RemoteAddr] = struct{}{}
+		// Hold each wave until all requests own a connection. Otherwise fast replies
+		// can satisfy queued requests while speculative dials finish in later waves.
+		wait := release
+		arrived++
+		if arrived == perWave {
+			close(release)
+			release = make(chan struct{})
+			arrived = 0
+		}
 		mu.Unlock()
+		select {
+		case <-wait:
+		case <-r.Context().Done():
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -306,13 +344,9 @@ func TestAntigravityConcurrentRequestsDefaultPoolLimitsToTwo(t *testing.T) {
 			},
 		},
 	}
-	client := &http.Client{Transport: antigravityHTTP11Transport(auth, http.DefaultTransport.(*http.Transport), poolCfg)}
+	client := &http.Client{Transport: antigravityHTTP11Transport(auth, http.DefaultTransport.(*http.Transport), poolCfg), Timeout: 10 * time.Second}
+	defer client.CloseIdleConnections()
 
-	const (
-		waves      = 3
-		perWave    = 8
-		totalConns = waves * perWave
-	)
 	for wave := 0; wave < waves; wave++ {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
