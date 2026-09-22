@@ -1,0 +1,2 @@
+# Preserve the exact bytes and digest of the published frontend asset on every OS.
+static/management.html -text
