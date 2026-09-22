@@ -212,8 +212,13 @@ func shouldUpgradeClaudeDeviceProfile(candidate, current ClaudeDeviceProfile) bo
 	return candidate.version.Compare(current.version) > 0
 }
 
+// plausibleClaudeCLIVersion treats the baseline as a floor for patch releases.
+// Claude Code auto-updates in the background; allow newer patch versions in the
+// same major/minor line to preserve native passthrough and prompt caching.
 func plausibleClaudeCLIVersion(candidate, baseline claudeCLIVersion) bool {
-	return candidate.Compare(baseline) == 0
+	return candidate.major == baseline.major &&
+		candidate.minor == baseline.minor &&
+		candidate.patch >= baseline.patch
 }
 
 func meetsClaudeDeviceProfileBaseline(candidate, baseline ClaudeDeviceProfile) bool {
@@ -223,7 +228,7 @@ func meetsClaudeDeviceProfileBaseline(candidate, baseline ClaudeDeviceProfile) b
 	if baseline.UserAgent == "" || !baseline.hasVersion {
 		return false
 	}
-	return plausibleClaudeCLIVersion(candidate.version, baseline.version) &&
+	return candidate.version.Compare(baseline.version) == 0 &&
 		candidate.PackageVersion == baseline.PackageVersion &&
 		candidate.RuntimeVersion == baseline.RuntimeVersion
 }
@@ -617,8 +622,15 @@ func ApplyClaudeLegacyDeviceHeaders(r *http.Request, incomingHeaders http.Header
 
 	if confirmedClaudeCode && !explicitlyDisabled {
 		softwareProfile := profile
-		if candidate, ok := extractClaudeDeviceProfile(incomingHeaders, cfg); ok && meetsClaudeDeviceProfileBaseline(candidate, profile) {
-			softwareProfile = candidate
+		// Preserve native patch upgrades without overriding configured fingerprints
+		// or accepting unmeasured SDK/runtime versions.
+		if candidate, ok := extractClaudeDeviceProfile(incomingHeaders, cfg); ok {
+			allowPatchUpgrade := cfg == nil || strings.TrimSpace(cfg.ClaudeHeaderDefaults.UserAgent) == ""
+			if meetsClaudeDeviceProfileBaseline(candidate, profile) ||
+				(allowPatchUpgrade && plausibleClaudeCLIVersion(candidate.version, profile.version) &&
+					candidate.PackageVersion == profile.PackageVersion && candidate.RuntimeVersion == profile.RuntimeVersion) {
+				softwareProfile = candidate
+			}
 		}
 		r.Header.Set("X-Stainless-Runtime-Version", softwareProfile.RuntimeVersion)
 		r.Header.Set("X-Stainless-Package-Version", softwareProfile.PackageVersion)

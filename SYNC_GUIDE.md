@@ -4,9 +4,9 @@
 
 日常前后端功能联动开发可参考 [前后端联动开发指南](INTEGRATION_GUIDE_CN.md)。该指南为单人开发提供建议性清单，不替代本文的 fork 同步安全规则。
 
-> Last updated: 2026-09-08
-> Backend upstream: `ba7e55836dee959e93ec6d41395865d9ec535086`
-> Management frontend upstream: `cb917b3111196487549f7a43e3afce4801f5d0f0`
+> Last updated: 2026-09-22
+> Backend upstream: `555662940411a07460e9d24d14477a5f50dffdb5`
+> Management frontend upstream: `bbac79d2222a0f345458203a5ab92d859f30ff30`
 
 ## 1. 核心原则
 
@@ -142,6 +142,7 @@ git merge --ff-only codex/sync-upstream-<version>
 - 四种语言的所有本地独有键；同名等价键采用上游最新措辞，语义变化必须再次确认。
 - Claude provider 的 `fingerprint-profile=claude-code-cli` 配置、展示和 YAML 往返，以及上游最新 Codex 配额 User-Agent。
 - Codex `identity-confuse`、Gemini CLI endpoint 开关的 UI、类型、搜索和 YAML 往返；编辑时保留上游及未知嵌套字段。
+- Code0 的四协议聚合、创建/编辑/删除、快速接入、品牌图标及注册入口；随上游 sponsor/provider 结构迁移，不保留孤立旧模块。
 
 `package.json` 使用上游的 `0.0.0`，正式版本由 Git tag/VERSION 注入；依赖以上游为基线，保留 `chart.js` 和 `react-chartjs-2`，使用 Bun 重新生成 `bun.lock`。
 
@@ -295,3 +296,59 @@ sha256sum "$BACKEND_REPO_PATH/static/management.html"
 - Gemini CLI 登录路由由插件提供；隔离测试关闭插件时返回 404 符合当前实现。带插件与真实测试账号的 OAuth、配额重置、ADC 刷新、credits/stream 上游联调未运行。
 - 基线已有两项产品缺口留待独立功能任务：speed-throttle 的并发/队列后端实现，以及本地 Usage snapshot/UI 对上游 queue session/parent-session/stream、TTFT、cache-write 新维度的完整展示。没有在同步中擅自定义排队/拒绝/取消行为或扩展统计 schema。
 - 完整预演与日志保留在两边忽略目录 `.codex/sync-20260908/`；最终状态/提交/下一步记录在后端 `.codex/sync-upstream-progress.md`。本地交付完成不表示发布前缺项已通过。
+
+## 11. 2026-09-22 同步记录
+
+### 11.1 固定目标与本地交付范围
+
+| 仓库 | fork 基线 | 固定 upstream 目标 | 同步分支 |
+| --- | --- | --- | --- |
+| 后端 | `6cf4871ea1d99a8c92e33e1919b92f3a17f5742f` | `555662940411a07460e9d24d14477a5f50dffdb5` | `codex/sync-upstream-20260922-55566294` |
+| 前端 | `e699ef52351577e2fc2d02f135e8df0f89be46cb` | `bbac79d2222a0f345458203a5ab92d859f30ff30` | `codex/sync-upstream-20260922-bbac79d2` |
+
+- 实施前再次 `fetch origin --no-tags`；两边 origin/main 未变化，均等于基线。保留 `codex/backup-main-6cf4871e` 和 `codex/backup-main-e699ef52`。
+- 后端上游新增 323 个提交（291 个非 merge）；前端新增 54 个（53 个非 merge）。实际使用完整固定 SHA 执行 `merge --no-ff --no-commit`，未追逐后续提交。
+- 前端 merge commit：`fb802786583e88e047c47efa0f803307a8bda27c`。其中源码与 `dist/index.html` 均已验证并提交；两个父提交精确等于前端基线及固定目标。后端最终 SHA 记录在 `.codex/sync-upstream-progress.md`，避免循环引用。
+- 本轮只交付两个本地同步分支；不更新 main、不推送、不打 tag、不发布旧版或新版，也不修改运行中的服务。
+
+### 11.2 冲突决策与语义适配
+
+- 8 个后端和 17 个前端冲突按已确认功能方案逐块合并，未整文件选择 ours/theirs。上游 Meta/Devin、discovery、插件 quota/priority、认证刷新/冷却、Codex 双工 steering 和 bootstrap 结构保留。
+- 安全错误采用上游嵌套 error、序号、认证分类与 retryable，同时固定客户端消息并过滤额外诊断字段。新增双工非终止 error 和终止 error 原始 payload 路径也经过安全处理；保留 event_id、sequence_number、retryable 及恢复后继续生成能力。集成测试同时验证无诊断泄漏和纠正请求后成功生成。
+- Claude 官方客户端允许同 major/minor 的新版 patch UA；显式配置仍优先，SDK/runtime 必须匹配测量基线，稳定化和默认平台不读取宿主 OS/Arch。上游新版 passthrough 与 fork 指纹回归均通过。
+- CreditsUsed 在结果策略之后补取上下文；保留 Antigravity Stats、Usage、别名/token cap、Gemini CLI、Vertex ADC、API-key 限流、Speed Throttle、COS/AWS SDK v2 和 OBJECTSTORE_PREFIX。普通请求不保存整个 auth，独立 cooldown 持久化继续保留。
+- 按实际 import 保留 AWS SDK、引入 zeroconf、移除未使用的 MinIO；`go mod tidy` 生成依赖校验文件。前端 chart.js/react-chartjs-2 和现有 Bun 锁文件保留，frozen 安装通过。
+- Gemini CLI 接入新的配额缓存身份/失效机制及可取消 OAuth 流程，保留 project_id 与 callback provider 映射；保留 Meta/Devin OAuth/Quota、账户搜索、Vertex ADC、Credits 汇总和未知 YAML 节点。
+- Code0 迁入当前 descriptor、adapter、sponsor definition、workbench mutation、表格及快速接入结构。新增四协议创建/编辑/删除测试，验证原配置选择、OpenAI sourceIndex 和 Claude fingerprint 不丢失；浏览器验证创建、保存前缀及删除测试资源。
+- 新上游错误断言改为已确认的安全消息契约，内部错误诊断断言继续保留；Windows 日志 UI 源码测试先归一化 CRLF。`gofmt -w .` 额外调整三处上游多返回值缩进，无无关功能开发。
+
+### 11.3 验证结果
+
+环境：Go 1.26.0 windows/amd64、Bun 1.3.14、Node 24；测试未读取生产配置或真实认证资料。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -w .`、`go mod tidy`、暂存差异检查 | 通过，无未解决冲突 |
+| 配置、API/限流、watcher、COS/store、Usage、auth/service、executor/helps、handlers 定向测试 | 通过；`backend-targeted-final.log` 和 `executor-retest.log` 保存结果 |
+| `go test -count=1 -json ./...` | 退出 0；97 个包通过，32 个包无测试，11303 个测试/子测试通过，9 个条件跳过，0 失败 |
+| `go build ./...`、Windows server 编译 | 通过 |
+| Linux amd64/arm64 server 交叉编译 | 均通过，不代表 Linux 运行测试 |
+| `bun install --frozen-lockfile`、type-check | 通过 |
+| 最终 `bun run verify` | 714 项测试、3826 个断言通过；lint、TypeScript 和生产构建通过 |
+| Code0 快速接入分组最后调整后的测试与 build | 通过；`VERSION=sync-20260922-bbac79d2`，不借用旧发布版本标识 |
+| 四语言 JSON/占位符/键审计 | 无重复键，无丢失上游键或各语言 fork 独有键，无本轮新增缺译键；原有语言覆盖差异和复数形式差异保留，并非完全键集合相等 |
+| 最终装配后的隔离 HTTP 冒烟 | 29 项通过：鉴权、YAML 往返/非法输入、Meta 配置、Quota providers/fetch/reset 校验、auth refresh 校验、API-key usage、Usage 导入去重/导出与 credits、Stats 三视图/重置、queue、OAuth 状态/回调、Vertex 缺文件、Gemini CLI 无插件路径、HTML 哈希 |
+| 浏览器联合检查 | 登录、Code0 创建/编辑/删除、Meta/Devin/Gemini CLI OAuth 和 Vertex ADC 入口、Quota 空状态、Usage 合成数据及 Stats/配置页面已检查；无真实上游请求 |
+
+首轮 Application Control 曾拦截部分测试程序；后续正常复测及最终全量全部执行成功，没有关闭或绕过系统策略。早期实际断言失败均经适配后复测通过，不沿用旧轮次的测试结论。
+
+9 个条件跳过：Devin live test 未启用；6 个外部签名语料/catalog 测试缺样本；TLS capture 缺 `CPA_TLS_FP_PROXY`；1 个 GitHub token 优先级测试因 Windows 环境变量大小写规则跳过。
+
+### 11.4 产物和发布前缺项
+
+- 前端提交内 `dist/index.html` 与后端 `static/management.html` 的 SHA-256 相同：`45728436FC6AE656362FFE8AF5071452D069F09A8F908F081D27E0A126B83594`。未手工编辑 HTML；最终隔离服务返回内容的哈希也相同。之后未再构建。
+- race 命令实际执行但被环境阻断：`go: -race requires cgo`，本机 CGO_ENABLED=0 且缺少 gcc；Linux 运行环境/WSL 不可用，Linux 全量/race 未运行。
+- `docker build -t cliproxyapi-sync-local:20260922 .` 在连接 Docker 引擎时失败：`dockerDesktopLinuxEngine` 管道不存在；未构建或推送镜像。这是环境阻断，不能记为通过。
+- 发布前仍需在 Linux/可用 Docker 环境完成全量、race、镜像构建，以及受控测试账号的真实 OAuth/ADC 刷新、插件配额和 credits/stream 联调。当前浏览器和 HTTP 检查使用临时配置、空 auths、随机回环端口、合成 key，关闭插件和页面自动更新，并使用 `--local-model`。
+- 第 10.4 节记录的 Speed Throttle 并发/队列和 Usage queue 新维度展示缺口仍保留给独立功能任务；本轮不宣称已实现。四语言原有缺译仍使用既有回退机制；Vite 的 native config loader 未来兼容提示不影响本次构建。
+- 两边 `.codex/sync-20260922/` 保存预演、验证和冒烟证据，后端 `.codex/sync-upstream-progress.md` 保存最终提交及恢复信息。本地同步完成不等于发布前检查全部完成。

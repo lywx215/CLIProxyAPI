@@ -20,6 +20,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	coresession "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/session"
@@ -51,6 +52,8 @@ type ErrorDetail struct {
 
 	// Param identifies the request field associated with the error, when provided.
 	Param any `json:"param,omitempty"`
+	// Retryable optionally indicates whether a retry might fix the issue automatically.
+	Retryable *bool `json:"retryable,omitempty"`
 }
 
 const idempotencyKeyMetadataKey = "idempotency_key"
@@ -160,6 +163,13 @@ func summarizeForDebugLog(value string, maxLen int) string {
 
 // BuildErrorResponseBody builds an OpenAI-compatible error without exposing upstream details.
 func BuildErrorResponseBody(status int, errText string) []byte {
+	return BuildErrorResponseBodyWithError(status, errText, nil)
+}
+
+// BuildErrorResponseBodyWithError builds an OpenAI-compatible JSON error response body,
+// preserving structured classifications (such as terminal upstream auth failures and retryable flags)
+// present in err.
+func BuildErrorResponseBodyWithError(status int, errText string, err error) []byte {
 	if status <= 0 {
 		status = http.StatusInternalServerError
 	}
@@ -207,8 +217,17 @@ func BuildErrorResponseBody(status int, errText string) []byte {
 		param = safeErrorParam(source["param"])
 	}
 
-	payload, err := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param}})
-	if err != nil {
+	var retryable *bool
+	if coreauth.IsTerminalAuthError(err) {
+		errType = "authentication_error"
+		code = "upstream_authentication_required"
+		r := false
+		retryable = &r
+	} else if value, ok := source["retryable"].(bool); ok {
+		retryable = &value
+	}
+	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable}})
+	if errMarshal != nil {
 		return []byte(`{"error":{"message":"internal error","type":"server_error","code":"internal_server_error"}}`)
 	}
 	return payload
@@ -269,6 +288,12 @@ func StreamingBootstrapRetries(cfg *config.SDKConfig) int {
 // Default is false.
 func PassthroughHeadersEnabled(cfg *config.SDKConfig) bool {
 	return cfg != nil && cfg.PassthroughHeaders
+}
+
+// executionPassthroughHeaders keeps client responses behind passthrough-headers while
+// plugin-host internal executions always receive filtered upstream headers.
+func executionPassthroughHeaders(cfg *config.SDKConfig, internal bool) bool {
+	return internal || PassthroughHeadersEnabled(cfg)
 }
 
 func requestExecutionMetadata(ctx context.Context) map[string]any {
@@ -349,12 +374,14 @@ func EnrichContextWithSessionHierarchy(ctx context.Context, headers http.Header,
 		if meta.SessionID != "" && meta.SessionID == meta.ParentSessionID {
 			meta.ParentSessionID = ""
 		}
-		return logging.WithClientRequestMetadata(ctx, meta)
+		ctx = logging.WithClientRequestMetadata(ctx, meta)
+		return util.WithSessionID(ctx, meta.SessionID)
 	}
-	if meta.SessionID != "" || meta.ParentSessionID != "" {
+	if meta.SessionID != "" || meta.ParentSessionID != "" || util.SessionIDFromContext(ctx) != "" {
 		meta.SessionID = ""
 		meta.ParentSessionID = ""
-		return logging.WithClientRequestMetadata(ctx, meta)
+		ctx = logging.WithClientRequestMetadata(ctx, meta)
+		return util.WithSessionID(ctx, "")
 	}
 	return ctx
 }
