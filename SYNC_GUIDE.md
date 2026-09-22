@@ -366,3 +366,4 @@ sha256sum "$BACKEND_REPO_PATH/static/management.html"
 - 本次不改动正在运行的服务。回滚源码可使用两个原 main 基线（后端 `6cf4871e`、前端 `e699ef52`）；上一正式 Release 为后端 `v7.2.49-speed-throttle.5`、前端 `v1.17.8`。已有 tag 均不移动、不覆盖。
 
 - Linux preflight initially exposed a scheduling assumption in the Antigravity concurrent pool tests: fast responses can race with pending speculative dials. Both pool-limit tests now hold each wave until every request has acquired a connection, without changing production pooling or weakening assertions. Both tests passed 100 Windows repetitions and server compilation passed. Full Linux and race checks must pass again before the backend tag is pushed.
+- The next Linux run passed the pool tests but exposed cross-test Usage delivery in the AI Studio TTFT assertion. Its record selector now matches AuthID as well as provider/model, so a queued failure from an earlier auth cannot satisfy the current request assertion. Production usage behavior is unchanged.
