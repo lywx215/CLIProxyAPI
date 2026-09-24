@@ -263,10 +263,9 @@ func EstimateNonStreamingTokens(resp []byte) int {
 	payload := speedThrottleJSONPayload(resp)
 	if gjson.ValidBytes(payload) {
 		root := gjson.ParseBytes(payload)
-		if tokens := estimateTextTokens(root); tokens > 0 {
-			return tokens
-		}
-		if total := geminiUsageCandidateTokenTotal(root); total > 0 {
+		// Match the output usage exposed to clients, including Gemini thinking
+		// tokens. Text length is only a fallback when usage is unavailable.
+		if total := geminiUsageOutputTokenTotal(root); total > 0 {
 			return total
 		}
 		for _, path := range []string{
@@ -279,7 +278,7 @@ func EstimateNonStreamingTokens(resp []byte) int {
 				return int(value.Int())
 			}
 		}
-		return 0
+		return estimateTextTokens(root)
 	}
 
 	// Fallback for legacy/simple JSON shapes.
@@ -391,29 +390,6 @@ func geminiUsageOutputTokenTotal(root gjson.Result) int {
 		{"#.response.usage_metadata.candidates_token_count", "#.response.usage_metadata.thoughts_token_count"},
 	} {
 		total := intResultSum(root.Get(pair[0])) + intResultSum(root.Get(pair[1]))
-		if total > 0 {
-			return total
-		}
-	}
-	return 0
-}
-
-func geminiUsageCandidateTokenTotal(root gjson.Result) int {
-	for _, path := range []string{
-		"usageMetadata.candidatesTokenCount",
-		"usage_metadata.candidatesTokenCount",
-		"usage_metadata.candidates_token_count",
-		"response.usageMetadata.candidatesTokenCount",
-		"response.usage_metadata.candidatesTokenCount",
-		"response.usage_metadata.candidates_token_count",
-		"#.usageMetadata.candidatesTokenCount",
-		"#.usage_metadata.candidatesTokenCount",
-		"#.usage_metadata.candidates_token_count",
-		"#.response.usageMetadata.candidatesTokenCount",
-		"#.response.usage_metadata.candidatesTokenCount",
-		"#.response.usage_metadata.candidates_token_count",
-	} {
-		total := intResultSum(root.Get(path))
 		if total > 0 {
 			return total
 		}

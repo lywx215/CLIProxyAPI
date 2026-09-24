@@ -452,7 +452,10 @@ func (h *OpenAIAPIHandler) handleNonStreamingResponse(c *gin.Context, rawJSON []
 
 	// Non-streaming speed throttle
 	tokenCount := handlers.EstimateNonStreamingTokens(resp)
-	throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount)
+	if !throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount) {
+		cliCancel(cliCtx.Err())
+		return
+	}
 
 	handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 	_, _ = c.Writer.Write(resp)

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -256,12 +257,21 @@ func TestSpeedThrottleEstimateNonStreamingTokensRecognizesOutputTokenFields(t *t
 		{name: "usage output tokens", resp: `{"usage":{"output_tokens":234}}`, want: 234},
 		{name: "responses usage completion tokens", resp: `{"response":{"usage":{"completion_tokens":345}}}`, want: 345},
 		{name: "usage completion tokens", resp: `{"usage":{"completion_tokens":456}}`, want: 456},
-		{name: "wrapped gemini usage metadata ignores thoughts", resp: `{"response":{"usageMetadata":{"candidatesTokenCount":567,"thoughtsTokenCount":12}}}`, want: 567},
-		{name: "gemini usage metadata ignores thoughts", resp: `{"usageMetadata":{"candidatesTokenCount":678,"thoughtsTokenCount":13}}`, want: 678},
-		{name: "wrapped gemini snake usage metadata ignores thoughts", resp: `{"response":{"usage_metadata":{"candidatesTokenCount":789,"thoughtsTokenCount":14}}}`, want: 789},
-		{name: "gemini snake usage metadata ignores thoughts", resp: `{"usage_metadata":{"candidatesTokenCount":890,"thoughtsTokenCount":15}}`, want: 890},
-		{name: "gemini array usage metadata ignores thoughts", resp: `[{"usageMetadata":{"candidatesTokenCount":901,"thoughtsTokenCount":16}}]`, want: 901},
-		{name: "actual text takes precedence over usage", resp: `{"candidates":[{"content":{"parts":[{"text":"abcdefghijklmnop"},{"text":"qrstuvwxyz","thought":true}]}}],"usageMetadata":{"candidatesTokenCount":999,"thoughtsTokenCount":999}}`, want: 6},
+		{name: "wrapped gemini usage metadata includes thoughts", resp: `{"response":{"usageMetadata":{"candidatesTokenCount":567,"thoughtsTokenCount":12}}}`, want: 579},
+		{name: "gemini usage metadata includes thoughts", resp: `{"usageMetadata":{"candidatesTokenCount":678,"thoughtsTokenCount":13}}`, want: 691},
+		{name: "wrapped gemini snake usage metadata includes thoughts", resp: `{"response":{"usage_metadata":{"candidatesTokenCount":789,"thoughtsTokenCount":14}}}`, want: 803},
+		{name: "gemini snake usage metadata includes thoughts", resp: `{"usage_metadata":{"candidatesTokenCount":890,"thoughtsTokenCount":15}}`, want: 905},
+		{name: "gemini array usage metadata includes thoughts", resp: `[{"usageMetadata":{"candidatesTokenCount":901,"thoughtsTokenCount":16}}]`, want: 917},
+		{name: "gemini usage takes precedence over text", resp: `{"candidates":[{"content":{"parts":[{"text":"abcdefghijklmnop"},{"text":"qrstuvwxyz","thought":true}]}}],"usageMetadata":{"candidatesTokenCount":999,"thoughtsTokenCount":999}}`, want: 1998},
+		{name: "gemini thinking only", resp: `{"usageMetadata":{"thoughtsTokenCount":2080}}`, want: 2080},
+		{name: "gemini snake token fields", resp: `{"usage_metadata":{"candidates_token_count":1836,"thoughts_token_count":244}}`, want: 2080},
+		{name: "chat usage takes precedence over text without double counting reasoning", resp: `{"choices":[{"message":{"content":"hello"}}],"usage":{"completion_tokens":2080,"completion_tokens_details":{"reasoning_tokens":1800}}}`, want: 2080},
+		{name: "responses usage takes precedence over text", resp: `{"output":[{"content":[{"text":"hello"}]}],"usage":{"output_tokens":2080,"output_tokens_details":{"reasoning_tokens":1800}}}`, want: 2080},
+		{name: "wrapped responses usage takes precedence over text", resp: `{"response":{"output":[{"content":[{"text":"hello"}]}],"usage":{"output_tokens":2080}}}`, want: 2080},
+		{name: "tool calls use output usage", resp: `{"choices":[{"message":{"tool_calls":[{"function":{"name":"test","arguments":"{}"}}]}}],"usage":{"completion_tokens":123}}`, want: 123},
+		{name: "text fallback without usage", resp: `{"choices":[{"message":{"content":"abcdefghijklmnop"}}]}`, want: 4},
+		{name: "text fallback with empty usage", resp: `{"candidates":[{"content":{"parts":[{"text":"abcdefghijklmnop"}]}}],"usageMetadata":{}}`, want: 4},
+		{name: "input usage is not output", resp: `{"usage":{"prompt_tokens":15886,"total_tokens":15886}}`, want: 0},
 	}
 
 	for _, tc := range tests {
@@ -269,6 +279,32 @@ func TestSpeedThrottleEstimateNonStreamingTokensRecognizesOutputTokenFields(t *t
 			if got := EstimateNonStreamingTokens([]byte(tc.resp)); got != tc.want {
 				t.Fatalf("EstimateNonStreamingTokens() = %d, want %d", got, tc.want)
 			}
+		})
+	}
+}
+
+func TestSpeedThrottleNonStreamingDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		upstream time.Duration
+		tokens   int
+		want     time.Duration
+	}{
+		{name: "reported output rate", upstream: 8 * time.Second, tokens: 2080, want: 20800 * time.Millisecond},
+		{name: "first token delay", tokens: 10, want: 3500 * time.Millisecond},
+		{name: "slow upstream needs no extra delay", upstream: 30 * time.Second, tokens: 2080, want: 30 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				throttler := &RequestThrottler{targetRate: 100, ttftDelay: 3500 * time.Millisecond}
+				start := time.Now().Add(-tc.upstream)
+				if !throttler.ThrottleNonStreaming(context.Background(), start, tc.tokens) {
+					t.Fatal("ThrottleNonStreaming() = false, want true")
+				}
+				if got := time.Since(start); got != tc.want {
+					t.Fatalf("request duration = %v, want %v", got, tc.want)
+				}
+			})
 		})
 	}
 }

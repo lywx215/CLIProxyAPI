@@ -322,7 +322,10 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 
 	// Non-streaming speed throttle: estimate tokens and delay if needed
 	tokenCount := handlers.EstimateNonStreamingTokens(resp)
-	throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount)
+	if !throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount) {
+		cliCancel(cliCtx.Err())
+		return
+	}
 
 	handlers.WriteUpstreamHeaders(c.Writer.Header(), upstreamHeaders)
 	_, _ = c.Writer.Write(resp)
