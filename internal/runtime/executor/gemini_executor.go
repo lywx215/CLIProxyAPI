@@ -238,6 +238,9 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		return resp, err
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, data)
+	if action == "generateContent" {
+		helps.LogGeminiNonStreamingResponse(ctx, requestedModel, baseModel, body, data)
+	}
 	reporter.ObserveResponseModel(data)
 	reporter.Publish(ctx, helps.ParseGeminiUsage(data))
 	var param any
