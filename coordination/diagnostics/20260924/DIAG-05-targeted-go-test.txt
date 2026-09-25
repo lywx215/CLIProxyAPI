@@ -1,0 +1,8 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	5.456s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	8.196s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers	4.269s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini	4.956s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth	3.995s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/logging	10.943s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/util	4.414s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps	8.515s

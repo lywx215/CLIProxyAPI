@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -24,9 +25,15 @@ func GinDiagnostics() gin.HandlerFunc {
 			func() bool { return log.IsLevelEnabled(log.InfoLevel) },
 			func() bool { return log.IsLevelEnabled(log.DebugLevel) },
 			func(line []byte) error {
-				log.WithField("diagnostics_line", diagnosticLine(line)).Info("")
+				entry := log.WithField("diagnostics_line", diagnosticLine(line))
+				if bytes.Contains(line, []byte(`"recordKind":"debug"`)) {
+					entry.Debug("")
+				} else {
+					entry.Info("")
+				}
 				return nil
 			}))
+		diagnosticEngine.Load().MarkSinkLossUnknown()
 	})
 	return diagnosticEngine.Load().GinMiddleware(func(c *gin.Context) string {
 		if id := GetGinRequestID(c); id != "" {

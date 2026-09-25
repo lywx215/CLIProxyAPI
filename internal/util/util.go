@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -66,6 +67,9 @@ func SetLogLevel(cfg *config.Config) {
 	}
 
 	if currentLevel != newLevel {
+		if newLevel < log.DebugLevel {
+			diagnostics.NotifyDebugDisabled()
+		}
 		log.SetLevel(newLevel)
 		log.Infof("log level changed from %s to %s (debug=%t)", currentLevel, newLevel, cfg.Debug)
 	}

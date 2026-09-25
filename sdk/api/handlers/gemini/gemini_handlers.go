@@ -189,6 +189,7 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 	}
 
 	throttler := handlers.NewRequestThrottler(h.Cfg)
+	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
@@ -309,6 +310,7 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 	alt := h.GetAlt(c)
 	requestStart := time.Now()
 	throttler := handlers.NewRequestThrottler(h.Cfg)
+	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	stopKeepAlive := h.StartNonStreamingKeepAlive(c, cliCtx)
@@ -321,7 +323,7 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 	}
 
 	// Non-streaming speed throttle: estimate tokens and delay if needed
-	tokenCount := handlers.EstimateNonStreamingTokens(resp)
+	tokenCount := handlers.EstimateObservedNonStreamingTokens(resp, throttler)
 	if !throttler.ThrottleNonStreaming(cliCtx, requestStart, tokenCount) {
 		cliCancel(cliCtx.Err())
 		return

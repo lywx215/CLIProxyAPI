@@ -4,7 +4,7 @@ This module consumes the frozen `contracts/diagnostics/v1` artifact from commit
 `bb291667f7b6bd7a1dab6f9b7f906b5871d1306c`. Its wire schema is
 `ai-proxy-diagnostics/1`, artifact `1.0.0-rc.1`, manifest byte digest
 `ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4`.
-The contract directory is unchanged. This implementation is subject to DIAG-04
+The contract directory is unchanged. This implementation is subject to DIAG-05
 coordinator inspection and exact-commit review; it is not a release approval.
 
 ## Configuration and identity
@@ -56,9 +56,12 @@ base builder until its HTTP/1.1 configuration is complete. Devin's concrete
 transport assertion and compression clone happen before decoration. Existing
 usage tracking stays outside diagnostics and remains the sole caller of
 `MarkUpstreamAttempt` at that boundary. It supplies the `model` call-kind label;
-unclassified synchronous helper calls use `other`. No business attempt is
-invented: attempt ID/number/retry scope remain null for DIAG-05 to observe at
-their actual owner. Redirect calls use `redirect`.
+unclassified synchronous helper calls use `other`. The conductor labels each actual Gemini/Antigravity executor dispatch with a
+locally generated attempt ID and a server-local sequence under
+`conductor_executor`. Explicit re-execution creates a new identity. All HTTP
+calls inside that dispatch inherit it; redirects do not create an attempt.
+Direct executor calls without this owner retain null attempt fields. Existing
+usage attempt trackers are untouched. Redirect calls use `redirect`.
 
 Every observable RoundTrip under an active server gets a new call span and an
 one-based call number allocated under the server mutex. Each hop checks its actual URL,
@@ -95,21 +98,31 @@ All three delivered synthetic examples are below 2 KiB.
 No usage, content structure, credential, raw URL, raw error, model name, or
 throttle data is collected in basic records.
 
-This foundation declares only HTTP inbound/outbound capabilities. It constructs
-no DEBUG semantic records, even when the application's DEBUG switch is on;
-`debugCapture=none`. Terminal log sequence is currently 1, allocated on terminal
-construction. DIAG-05 must extend the span's sequence allocation when adding its
-four semantic observations, and preserve sealing and terminal invariants.
+The process declares HTTP, normalization, attempt-result, conversion and throttle
+capabilities for the paths in the DIAG-05 matrix below. Basic and DEBUG events
+share the server's sequence allocator. Calls currently contain one basic
+terminal, so each call's own sequence remains 1. Server Finish seals immediately,
+waits for already-constructed semantic records, then snapshots counters and
+allocates its terminal sequence. No subsequent semantic event may be appended.
 
-The shared logger has no lifetime switch notification or downstream collector
-loss acknowledgement. Access capture is therefore conservatively `unknown` and
-sink-wide dropped total is null. The engine counts serialization/size failures
-and errors explicitly returned by a supplied sink. The production logrus adapter
-always returns nil: logrus reports writer errors to stderr, not back to this
-engine. Its in-memory counter therefore does not observe actual logrus writer,
-Home/TUI queue, rotation, or collector losses. Do not interpret
-these terminals as `full` debug coverage. Source-scope and coverage helpers apply
-the shared vectors; they neither merge events nor establish remote edges.
+A request opts into DEBUG only at server start. `NotifyDebugDisabled`, called
+before the application's existing `util.SetLogLevel` transition, advances a
+process epoch. A disabled/re-enabled request remains interrupted and does not
+resume collection. Mid-request enablement does not opt in or backfill. Out-of-band
+embedders that change logrus directly must notify this module on disable; those
+unannounced, unobserved off/on transitions are outside the lifetime guarantee.
+The production configuration paths all use the existing utility.
+
+Access capture remains `unknown`; sink-wide dropped total remains null. The
+production logrus adapter marks per-span zero-loss acknowledgements unavailable,
+so `droppedForSpan` is null unless a positive engine-observed loss is known.
+Custom synchronous sinks with acknowledged errors count known per-span drops.
+Serialization failure and line oversize use a same-sequence truncated stub;
+truncated events are tracked separately. A sink panic is contained and counted.
+A terminal cannot retrospectively report its own downstream write failure.
+DEBUG lines use the DEBUG logrus gate; basic lines use INFO. Neither this module
+nor an offline consumer can claim full production export coverage from these
+unknown acknowledgements.
 
 Gin normal Write/WriteString/Flush/WriteHeaderNow commits replace peer `X-Diag-*`
 with local IDs; errors and streaming use the same boundary. Existing business
@@ -149,8 +162,8 @@ calls without Gin diagnostics are not implicitly attached to a model request.
 | Context-supplied RoundTripper | Context and outer call boundary | Wrapped after provider configuration | Its private nested sends/URL rewrites are not observable; it must honor the request destination |
 
 The baseline has no `internal/api/modules/amp` directory despite the historical
-architecture note; no AMP coverage is claimed. No provider-specific detailed
-semantic observation is added by this task.
+architecture note; no AMP coverage is claimed. DIAG-05 detailed coverage is specified below; other providers retain HTTP-only
+coverage.
 
 ## Header source inventory
 
@@ -239,3 +252,77 @@ write ownership remains unchanged: SSE select loops serialize writes, and the
 nonstream keepalive stop function waits for its goroutine before the final write.
 No new asynchronous writer or backpressure mechanism was introduced. Linux/race
 validation remains unavailable in this Windows environment.
+
+
+## DIAG-05 semantic observation matrix
+
+| Path | Request / upstream / conversion | Throttle |
+| --- | --- | --- |
+| Gemini generateContent and streamGenerateContent executor | Yes; request contents, raw frames before usage filtering, actual converter output | Gemini HTTP handlers, enabled or disabled |
+| Antigravity ordinary Gemini generate/stream | Yes; wrapped request/response handled | Gemini HTTP handlers when used |
+| Antigravity internal stream-to-nonstream path (including Gemini 3 Pro) | Yes; original frames and actual collected result, deliveryMode=collected | Same Gemini nonstream handler |
+| Gemini-family output to OpenAI chat | Delivered numeric usage, text/thought counts; incomplete tool fragments remain unknown | OpenAI handlers not instrumented in DIAG-05 |
+| Gemini-family output to OpenAI Responses or Claude | Delivered numeric usage only; detailed output counts/result unknown | Those handlers not instrumented in DIAG-05 |
+| Native Gemini Interactions, count-token, Antigravity compaction, auxiliary passthrough | Not covered by these semantic hooks | No claim |
+| Other executors, custom plugins, browser/WS paths, new-api | HTTP matrix above only where applicable | No new dedicated logic |
+
+`protocol.go` retains only bounded numeric summaries, never complete response
+bodies, arguments, signatures, hashes, names or raw errors. Inspection operates
+on bytes already read by the executor. JSON observations are bounded to 4 MiB
+and depth 64; an exceeded bound produces incomplete/unknown observation without
+changing the business parser. No frame buffering, additional read, request,
+flush, timeout, retry or response channel is introduced. Upstream frames are
+observed before the existing SSE usage filter, and converted chunks only after
+their existing channel send succeeds. Cleanup failures remain the existing
+business/logging responsibility and cannot replace the recorded generation result.
+
+Request before/after counts and the last four message structures distinguish
+caller-supplied empty turns from resulting added empty turns. The frozen contract
+has no `insert_empty` operation or phase label. Unclassified payload changes use the
+allowlisted `other` operation/reason; this does not claim a removed user, a
+particular cleanup rationale or any gcli2api normalization. Model aliases and
+credential references remain null; no supposedly-safe model/account string is
+accepted from business data. Other input protocols have unknown request structure.
+
+Usage is observed independently from accounting. Only explicit finite,
+nonnegative safe integers are present; zero remains present. Raw fields are
+protocol-allowlisted. Gemini candidate and reasoning counts remain separate;
+outputTotal is their observational sum only when both are explicitly known.
+An absent component is not invented as zero. The converted protocol's actual
+output field is read directly, including zeros its converter may synthesize.
+OpenAI completion/output totals and Claude output totals already include reasoning
+on these translators; reasoning is not added again. Repeated cumulative usage
+snapshots replace rather than sum earlier snapshots. These projections neither
+feed nor modify usage.Detail, the existing token accounting, or billing. The
+number 87 is used solely as one fixture's 7+80 output.
+
+Upstream success requires observed terminal evidence for every observed Gemini
+candidate, complete parsing and effective ordinary text, valid-shaped tool call,
+or media part. Thought-only and whitespace-only output are not ordinary text.
+Error frames and read errors override success. Native client receipt is never
+inferred from a successful local conversion or HTTP 200. For protocol fields or
+validity not observed, counts/result remain null/unknown instead of guessed.
+
+Timing source is server_monotonic. `firstEffectiveOutputMs` is measured from this
+server's start at its first effective frame observation, independently per
+exchange. First raw byte, response commit and first downstream effective timing
+are currently null: header arrival or a parsed frame is not a first-byte clock.
+`attempt.totalMs` starts at the conductor's executor dispatch when that owner is
+present, otherwise at the directly observed HTTP operation's start. No prior
+attempt, wall clock, legacy stat or remote timestamp is reused. Direct calls with
+null attempt identity must not be grouped into a fabricated business retry.
+
+The throttler observes its already-randomized effective rate/TTFT and the actual
+wait branches. `configRevision=unversioned` explicitly records that the existing throttler has
+no config revision counter; the rate and delay are the actual immutable selection. `tokenCount` is the token
+numerator actually considered by this limiter, including a canceled pending
+chunk; it is not evidence that those tokens reached the client. Streaming uses
+the existing per-chunk text estimate and does not reconcile a trailing cumulative
+usage frame. Nonstreaming records the selected provider-output, provider-candidate or estimated
+branch and the existing minimum-one clamp. Planned waits sum positive residual
+waits after upstream elapsed time; actual waits include only time in those wait
+branches, including cancellation. Disabled/no-wait paths do not invent token use.
+
+See the DIAG-05 delivery for actual tests, synthetic artifacts, source formulas,
+local DIAG-07 entry instructions and environmental restrictions. Production
+multi-worker collection and external logrus lifecycle changes remain unverified.

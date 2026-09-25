@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -129,6 +130,13 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 		err = errReq
 		return nil, err
 	}
+	diagnostics.ObserveNormalized(ctx, originalPayloadSource, requestPayload)
+	diag := diagnostics.NewExchange(ctx, responseFormat.String(), true, true)
+	defer func() {
+		if err != nil {
+			diag.Finish(err)
+		}
+	}()
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
@@ -138,9 +146,12 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 		err = errDo
 		return nil, err
 	}
+	diag.Status(httpResp.StatusCode)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, httpResp.StatusCode, httpResp.Header.Clone())
 	if httpResp.StatusCode < http.StatusOK || httpResp.StatusCode >= http.StatusMultipleChoices {
 		bodyBytes, errRead := io.ReadAll(httpResp.Body)
+		diag.Upstream(bodyBytes)
+		diag.ReadFinished(errRead)
 		if errClose := httpResp.Body.Close(); errClose != nil {
 			log.Errorf("antigravity executor: close response body error: %v", errClose)
 		}
@@ -196,6 +207,7 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 	out := make(chan cliproxyexecutor.StreamChunk)
 	go func(resp *http.Response) {
 		defer close(out)
+		defer func() { diag.Finish(nil) }()
 		defer func() {
 			if errClose := resp.Body.Close(); errClose != nil {
 				log.Errorf("antigravity executor: close response line error: %v", errClose)
@@ -207,6 +219,9 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 		var param any
 		for scanner.Scan() {
 			line := scanner.Bytes()
+			if raw := helps.JSONPayload(line); len(raw) > 0 {
+				diag.Upstream(raw)
+			}
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 			if replayAccumulator != nil {
 				replayAccumulator.ObserveSSELine(line)
@@ -231,11 +246,13 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 			for i := range chunks {
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion(chunks[i], requestedModel, baseModel)}:
+					diag.Delivered(chunks[i])
 				case <-ctx.Done():
 					return
 				}
 			}
 		}
+		diag.ReadFinished(scanner.Err())
 		if errScan := scanner.Err(); errScan != nil {
 			helps.RecordAPIResponseError(ctx, e.cfg, errScan)
 			reporter.PublishFailure(ctx, errScan)
@@ -251,6 +268,7 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 			for i := range tail {
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion(tail[i], requestedModel, baseModel)}:
+					diag.Delivered(tail[i])
 				case <-ctx.Done():
 					return
 				}

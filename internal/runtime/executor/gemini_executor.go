@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	internalsignature "github.com/router-for-me/CLIProxyAPI/v7/internal/signature"
@@ -184,6 +185,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 
 	body, _ = sjson.DeleteBytes(body, "session_id")
 	reporter.SetTranslatedReasoningEffort(body, to.String())
+	diagnostics.ObserveNormalized(ctx, originalPayloadSource, body)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -214,6 +216,8 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
+	diag := diagnostics.NewExchange(ctx, responseFormat.String(), false, false)
+	defer func() { diag.Finish(err) }()
 	httpResp, err := httpClient.Do(httpReq)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
@@ -224,15 +228,20 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 			log.Errorf("gemini executor: close response body error: %v", errClose)
 		}
 	}()
+	diag.Status(httpResp.StatusCode)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, httpResp.StatusCode, httpResp.Header.Clone())
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		b, _ := io.ReadAll(httpResp.Body)
+		b, errReadDiagnostic := io.ReadAll(httpResp.Body)
+		diag.Upstream(b)
+		diag.ReadFinished(errReadDiagnostic)
 		helps.AppendAPIResponseChunk(ctx, e.cfg, b)
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b))
 		err = statusErr{code: httpResp.StatusCode, msg: string(b)}
 		return resp, err
 	}
 	data, err := io.ReadAll(httpResp.Body)
+	diag.Upstream(data)
+	diag.ReadFinished(err)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return resp, err
@@ -249,6 +258,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		out = helps.EnsureResponsesUsageDetails(out)
 	}
 	outBytes := helps.RewriteResponseModelVersion([]byte(out), requestedModel, baseModel)
+	diag.Delivered(outBytes)
 	resp = cliproxyexecutor.Response{Payload: outBytes, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }
@@ -304,6 +314,7 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 
 	body, _ = sjson.DeleteBytes(body, "session_id")
 	reporter.SetTranslatedReasoningEffort(body, to.String())
+	diagnostics.ObserveNormalized(ctx, originalPayloadSource, body)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -334,14 +345,23 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
+	diag := diagnostics.NewExchange(ctx, responseFormat.String(), true, true)
+	defer func() {
+		if err != nil {
+			diag.Finish(err)
+		}
+	}()
 	httpResp, err := httpClient.Do(httpReq)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return nil, err
 	}
+	diag.Status(httpResp.StatusCode)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, httpResp.StatusCode, httpResp.Header.Clone())
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		b, _ := io.ReadAll(httpResp.Body)
+		b, errReadDiagnostic := io.ReadAll(httpResp.Body)
+		diag.Upstream(b)
+		diag.ReadFinished(errReadDiagnostic)
 		helps.AppendAPIResponseChunk(ctx, e.cfg, b)
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b))
 		if errClose := httpResp.Body.Close(); errClose != nil {
@@ -353,6 +373,7 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	out := make(chan cliproxyexecutor.StreamChunk)
 	go func() {
 		defer close(out)
+		defer func() { diag.Finish(nil) }()
 		defer reporter.EnsurePublished(ctx)
 		defer func() {
 			if errClose := httpResp.Body.Close(); errClose != nil {
@@ -365,6 +386,9 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		var param any
 		for scanner.Scan() {
 			line := scanner.Bytes()
+			if raw := helps.JSONPayload(line); len(raw) > 0 {
+				diag.Upstream(raw)
+			}
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 			reporter.ObserveResponseModel(line)
 			filtered := helps.FilterSSEUsageMetadata(line)
@@ -379,15 +403,18 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			for i := range lines {
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}:
+					diag.Delivered([]byte(lines[i]))
 				case <-ctx.Done():
 					return
 				}
 			}
 		}
+		diag.ReadFinished(scanner.Err())
 		lines := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, opts.OriginalRequest, body, []byte("[DONE]"), &param, claudeInputTokens)
 		for i := range lines {
 			select {
 			case out <- cliproxyexecutor.StreamChunk{Payload: helps.RewriteSSEModelVersion([]byte(lines[i]), requestedModel, baseModel)}:
+				diag.Delivered([]byte(lines[i]))
 			case <-ctx.Done():
 				return
 			}

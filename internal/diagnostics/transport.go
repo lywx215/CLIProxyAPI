@@ -113,6 +113,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	r := s.record("call", "diag.call", spanID, &s.id)
 	r.CallNo = &callNo
+	applyAttempt(req.Context(), &r)
 	c := &callCompletion{server: s, record: r, data: data, started: time.Now(), ctx: req.Context()}
 	outgoing := prepareRequest(req, s.incoming, s.requestID, spanID, peer != nil)
 	resp, err := t.base.RoundTrip(outgoing)
@@ -170,7 +171,7 @@ func (c *callCompletion) finish(reason string) {
 	stop := c.stop
 	c.record.TS = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	c.record.LogSeq = 1
-	c.data.EndReason, c.data.TotalMS, c.data.Coverage = reason, elapsed(c.started), c.server.coverage()
+	c.data.EndReason, c.data.TotalMS, c.data.Coverage = reason, elapsed(c.started), Coverage{ExpectedLastLogSeq: 1, DroppedForSpan: c.server.engine.knownDrops(0), DebugCapture: "none", AccessCapture: "unknown"}
 	c.record.Data = c.data
 	r := c.record
 	c.mu.Unlock()

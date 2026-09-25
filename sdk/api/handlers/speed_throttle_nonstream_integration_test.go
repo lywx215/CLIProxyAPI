@@ -1,16 +1,20 @@
 package handlers_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini"
@@ -47,6 +51,7 @@ func (*nonStreamingThrottleExecutor) HttpRequest(context.Context, *coreauth.Auth
 }
 
 func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
+	var artifact bytes.Buffer
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {
 		name     string
@@ -89,6 +94,19 @@ func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
 						},
 					}, manager)
 					router := gin.New()
+					var diagnosticRecords []diagnostics.Record
+					if tc.name == "gemini" {
+						engine := diagnostics.NewEngine(diagnostics.ResourceConfig{Environment: "test", DeploymentID: "synthetic", InstanceID: "throttle-fixture"}, "", nil, func() bool { return true }, func(line []byte) error {
+							var r diagnostics.Record
+							if err := json.Unmarshal(line[6:], &r); err != nil {
+								return err
+							}
+							diagnosticRecords = append(diagnosticRecords, r)
+							artifact.Write(line)
+							return nil
+						})
+						router.Use(engine.GinMiddleware(func(*gin.Context) string { return "throttle-fixture" }))
+					}
 					router.POST("/v1/chat/completions", openai.NewOpenAIAPIHandler(base).ChatCompletions)
 					router.POST("/v1/responses", openai.NewOpenAIResponsesAPIHandler(base).Responses)
 					router.POST("/v1beta/models/*action", gemini.NewGeminiAPIHandler(base).GeminiHandler)
@@ -111,6 +129,34 @@ func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
 						cancel()
 					}
 					<-done
+					if tc.name == "gemini" {
+						count := 0
+						for _, r := range diagnosticRecords {
+							if r.Event != "throttle.finished" {
+								continue
+							}
+							count++
+							d := r.Data.(map[string]any)
+							if d["enabled"] != (mode != "disabled") || d["cancelled"] != (mode == "cancelled") {
+								t.Fatalf("throttle gate %v", d)
+							}
+							if mode != "disabled" {
+								if d["tokenSource"] != "provider_output" || d["tokenCount"] != float64(2080) || d["targetTokensPerSecond"] != float64(100) || d["selectedFirstTokenDelayMs"] != float64(3500) || d["plannedWaitMs"] != float64(20800) {
+									t.Fatalf("throttle values %v", d)
+								}
+								actual := float64(20800)
+								if mode == "cancelled" {
+									actual = 0
+								}
+								if d["actualWaitMs"] != actual {
+									t.Fatalf("wait causal evidence %v", d)
+								}
+							}
+						}
+						if count != 1 {
+							t.Fatalf("throttle events = %d", count)
+						}
+					}
 					if mode == "cancelled" {
 						if recorder.Body.Len() != 0 || time.Since(start) != 0 {
 							t.Fatal("cancelled throttle should return immediately without a response body")
@@ -129,6 +175,11 @@ func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
 					}
 				})
 			})
+		}
+	}
+	if path := os.Getenv("DIAG05_THROTTLE_RECORDS"); path != "" {
+		if err := os.WriteFile(path, artifact.Bytes(), 0600); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

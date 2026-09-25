@@ -25,7 +25,8 @@ type RequestThrottler struct {
 	ttftDelay      time.Duration // TTFT delay for this request
 	startTime      time.Time     // request start time used for cumulative throttling
 	totalTokens    int           // total tokens sent so far
-	firstChunkSent bool          // whether the first chunk has been sent
+	diagnostic     *throttleObservation
+	firstChunkSent bool // whether the first chunk has been sent
 }
 
 // NewRequestThrottler creates a throttler for a single request with randomized parameters.
@@ -93,6 +94,7 @@ func (t *RequestThrottler) ThrottleFirstChunk(ctx context.Context, requestStartT
 		return true
 	}
 
+	defer t.observeWait(ctx, remaining)()
 	select {
 	case <-ctx.Done():
 		return false
@@ -113,6 +115,7 @@ func (t *RequestThrottler) ThrottleFirstChunkWithPayload(ctx context.Context, re
 	}
 
 	tokens := EstimateChunkTokens(chunk)
+	t.observeTokens(tokens, "estimated", true)
 	if tokens <= 0 {
 		return t.ThrottleFirstChunk(ctx, requestStartTime)
 	}
@@ -126,6 +129,7 @@ func (t *RequestThrottler) ThrottleFirstChunkWithPayload(ctx context.Context, re
 	elapsed := time.Since(requestStartTime)
 	remaining := targetDelay - elapsed
 	if remaining > 0 {
+		defer t.observeWait(ctx, remaining)()
 		select {
 		case <-ctx.Done():
 			return false
@@ -148,6 +152,7 @@ func (t *RequestThrottler) ThrottleChunk(ctx context.Context, chunk []byte) bool
 	}
 
 	tokens := EstimateChunkTokens(chunk)
+	t.observeTokens(tokens, "estimated", true)
 	if tokens <= 0 {
 		return true
 	}
@@ -162,6 +167,7 @@ func (t *RequestThrottler) ThrottleChunk(ctx context.Context, chunk []byte) bool
 		return true
 	}
 
+	defer t.observeWait(ctx, sleepDuration)()
 	select {
 	case <-ctx.Done():
 		return false
@@ -182,6 +188,7 @@ func (t *RequestThrottler) ThrottleNonStreaming(ctx context.Context, requestStar
 		tokenCount = 1
 	}
 
+	t.observeTokens(tokenCount, "", false)
 	// Target time = max(TTFT delay, tokens / rate)
 	rateDelay := time.Duration(float64(tokenCount) / t.targetRate * float64(time.Second))
 	targetDelay := t.ttftDelay
@@ -195,6 +202,7 @@ func (t *RequestThrottler) ThrottleNonStreaming(ctx context.Context, requestStar
 		return true
 	}
 
+	defer t.observeWait(ctx, remaining)()
 	select {
 	case <-ctx.Done():
 		return false
@@ -256,8 +264,13 @@ func EstimateChunkTokens(chunk []byte) int {
 // from a non-streaming response body. It tries known output-token usage fields
 // first, then falls back to a byte-length estimate.
 func EstimateNonStreamingTokens(resp []byte) int {
+	n, _ := estimateNonStreamingTokensWithSource(resp)
+	return n
+}
+
+func estimateNonStreamingTokensWithSource(resp []byte) (int, string) {
 	if len(resp) == 0 {
-		return 1
+		return 1, "estimated"
 	}
 
 	payload := speedThrottleJSONPayload(resp)
@@ -265,8 +278,8 @@ func EstimateNonStreamingTokens(resp []byte) int {
 		root := gjson.ParseBytes(payload)
 		// Match the output usage exposed to clients, including Gemini thinking
 		// tokens. Text length is only a fallback when usage is unavailable.
-		if total := geminiUsageOutputTokenTotal(root); total > 0 {
-			return total
+		if total, source := geminiUsageOutputTokenTotalWithSource(root); total > 0 {
+			return total, source
 		}
 		for _, path := range []string{
 			"response.usage.output_tokens",
@@ -275,25 +288,25 @@ func EstimateNonStreamingTokens(resp []byte) int {
 			"usage.completion_tokens",
 		} {
 			if value := root.Get(path); value.Exists() && value.Int() > 0 {
-				return int(value.Int())
+				return int(value.Int()), "provider_output"
 			}
 		}
-		return estimateTextTokens(root)
+		return estimateTextTokens(root), "estimated"
 	}
 
 	// Fallback for legacy/simple JSON shapes.
 	if idx := findJSONIntField(resp, "candidatesTokenCount"); idx > 0 {
-		return idx
+		return idx, "provider_candidate"
 	}
 	if idx := findJSONIntField(resp, "completion_tokens"); idx > 0 {
-		return idx
+		return idx, "provider_output"
 	}
 	if idx := findJSONIntField(resp, "output_tokens"); idx > 0 {
-		return idx
+		return idx, "provider_output"
 	}
 
 	// Fallback: estimate from response body size
-	return EstimateChunkTokens(resp)
+	return EstimateChunkTokens(resp), "estimated"
 }
 
 func estimateTextTokens(root gjson.Result) int {
@@ -375,6 +388,11 @@ func speedThrottleJSONPayload(chunk []byte) []byte {
 }
 
 func geminiUsageOutputTokenTotal(root gjson.Result) int {
+	total, _ := geminiUsageOutputTokenTotalWithSource(root)
+	return total
+}
+
+func geminiUsageOutputTokenTotalWithSource(root gjson.Result) (int, string) {
 	for _, pair := range [][2]string{
 		{"usageMetadata.candidatesTokenCount", "usageMetadata.thoughtsTokenCount"},
 		{"usage_metadata.candidatesTokenCount", "usage_metadata.thoughtsTokenCount"},
@@ -389,12 +407,17 @@ func geminiUsageOutputTokenTotal(root gjson.Result) int {
 		{"#.response.usage_metadata.candidatesTokenCount", "#.response.usage_metadata.thoughtsTokenCount"},
 		{"#.response.usage_metadata.candidates_token_count", "#.response.usage_metadata.thoughts_token_count"},
 	} {
-		total := intResultSum(root.Get(pair[0])) + intResultSum(root.Get(pair[1]))
+		candidate, reasoning := root.Get(pair[0]), root.Get(pair[1])
+		total := intResultSum(candidate) + intResultSum(reasoning)
 		if total > 0 {
-			return total
+			source := "provider_output"
+			if !reasoning.Exists() || (reasoning.IsArray() && len(reasoning.Array()) == 0) {
+				source = "provider_candidate"
+			}
+			return total, source
 		}
 	}
-	return 0
+	return 0, "unknown"
 }
 
 func intResultSum(result gjson.Result) int {

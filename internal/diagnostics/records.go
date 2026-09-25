@@ -109,7 +109,7 @@ type Record struct {
 
 type Coverage struct {
 	ExpectedLastLogSeq uint64  `json:"expectedLastLogSeq"`
-	DroppedForSpan     uint64  `json:"droppedForSpan"`
+	DroppedForSpan     *uint64 `json:"droppedForSpan"`
 	SinkDroppedTotal   *uint64 `json:"sinkDroppedTotal"`
 	TruncatedEvents    uint64  `json:"truncatedEvents"`
 	DebugCapture       string  `json:"debugCapture"`
@@ -166,6 +166,7 @@ type Engine struct {
 	debug           func() bool
 	sink            func([]byte) error
 	dropped         atomic.Uint64
+	sinkLossUnknown atomic.Bool
 	processMu       sync.Mutex
 	processSeq      uint64
 	revision        uint64
@@ -193,6 +194,15 @@ func (e *Engine) ReloadPeers(raw string) {
 	e.processLocked("config_changed")
 }
 
+// MarkSinkLossUnknown prevents a nil sink error from claiming acknowledged writes.
+func (e *Engine) MarkSinkLossUnknown() { e.sinkLossUnknown.Store(true) }
+func (e *Engine) knownDrops(n uint64) *uint64 {
+	if n == 0 && e.sinkLossUnknown.Load() {
+		return nil
+	}
+	return &n
+}
+
 func (e *Engine) enabled() bool { return e != nil && e.sink != nil && (e.access == nil || e.access()) }
 
 func (e *Engine) base(kind, event string) Record {
@@ -215,7 +225,7 @@ func (e *Engine) processLocked(reason string) {
 	if e.invalidResource {
 		status = "config_invalid"
 	}
-	r.Data = processData{os.Getpid(), reason, true, e.debug != nil && e.debug(), hexCounter(e.revision), ArtifactVersion, []string{"http_inbound", "http_outbound"}, nil, status}
+	r.Data = processData{os.Getpid(), reason, true, e.debug != nil && e.debug(), hexCounter(e.revision), ArtifactVersion, []string{"http_inbound", "http_outbound", "normalization", "attempt_result", "conversion", "throttle"}, nil, status}
 	e.emit(r)
 }
 
@@ -234,26 +244,39 @@ func hexCounter(n uint64) string {
 	return string(out[i:])
 }
 
-func (e *Engine) emit(r Record) {
+func (e *Engine) emit(r Record) (dropped, truncated uint64) {
+	defer func() {
+		if recover() != nil {
+			e.dropped.Add(1)
+			dropped = 1
+		}
+	}()
 	b, err := json.Marshal(r)
-	if err == nil && len(b)+7 > 4096 {
+	if err != nil || len(b)+7 > 4096 {
+		reason := "line_limit"
+		if err != nil {
+			reason = "serialization_failure"
+		}
 		r.Data = struct {
 			OriginalEvent      string `json:"originalEvent"`
 			OriginalRecordKind string `json:"originalRecordKind"`
 			Reason             string `json:"reason"`
-		}{r.Event, r.RecordKind, "line_limit"}
+		}{r.Event, r.RecordKind, reason}
 		r.Event = "diag.truncated"
+		truncated = 1
 		b, err = json.Marshal(r)
 	}
 	if err != nil || len(b)+7 > 4096 {
 		e.dropped.Add(1)
-		return
+		return 1, truncated
 	}
 	line := append([]byte("@diag "), b...)
 	line = append(line, '\n')
 	if e.sink(line) != nil {
 		e.dropped.Add(1)
+		dropped = 1
 	}
+	return
 }
 
 type spanKey struct{}
@@ -270,13 +293,18 @@ func WithCallKind(ctx context.Context, kind string) context.Context {
 }
 
 type ServerSpan struct {
-	engine        *Engine
-	incoming      Incoming
-	id, requestID string
-	started       time.Time
-	mu            sync.Mutex
-	sealed        bool
-	calls         uint64
+	engine                       *Engine
+	incoming                     Incoming
+	id, requestID                string
+	started                      time.Time
+	mu                           sync.Mutex
+	sealed                       bool
+	calls                        uint64
+	attempts                     uint64
+	emitMu                       sync.Mutex
+	seq, dropped, truncated      uint64
+	debugOpted, debugInterrupted bool
+	debugEpoch                   uint64
 }
 
 func (e *Engine) StartServer(ctx context.Context, headers map[string][]string, requestID string) (context.Context, *ServerSpan) {
@@ -284,6 +312,8 @@ func (e *Engine) StartServer(ctx context.Context, headers map[string][]string, r
 		return ctx, nil
 	}
 	s := &ServerSpan{engine: e, incoming: Extract(headers, false, false), id: randomHex(8), requestID: requestID, started: time.Now()}
+	s.debugEpoch = debugDisabledEpoch.Load()
+	s.debugOpted = e.debug != nil && e.debug()
 	return context.WithValue(ctx, spanKey{}, s), s
 }
 
@@ -315,7 +345,14 @@ func (s *ServerSpan) record(kind, event, id string, parent *string) Record {
 func (s *ServerSpan) coverage() Coverage {
 	// The shared logrus writer does not report downstream collector loss. A
 	// successful call to its sink is not evidence of zero sink-wide drops.
-	return Coverage{ExpectedLastLogSeq: 1, DebugCapture: "none", AccessCapture: "unknown"}
+	capture := "none"
+	if s.debugOpted {
+		capture = "enabled_throughout"
+		if s.debugInterrupted {
+			capture = "interrupted"
+		}
+	}
+	return Coverage{ExpectedLastLogSeq: s.seq, DroppedForSpan: s.engine.knownDrops(s.dropped), TruncatedEvents: s.truncated, DebugCapture: capture, AccessCapture: "unknown"}
 }
 
 func (s *ServerSpan) Finish(data ServerData) {
@@ -327,17 +364,24 @@ func (s *ServerSpan) Finish(data ServerData) {
 		s.mu.Unlock()
 		return
 	}
+	s.debugActiveLocked()
 	s.sealed = true
+	s.mu.Unlock()
+	// Seal immediately, then await only already-constructed semantic emissions.
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+	s.mu.Lock()
 	if !s.engine.enabled() {
 		s.mu.Unlock()
 		return
 	}
+	s.seq++
 	data.CallCount, data.TotalMS, data.Coverage = s.calls, elapsed(s.started), s.coverage()
 	if !data.HeadersCommitted {
 		data.WireStatus = nil
 	}
 	r := s.record("server", "diag.server", s.id, s.incoming.ParentSpanID)
-	r.LogSeq = 1
+	r.LogSeq = s.seq
 	r.Data = data
 	s.mu.Unlock()
 	s.engine.emit(r)

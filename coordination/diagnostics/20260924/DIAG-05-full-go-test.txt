@@ -1,0 +1,133 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_antigravity_models	3.556s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_codex_models	4.599s
+?   	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_devin_models	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/server	8.423s
+?   	github.com/router-for-me/CLIProxyAPI/v7/cmd/validate_codex_models	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/custom-provider	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/http-request	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/translator	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/access	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/access/config_access	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/api	9.139s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/api/handlers/management	15.898s
+fork/exec C:\Users\lywx2\AppData\Local\Temp\go-build1978201396\b882\middleware.test.exe: An Application Control policy has blocked this file.
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/api/middleware	6.131s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/antigravity	8.203s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude	5.940s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex	8.194s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/devin	3.376s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/empty	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/kimi	8.174s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/meta	15.611s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/vertex	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai	7.615s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/browser	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/buildinfo	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/cache	6.805s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/claude/models	7.581s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/live	9.133s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/models	6.626s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/optimize-multi-agent-v2	7.448s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/grokbuild	7.098s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror	7.161s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/cmd	7.425s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/config	7.461s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/constant	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/credentialweight	3.638s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	3.361s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/discovery	10.988s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/home	8.601s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/homeplugins	8.014s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/htmlsanitize	8.215s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/httpfetch	8.031s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/httpwire	7.564s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/logging	7.557s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/managementasset	7.831s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/misc	7.531s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/modelconfig	7.466s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost	9.155s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/pluginstore	7.479s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/redisqueue	7.468s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/registry	15.089s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	10.943s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps	12.811s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/geminicli	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/safemode	13.663s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/signature	6.790s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/store	14.864s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking	7.131s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/antigravity	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/claude	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/codex	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/gemini	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/interactions	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/kimi	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/openai	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/xai	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator	7.029s [no tests to run]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/claude	6.899s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/gemini	7.140s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/interactions	6.834s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/openai/chat-completions	6.832s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/openai/responses	6.622s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/gemini	6.574s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/interactions	14.322s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/openai/chat-completions	6.102s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/openai/responses	6.210s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/claude	6.095s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/gemini	5.455s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/interactions	4.740s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/openai/chat-completions	4.508s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/openai/responses	6.167s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/common	8.110s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/claude	7.692s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/common	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/gemini	8.396s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/interactions	7.681s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/openai/chat-completions	7.627s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/openai/responses	7.538s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/interactions	7.490s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/interactions/claude	7.523s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/claude	7.458s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/gemini	7.300s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/interactions/chat-completions	7.313s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/interactions/responses	7.642s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/openai/chat-completions	7.011s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/openai/responses	6.851s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/translator	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/tui	6.262s
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/usage	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/util	6.479s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher	7.146s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/diff	4.525s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/synthesizer	5.314s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/wsrelay	5.537s
+?   	github.com/router-for-me/CLIProxyAPI/v7/scratch	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/access	4.039s
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/api	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers	4.543s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/claude	5.860s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini	7.603s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/openai	20.300s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/auth	6.584s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy	32.738s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth	6.490s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executionregistry	6.427s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor	6.527s
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/pipeline	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/session	6.558s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage	6.518s
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/config	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/logging	[no test files]
+fork/exec C:\Users\lywx2\AppData\Local\Temp\go-build1978201396\b1093\pluginabi.test.exe: An Application Control policy has blocked this file.
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi	9.416s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi	6.489s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginhost	14.491s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginstore	6.557s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil	5.584s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/translator	5.009s
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/translator/builtin	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/test	5.162s
+FAIL

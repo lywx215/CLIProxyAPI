@@ -524,7 +524,7 @@ func TestSyntheticRecordArtifact(t *testing.T) {
 		var coverage Coverage
 		b, _ := json.Marshal(data["coverage"])
 		decode(t, b, &coverage)
-		assessment := AssessCoverage(CoverageEvidence{Sequences: []uint64{r.LogSeq}, ExpectedLastLogSeq: &coverage.ExpectedLastLogSeq, TerminalCount: 1, TerminalLogSeq: &r.LogSeq, DebugCapture: coverage.DebugCapture, AccessCapture: coverage.AccessCapture, DroppedForSpan: &coverage.DroppedForSpan, TruncatedEvents: &coverage.TruncatedEvents})
+		assessment := AssessCoverage(CoverageEvidence{Sequences: []uint64{r.LogSeq}, ExpectedLastLogSeq: &coverage.ExpectedLastLogSeq, TerminalCount: 1, TerminalLogSeq: &r.LogSeq, DebugCapture: coverage.DebugCapture, AccessCapture: coverage.AccessCapture, DroppedForSpan: coverage.DroppedForSpan, TruncatedEvents: &coverage.TruncatedEvents})
 		if assessment.TerminalMissing || assessment.DebugCoverage != "unknown" {
 			t.Fatal("opaque logger coverage overstated")
 		}

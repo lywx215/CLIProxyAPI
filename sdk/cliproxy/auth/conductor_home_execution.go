@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"sync"
 	"time"
 
@@ -236,7 +237,7 @@ func (m *Manager) executeHomeOnce(ctx context.Context, providers []string, req c
 				if countTokens {
 					return selection.Executor.CountTokens(executorCtx, preparedAuth, execReq, execOpts)
 				}
-				return selection.Executor.Execute(execCtx, preparedAuth, execReq, execOpts)
+				return selection.Executor.Execute(diagnostics.ExecutorAttempt(execCtx, selection.Executor.Identifier()), preparedAuth, execReq, execOpts)
 			}
 			startHomeExec := time.Now()
 			response, errExecute = execute()
