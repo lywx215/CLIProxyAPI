@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	. "github.com/router-for-me/CLIProxyAPI/v7/internal/constant"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
@@ -95,11 +96,10 @@ func (h *GeminiCLIAPIHandler) CLIHandler(c *gin.Context) {
 			})
 			return
 		}
-		for key, value := range c.Request.Header {
-			req.Header[key] = value
-		}
+		req.Header = diagnostics.CopyInboundHeaders(c.Request.Header)
+		req = req.WithContext(diagnostics.CarryContext(req.Context(), c.Request.Context()))
 
-		httpClient := util.SetProxy(h.Cfg, &http.Client{})
+		httpClient := diagnostics.FinalizeClient(req.Context(), util.SetProxy(h.Cfg, &http.Client{}))
 
 		resp, err := httpClient.Do(req)
 		if err != nil {

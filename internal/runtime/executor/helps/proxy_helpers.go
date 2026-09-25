@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
@@ -29,6 +30,12 @@ import (
 // Returns:
 //   - *http.Client: An HTTP client with configured proxy or transport
 func NewProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) *http.Client {
+	return diagnostics.FinalizeClient(ctx, NewProxyAwareHTTPClientBase(ctx, cfg, auth, timeout))
+}
+
+// NewProxyAwareHTTPClientBase is for provider builders that still need to
+// configure the concrete transport. They must call FinalizeClient last.
+func NewProxyAwareHTTPClientBase(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) *http.Client {
 	httpClient := &http.Client{}
 	if timeout > 0 {
 		httpClient.Timeout = timeout
@@ -49,8 +56,10 @@ func NewProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *clip
 	}
 
 	// Priority 3: Use RoundTripper from context (typically from RoundTripperFor)
-	if rt, ok := ctx.Value("cliproxy.roundtripper").(http.RoundTripper); ok && rt != nil {
-		httpClient.Transport = rt
+	if ctx != nil {
+		if rt, ok := ctx.Value("cliproxy.roundtripper").(http.RoundTripper); ok && rt != nil {
+			httpClient.Transport = rt
+		}
 	}
 
 	return httpClient
@@ -60,7 +69,8 @@ var devinTransportCache = NewTransportCache[string](DefaultTransportCacheCapacit
 
 // NewDevinHTTPClient creates an HTTP client customized for Devin Connect-RPC upstream.
 // Suppresses automatic Accept-Encoding: gzip while preserving connection reuse across requests.
-func NewDevinHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) *http.Client {
+func NewDevinHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) (client *http.Client) {
+	defer func() { client = diagnostics.FinalizeClient(ctx, client) }()
 	// A request proxy replaces both the injected round tripper and credential/global proxy.
 	// Respect explicitly injected context RoundTripper only when no request override is set.
 	if cliproxyexecutor.RequestProxyURL(ctx) == "" && ctx != nil {

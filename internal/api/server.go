@@ -139,6 +139,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 
 	// Add middleware
 	engine.Use(logging.GinLogrusLogger())
+	engine.Use(logging.GinDiagnostics())
 	engine.Use(logging.GinLogrusRecovery())
 	engine.Use(logging.CPATraceIDMiddleware())
 	for _, mw := range optionState.extraMiddleware {

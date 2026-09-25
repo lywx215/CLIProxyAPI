@@ -53,6 +53,7 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 	if errContext := ctx.Err(); errContext != nil {
 		return false
 	}
+	logging.ReloadDiagnostics()
 	// Reconstruct old config from YAML snapshot to avoid reference sharing issues
 	var oldCfg *config.Config
 	if len(s.oldConfigYaml) > 0 {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	internallogging "github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -713,7 +714,7 @@ type usageTTFTRoundTripper struct {
 func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	cliproxyexecutor.MarkUpstreamAttempt(req.Context())
 	t.reporter.StartResponseTTFT()
-	resp, errRoundTrip := t.base.RoundTrip(req)
+	resp, errRoundTrip := t.base.RoundTrip(req.WithContext(diagnostics.WithCallKind(req.Context(), "model")))
 	if errRoundTrip != nil {
 		return resp, errRoundTrip
 	}

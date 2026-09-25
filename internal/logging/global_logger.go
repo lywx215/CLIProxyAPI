@@ -66,6 +66,9 @@ func formatLogFieldValue(key string, value any) string {
 
 // Format renders a single log entry with custom formatting.
 func (m *LogFormatter) Format(entry *log.Entry) ([]byte, error) {
+	if line, ok := entry.Data["diagnostics_line"].(diagnosticLine); ok {
+		return []byte(line), nil
+	}
 	var buffer *bytes.Buffer
 	if entry.Buffer != nil {
 		buffer = entry.Buffer

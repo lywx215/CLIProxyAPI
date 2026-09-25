@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 )
 
 type sessionIDContextKey struct{}
@@ -166,6 +167,11 @@ func extractCustomHeaders(attrs map[string]string, clientHeaders http.Header, ct
 			val = replaceCPASessionID(val, sessionID)
 		} else if strings.HasPrefix(val, "$") {
 			varName := strings.TrimSpace(strings.TrimPrefix(val, "$"))
+			// This branch copies an inbound field dynamically; literal configured
+			// provider headers below remain explicit business construction.
+			if diagnostics.IsPropagationHeader(varName) || diagnostics.IsPropagationHeader(name) {
+				continue
+			}
 			if varName == "" {
 				continue
 			}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	internalsignature "github.com/router-for-me/CLIProxyAPI/v7/internal/signature"
 	antigravityclaude "github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/claude"
@@ -436,7 +437,8 @@ func antigravityCredentialScope(prefix, secret string) string {
 // negotiates TLS 1.3 without advertising an ALPN protocol and therefore never uses h2.
 // The underlying Transport is always shared so keep-alive connections survive across
 // requests instead of forcing a fresh TCP + TLS handshake every time.
-func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) *http.Client {
+func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) (client *http.Client) {
+	defer func() { client = diagnostics.FinalizeClient(ctx, client) }()
 	// Native Antigravity reuses one transport across requests. Opt into a
 	// credential-scoped proxy transport only here so other providers keep their
 	// existing lifecycle and different OAuth identities remain isolated.
@@ -448,7 +450,7 @@ func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cli
 		// context transport fallback, preserving the previous behavior.
 	}
 
-	client := helps.NewProxyAwareHTTPClient(ctx, cfg, auth, timeout)
+	client = helps.NewProxyAwareHTTPClientBase(ctx, cfg, auth, timeout)
 	// Direct requests share an HTTP/1.1 pool only within the selected credential.
 	if client.Transport == nil {
 		client.Transport = antigravityHTTP11Transport(auth, antigravityBaseTransport, cfg)
