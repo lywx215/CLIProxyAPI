@@ -2,7 +2,8 @@
   {
     "id": "missing",
     "input": {
-      "headers": []
+      "headers": [],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -22,7 +23,8 @@
           "X-Diag-Trace-Id",
           "11111111111111111111111111111111"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": "local-1",
@@ -46,7 +48,8 @@
           "x-diag-trace-id",
           "11111111111111111111111111111111"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -62,7 +65,8 @@
           "x-diag-trace-id",
           "00000000000000000000000000000000"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -78,7 +82,8 @@
           "x-diag-trace-id",
           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -94,7 +99,8 @@
           "x-diag-trace-id",
           "1234"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -114,7 +120,8 @@
           "X-Diag-Trace-Id",
           "11111111111111111111111111111111"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -130,7 +137,8 @@
           "x-trace-id",
           "11111111111111111111111111111111"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
@@ -146,12 +154,55 @@
           "x-diag-request-id",
           "local-1\n"
         ]
-      ]
+      ],
+      "peerConfigured": true
     },
     "expected": {
       "peerRequestId": null,
       "peerTraceId": null,
       "peerIdRejected": "invalid"
+    }
+  },
+  {
+    "id": "nonpeer-response-ids-ignored",
+    "input": {
+      "peerConfigured": false,
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "outside"
+        ],
+        [
+          "X-Diag-Trace-Id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "none"
+    }
+  },
+  {
+    "id": "nonpeer-invalid-response-ids-not-collected",
+    "input": {
+      "peerConfigured": false,
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "bad value"
+        ],
+        [
+          "X-Diag-Trace-Id",
+          "bad"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "none"
     }
   }
 ]

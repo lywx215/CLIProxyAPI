@@ -1,7 +1,12 @@
 [
   {
-    "id": "peer-replace-after-business-headers",
+    "id": "peer-final-replacement",
     "input": {
+      "requestId": "local-1",
+      "traceId": "11111111111111111111111111111111",
+      "callSpanId": "2222222222222222",
+      "flags": "01",
+      "tracestate": "vendor=one",
       "headers": [
         [
           "X-Request-Id",
@@ -12,24 +17,16 @@
           "old-trace"
         ],
         [
-          "traceparent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
           "TraceParent",
           "00-11111111111111111111111111111111-1111111111111111-01"
         ],
         [
           "tracestate",
-          "old=state"
+          "vendor=one"
         ],
         [
           "X-Diag-Request-Id",
           "stale"
-        ],
-        [
-          "x-diag-trace-id",
-          "11111111111111111111111111111111"
         ],
         [
           "X-Diag-Unknown",
@@ -37,33 +34,70 @@
         ]
       ],
       "allowed": true,
+      "diagnosticOwned": false
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ],
+        "traceparent": [
+          "00-11111111111111111111111111111111-2222222222222222-01"
+        ],
+        "tracestate": [
+          "vendor=one"
+        ],
+        "x-diag-request-id": [
+          "local-1"
+        ]
+      },
+      "diagnosticOwned": true
+    }
+  },
+  {
+    "id": "nonpeer-after-automatic-source-filter",
+    "input": {
       "requestId": "local-1",
       "traceId": "11111111111111111111111111111111",
       "callSpanId": "2222222222222222",
       "flags": "01",
-      "tracestate": "vendor=one"
+      "tracestate": "vendor=one",
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ]
+      ],
+      "allowed": false,
+      "diagnosticOwned": false
     },
     "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "traceparent": [
-        "00-11111111111111111111111111111111-2222222222222222-01"
-      ],
-      "tracestate": [
-        "vendor=one"
-      ],
-      "x-diag-request-id": [
-        "local-1"
-      ]
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ]
+      },
+      "diagnosticOwned": false
     }
   },
   {
-    "id": "third-party-strips-inherited-diagnostics",
+    "id": "nonpeer-preserves-explicit-business-trace",
     "input": {
+      "requestId": "local-1",
+      "traceId": "11111111111111111111111111111111",
+      "callSpanId": "2222222222222222",
+      "flags": "01",
+      "tracestate": "vendor=one",
       "headers": [
         [
           "X-Request-Id",
@@ -78,20 +112,59 @@
           "00-11111111111111111111111111111111-1111111111111111-01"
         ],
         [
+          "tracestate",
+          "provider=one"
+        ]
+      ],
+      "allowed": false,
+      "diagnosticOwned": false
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ],
+        "traceparent": [
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        "tracestate": [
+          "provider=one"
+        ]
+      },
+      "diagnosticOwned": false
+    }
+  },
+  {
+    "id": "nonpeer-clears-diagnostic-owned-pair",
+    "input": {
+      "requestId": "local-1",
+      "traceId": "11111111111111111111111111111111",
+      "callSpanId": "2222222222222222",
+      "flags": "01",
+      "tracestate": "vendor=one",
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ],
+        [
           "TraceParent",
           "00-11111111111111111111111111111111-1111111111111111-01"
         ],
         [
           "tracestate",
-          "old=state"
+          "vendor=one"
         ],
         [
           "X-Diag-Request-Id",
           "stale"
-        ],
-        [
-          "x-diag-trace-id",
-          "11111111111111111111111111111111"
         ],
         [
           "X-Diag-Unknown",
@@ -99,24 +172,28 @@
         ]
       ],
       "allowed": false,
+      "diagnosticOwned": true
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ]
+      },
+      "diagnosticOwned": false
+    }
+  },
+  {
+    "id": "nonpeer-no-value-based-ownership-guess",
+    "input": {
       "requestId": "local-1",
       "traceId": "11111111111111111111111111111111",
       "callSpanId": "2222222222222222",
       "flags": "01",
-      "tracestate": "vendor=one"
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ]
-    }
-  },
-  {
-    "id": "redirect-disallowed-new-target",
-    "input": {
+      "tracestate": "vendor=one",
       "headers": [
         [
           "X-Request-Id",
@@ -128,48 +205,35 @@
         ],
         [
           "traceparent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "TraceParent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "tracestate",
-          "old=state"
-        ],
-        [
-          "X-Diag-Request-Id",
-          "stale"
-        ],
-        [
-          "x-diag-trace-id",
-          "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
+          "00-11111111111111111111111111111111-2222222222222222-01"
         ]
       ],
       "allowed": false,
+      "diagnosticOwned": false
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ],
+        "traceparent": [
+          "00-11111111111111111111111111111111-2222222222222222-01"
+        ]
+      },
+      "diagnosticOwned": false
+    }
+  },
+  {
+    "id": "success-response-local-ids",
+    "input": {
       "requestId": "local-1",
       "traceId": "11111111111111111111111111111111",
       "callSpanId": "2222222222222222",
       "flags": "01",
-      "tracestate": "vendor=one"
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ]
-    }
-  },
-  {
-    "id": "redirect-allowed-new-call",
-    "input": {
+      "tracestate": "vendor=one",
       "headers": [
         [
           "X-Request-Id",
@@ -180,117 +244,44 @@
           "old-trace"
         ],
         [
-          "traceparent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "TraceParent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "tracestate",
-          "old=state"
-        ],
-        [
           "X-Diag-Request-Id",
-          "stale"
+          "peer"
         ],
         [
-          "x-diag-trace-id",
+          "X-Diag-Trace-Id",
           "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
-        ]
-      ],
-      "allowed": true,
-      "requestId": "local-1",
-      "traceId": "11111111111111111111111111111111",
-      "callSpanId": "3333333333333333",
-      "flags": "01",
-      "tracestate": "vendor=one"
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "traceparent": [
-        "00-11111111111111111111111111111111-3333333333333333-01"
-      ],
-      "tracestate": [
-        "vendor=one"
-      ],
-      "x-diag-request-id": [
-        "local-1"
-      ]
-    }
-  },
-  {
-    "id": "provider-explicit-trace-retained",
-    "input": {
-      "headers": [
-        [
-          "X-Request-Id",
-          "provider-old"
-        ],
-        [
-          "X-Trace-Id",
-          "old-trace"
-        ],
-        [
-          "traceparent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "TraceParent",
-          "00-11111111111111111111111111111111-1111111111111111-01"
-        ],
-        [
-          "tracestate",
-          "old=state"
-        ],
-        [
-          "X-Diag-Request-Id",
-          "stale"
-        ],
-        [
-          "x-diag-trace-id",
-          "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
         ]
       ],
       "allowed": false,
+      "diagnosticOwned": false,
+      "response": true
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ],
+        "x-diag-request-id": [
+          "local-1"
+        ],
+        "x-diag-trace-id": [
+          "11111111111111111111111111111111"
+        ]
+      },
+      "diagnosticOwned": false
+    }
+  },
+  {
+    "id": "error-response-local-ids",
+    "input": {
       "requestId": "local-1",
       "traceId": "11111111111111111111111111111111",
       "callSpanId": "2222222222222222",
       "flags": "01",
       "tracestate": "vendor=one",
-      "providerOwnedTrace": {
-        "traceparent": "provider-adapter-value"
-      }
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "traceparent": [
-        "provider-adapter-value"
-      ]
-    }
-  },
-  {
-    "id": "success-response",
-    "input": {
       "headers": [
         [
           "X-Request-Id",
@@ -302,43 +293,43 @@
         ],
         [
           "X-Diag-Request-Id",
-          "stale"
+          "peer"
         ],
         [
-          "x-diag-trace-id",
+          "X-Diag-Trace-Id",
           "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
         ]
       ],
-      "allowed": true,
+      "allowed": false,
+      "diagnosticOwned": false,
+      "response": true
+    },
+    "expected": {
+      "headers": {
+        "x-request-id": [
+          "provider-old"
+        ],
+        "x-trace-id": [
+          "old-trace"
+        ],
+        "x-diag-request-id": [
+          "local-1"
+        ],
+        "x-diag-trace-id": [
+          "11111111111111111111111111111111"
+        ]
+      },
+      "diagnosticOwned": false
+    }
+  },
+  {
+    "id": "stream-response-local-ids",
+    "input": {
       "requestId": "local-1",
       "traceId": "11111111111111111111111111111111",
       "callSpanId": "2222222222222222",
       "flags": "01",
       "tracestate": "vendor=one",
-      "response": true
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "x-diag-request-id": [
-        "local-1"
-      ],
-      "x-diag-trace-id": [
-        "11111111111111111111111111111111"
-      ]
-    }
-  },
-  {
-    "id": "error-response",
-    "input": {
       "headers": [
         [
           "X-Request-Id",
@@ -350,86 +341,33 @@
         ],
         [
           "X-Diag-Request-Id",
-          "stale"
+          "peer"
         ],
         [
-          "x-diag-trace-id",
+          "X-Diag-Trace-Id",
           "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
         ]
       ],
-      "allowed": true,
-      "requestId": "local-1",
-      "traceId": "11111111111111111111111111111111",
-      "callSpanId": "2222222222222222",
-      "flags": "01",
-      "tracestate": "vendor=one",
+      "allowed": false,
+      "diagnosticOwned": false,
       "response": true
     },
     "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "x-diag-request-id": [
-        "local-1"
-      ],
-      "x-diag-trace-id": [
-        "11111111111111111111111111111111"
-      ]
-    }
-  },
-  {
-    "id": "stream-response",
-    "input": {
-      "headers": [
-        [
-          "X-Request-Id",
+      "headers": {
+        "x-request-id": [
           "provider-old"
         ],
-        [
-          "X-Trace-Id",
+        "x-trace-id": [
           "old-trace"
         ],
-        [
-          "X-Diag-Request-Id",
-          "stale"
+        "x-diag-request-id": [
+          "local-1"
         ],
-        [
-          "x-diag-trace-id",
+        "x-diag-trace-id": [
           "11111111111111111111111111111111"
-        ],
-        [
-          "X-Diag-Unknown",
-          "stale"
         ]
-      ],
-      "allowed": true,
-      "requestId": "local-1",
-      "traceId": "11111111111111111111111111111111",
-      "callSpanId": "2222222222222222",
-      "flags": "01",
-      "tracestate": "vendor=one",
-      "response": true
-    },
-    "expected": {
-      "x-request-id": [
-        "provider-old"
-      ],
-      "x-trace-id": [
-        "old-trace"
-      ],
-      "x-diag-request-id": [
-        "local-1"
-      ],
-      "x-diag-trace-id": [
-        "11111111111111111111111111111111"
-      ]
+      },
+      "diagnosticOwned": false
     }
   }
 ]

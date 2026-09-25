@@ -16,7 +16,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "descendant-query-ignored",
@@ -35,7 +36,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "default-port-host-case",
@@ -54,7 +56,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "trailing-target-slash",
@@ -73,7 +76,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "different-port",
@@ -92,7 +96,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "different-scheme",
@@ -111,7 +116,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "host-suffix",
@@ -130,7 +136,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "path-boundary",
@@ -149,7 +156,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "path-case",
@@ -168,7 +176,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "encoded-path",
@@ -187,7 +196,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "dot-segment",
@@ -206,7 +216,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "empty-segment",
@@ -225,7 +236,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "fragment",
@@ -244,7 +256,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "userinfo",
@@ -263,7 +276,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "trailing-dot-host",
@@ -282,7 +296,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "backslash",
@@ -301,7 +316,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "control",
@@ -320,7 +336,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "unicode-host",
@@ -334,12 +351,13 @@
           "deploymentId": "gemini-pool"
         }
       ],
-      "target": "https://\u4e2d.example.test/v1"
+      "target": "https://中.example.test/v1"
     },
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "root-prefix-explicit",
@@ -358,7 +376,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-origin-slash",
@@ -377,7 +396,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-explicit-default-port",
@@ -396,7 +416,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "localhost-http",
@@ -415,7 +436,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "ipv6",
@@ -434,7 +456,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "gcli-pool"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "empty-config",
@@ -445,7 +468,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "empty-env",
@@ -456,7 +480,8 @@
     "expected": {
       "configStatus": "valid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "malformed-json",
@@ -467,7 +492,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "not-array",
@@ -478,7 +504,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "unknown-property",
@@ -498,7 +525,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "missing-service",
@@ -516,7 +544,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "wildcard",
@@ -535,7 +564,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-userinfo",
@@ -554,7 +584,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-query",
@@ -573,7 +604,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-path",
@@ -592,7 +624,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-dot-path",
@@ -611,7 +644,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-encoded-path",
@@ -630,7 +664,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-trailing-prefix-slash",
@@ -649,7 +684,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-zero-port",
@@ -668,7 +704,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "config-over-port",
@@ -687,7 +724,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "ipv4-leading-zero",
@@ -706,7 +744,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "ipv4-integer",
@@ -725,7 +764,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "ipv4-hex-label",
@@ -744,7 +784,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "ipv6-zone",
@@ -763,7 +804,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "duplicate-alias",
@@ -789,7 +831,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "same-route",
@@ -815,7 +858,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "overlap",
@@ -841,7 +885,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "all-disabled-if-one-invalid",
@@ -867,7 +912,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "65-peers",
@@ -1334,7 +1380,8 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "disjoint-prefixes",
@@ -1360,7 +1407,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "second"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "64-peers",
@@ -1820,7 +1868,8 @@
     "expected": {
       "configStatus": "valid",
       "match": "peer-63"
-    }
+    },
+    "boundary": "final_request_target"
   },
   {
     "id": "duplicate-object-key",
@@ -1831,6 +1880,47 @@
     "expected": {
       "configStatus": "config_invalid",
       "match": null
-    }
+    },
+    "boundary": "final_request_target"
+  },
+  {
+    "id": "client-normalized-dot-segment-final-outside-prefix",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/private"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    },
+    "boundary": "final_request_target"
+  },
+  {
+    "id": "client-normalized-dot-segment-final-inside-prefix",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1/chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    },
+    "boundary": "final_request_target"
   }
 ]

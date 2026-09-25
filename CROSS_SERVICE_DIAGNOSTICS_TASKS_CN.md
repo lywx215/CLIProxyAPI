@@ -4,7 +4,7 @@
 
 ## 执行状态
 
-任务管理连接已恢复，旧 Transport closed 阻塞及“等待初始化”已失效。DIAG-00 本批隔离任务已创建，交付状态为**待审核**；DIAG-01 已经协调窗口与 Claude R1 审核并推送准确 HEAD。其余任务仍等待批准的依赖，不能凭草稿启动。
+任务管理连接已恢复，旧 Transport closed 阻塞及“等待初始化”已失效。DIAG-00 本批隔离任务已创建，首次交付经 R1 审核退回修订（无 P1、5 项 P2），本轮修订交付仍为**待审核**；DIAG-01 已经协调窗口与 Claude R1 审核并推送准确 HEAD。其余任务仍等待批准的依赖，不能凭草稿启动。
 
 - DIAG-00：`01a0d64a-0519-7fc0-9810-110cd3f6835b`，worktree `C:/Users/lywx2/.codex/worktrees/622a/CLIProxyAPI`，分支 `codex/diag-00-contract`，基线 `fde3903689b8c9882d1f0233587fe33e2edfdf77`。
 - DIAG-01：`01a0d64a-5710-7ee2-8412-f1b42d68c7f0`，worktree `C:/Users/lywx2/.codex/worktrees/e63f/gcli2api`，批准并推送 HEAD `1f65d3ec10830245f22a58691e124c5129f75707`。此状态来自协调方通知/只读 disposition，本任务未重复调用 Claude。
@@ -61,3 +61,5 @@
 5. 每次真实创建记录 threadId/worktree，不重用旧任务；最多三个并行。退回本批原窗口修订，任何 HEAD 变化重新审核。
 
 候选契约与验证：[README](contracts/diagnostics/v1/README.md)。完整文档与历史审查原文均已纳入本任务分支。任何本地版本文件中的待审核标识不得解释为批准。
+
+R1 审查对象：`583201f29c8b4ef65391bdf605ba9d6a2c12f08b`，实际模型 `claude-opus-5-5`，结论 request_changes；处置见 [R1 记录](coordination/diagnostics/20260924/reviews/DIAG-00-R1/disposition.zh-CN.md)。仅协调窗口对新 HEAD 复审后才可放行，依赖仍未启动。

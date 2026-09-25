@@ -4,7 +4,7 @@
 
 执行授权：用户已明确要求实施八任务计划。DIAG-00 已在本批新建隔离任务交付待审；DIAG-01 已经协调窗口代码检查、Claude R1 审核并推送准确 HEAD，其他任务仍等待批准依赖。旧 Transport closed 阻塞已解除。本文件为 DIAG-00 分支中的完整修订方案，源工作区台账保持只读；执行状态以协调窗口为准。
 
-审查状态：已完成 Claude 独立审查，并按已核对的意见修订；不是代码审计或上线验收。原始意见、处理取舍及原方案快照见 [Claude 审查记录](CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md)。首期收敛为“最小访问关联 + 双边证据校验 + 四类 DEBUG 语义观察”，浏览器子 span、跨部署内容指纹和 OTLP 延后。
+审查状态：2026-09-24 的历史 Claude 架构审查已完成，其意见不表示当前契约获批。DIAG-00 R1 对提交 583201f29c8b4ef65391bdf605ba9d6a2c12f08b 给出 request_changes（5 项 P2）；本版按协调取舍修订，仍待准确新 HEAD 复审，不是代码审计或上线验收。原始意见、处理取舍及原方案快照见 [Claude 审查记录](CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md)。首期收敛为“最小访问关联 + 双边证据校验 + 四类 DEBUG 语义观察”，浏览器子 span、跨部署内容指纹和 OTLP 延后。
 
 补充约束：每种服务都可能同时部署多台、多副本、多进程；诊断必须准确归属到实际执行实例。实现优先独立模块、入口中间件、共享传输包装与现有事件适配，减少主体流程修改。
 
@@ -95,6 +95,8 @@ traceId 用于检索一个 trace 的候选节点，不能让重复或伪造的�
 5. traceparent、外部 ID 均不用于认证、计费幂等、账号选择、取消其他请求或打开 DEBUG。即使两个调用方提交相同 ID，也必须有独立本地 requestId/spanId。
 6. 自定义 ID 接受单值且不超过 128 个 ASCII 字符，字符限定为字母、数字及 `._:/-`；多值、控制字符或超长值忽略，记录原因，不打印原值。标准追踪头按照标准规则验证。
 
+入站读取框架解析后的逐字段值，协议 OWS 已被剥离，应用不再额外 trim 或读取原始 socket。Go 使用值切片、ASGI 使用字段列表、Node 对 traceparent/tracestate 均使用 rawHeaders/headersDistinct，不能用 req.headers 的逗号拼接值；限制只测可观察长度。真实 HTTP 用例与独立解析器负例分开标记。未来版本的扩展仍不解析，但本 profile 拒绝所有逗号，避免拼接重复头被接受。
+
 接收 traceparent 仅表示接受远端声称的上下文，不能自动证明调用关系。解析失败必须丢弃与其配套的 tracestate；本期不写自有 tracestate。新建上下文使用有效的版本 00、flags=00，已有合法 flags 按传播规范处理；采样位不控制访问记录或 DEBUG。实现需通过共享测试向量，不以“几十行手写解析器”作为验收标准。
 
 ### 4.2 出站与响应
@@ -111,7 +113,11 @@ traceId 用于检索一个 trace 的候选节点，不能让重复或伪造的�
 
 参与服务判定由本地拟议配置 `DIAG_PEERS` 映射定义，匹配规范化的精确 origin（scheme、host、port）及必要的路由前缀，不仅匹配主机名。复用现有上游配置别名；不增加独立服务注册中心。默认未配置目标不注入本方案新增头。逻辑目标与实际副本身份分开记录。
 
-诊断传播适配器在既有业务头构造完成后处理：对参与服务，在请求副本上大小写不敏感地替换 traceparent/tracestate 和本方案 X-Diag-* 头，每种字段只发送一个合法值。不能使用 Add，不能让旧白名单再次覆盖。自动头透传不得把入站追踪头直接复制给第三方；提供方明确要求的既有头行为按提供方适配器保留，不进行全局删除 X-Request-Id 等业务头。重定向仍遵守原策略，每个新目标重新检查是否允许传播，跨 origin 不继承本方案内部关联头。若共享层无法可靠做到，先标记该路径未接入，不能偷偷改变重定向行为。
+接入前盘点现有追踪头写入/复制点、真实调用参数、目标和重定向路径；只有已证实的自动入站复制点才在源头过滤 traceparent/tracestate/X-Diag-*。共享 API 支持显式 extra_headers 不等于路由自动复制，不能仅据白名单删掉其显式业务能力；没有自动复制路径就不修改该路径。协调方在 gcli2api 批准基线确认可选 extra_headers 支持追踪头，但当前三个 Antigravity 路由未见传入入站 headers，因此本方案不声称已证实当前路由泄漏。
+
+最终传播边界在业务头构造完成后，对配置 peer 在请求副本上大小写不敏感地替换标准追踪头和 X-Diag-*，不 Add；设置诊断模块自己的本地拥有权标记，不放进 HTTP/正文/日志。非 peer 删除 X-Diag-*；仅在本模块拥有标准头时删除该对标准头并清除标记，其他显式业务追踪头保留。禁止按值猜来源或提供 providerOwnedTrace 魔法输入。
+
+重定向保持既有策略，将本地标记传到新副本，先清理本模块拥有的头，再由已有提供方路径构造新跳业务头；最终按实际将要发送的 origin/request-target 重检，peer 重新注入新 call 并标记，非 peer 不继承诊断上下文。同源跳转到未允许路径也必须清理；不能恢复此前被 peer 注入覆盖的旧提供方值。最终钩子还防御性清除遗留的本模块头。若无法维持拥有权/清理顺序，则该路径不注入并报告未覆盖，不改变路由或重定向业务行为。
 
 X-Trace-Id / X-Diag-Trace-Id 不作为入站标准父子上下文。只有 X-Request-Id 而没有 traceparent 时，独立入口/重试可能产生不同 traceId；可以按带来源作用域的 callerRequestId 检索多个 trace，但不能把它们硬合并成一个。没有任何 ID 的未改造 new-api 仍能调用，只能按时间、模型等筛选其平台记录。
 
@@ -181,7 +187,7 @@ Aitoapi 已有 generation.* 事件保留，适配映射到以上语义，不重�
 
 文本摘要按候选分别统计普通文本 UTF-8 字节数；普通文本、思考、工具参数、媒体分开。首期通过各阶段 usage、字节数、结束原因定位 87 token 的产生位置；字节数相同不能证明内容相同。跨部署内容指纹/HMAC 密钥分发延后，不作为接入前置条件。既有 CLIProxyAPI SHA256 保留为 legacy 调试证据，不强制其他项目复制。
 
-流式哈希按文本增量更新，避免累计帧重复计入；帧解析失败或截断须标 partial。工具只有计数，不采集工具参数哈希。指纹只是判断可见文本是否相同，不能反推出 87 token 内容或证明业务请求相同。
+v1 不新增或投影任何模型文本/工具参数哈希或指纹。旧 CLIProxyAPI legacy 摘要留在既有 DEBUG 日志，不能作为公共 v1 新功能实施要求。
 
 ### 6.4 兼容映射与证据完整性
 
@@ -191,7 +197,7 @@ Aitoapi 已有 generation.* 事件保留，适配映射到以上语义，不重�
 | deliveryOutcome=success（本地完成） | deliveryState=local_finished | 原值保留，只在已确认本地 finish 语义时映射 |
 | seq / recentEvents[].seq | 原流序号；新 logSeq 单独分配 | 禁止用流序号去重日志 |
 | logsDropped（logger 累计） | sinkDroppedTotal | 不冒充单请求丢弃数 |
-| firstEffectiveMs | firstEffectiveOutputMs + timingSource | 保留旧字段，标明其时钟来源；新测量使用单调时钟，不把 Date.now() 的旧值标为单调时间 |
+| firstEffectiveMs / browserDurationMs | 不进入公共 v1 timing | 旧墙钟/浏览器耗时留原有门控日志和统计；公共 timing 只接可靠的新单调时钟观察，未知为 null，不为填值新增业务计时器 |
 | CLIProxyAPI request_id | requestId | 旧文本短 ID 继续可查，非全局主键 |
 
 logSeq 在记录实际构造后、入队前分配；超长、队列满和关闭 DEBUG 清队列都必须记丢弃原因。基础终局记录附 expectedLastLogSeq、可得的 droppedForSpan、debugCapture（none/interrupted/enabled_throughout/unknown）。异步写入后才发生的损失不假装已知，sink 计数只是辅助证据。
@@ -225,7 +231,7 @@ logSeq 在记录实际构造后、入队前分配；超长、队列满和关闭 
 | 问题 | 必要证据 |
 | --- | --- |
 | 末尾 model 导致 400 | 同一 trace 与对应尝试中，接收/发送/清理前后结构，及上游错误 reason；定位空 user 首次出现和被删除的位置 |
-| 重复输出 87 token | DEBUG 中各阶段 usage 来源、deliveredUsage、可见文本字节数/已有可用指纹；若各受控层均未产生 87，只能将范围缩小到调用方计数/展示，不能断言其算法。未开启详细诊断则报告证据不足 |
+| 重复输出 87 token | DEBUG 中各阶段 usage 来源、deliveredUsage、可见文本字节数；若各受控层均未产生 87，只能将范围缩小到调用方计数/展示，不能断言其算法。未开启详细诊断则报告证据不足 |
 | 非流速度超限 | 最终 usage、限速 tokenCount、目标速率、实际等待和本地交付耗时；与平台统计口径分别比较 |
 | 429/503 过多 | 按服务与 attempt 计数，区分 quota_exhausted、capacity_unavailable、rate_limited、resource_exhausted_unknown；不把通用 429 自动认定为额度用完 |
 | HTTP 200 但空/截断 | 终止帧、EOF、解析状态、有效输出类型、转换前后摘要、HTTP 提交和本地交付结果 |
@@ -292,7 +298,7 @@ logSeq 在记录实际构造后、入队前分配；超长、队列满和关闭 
 - new-api 使用同一个业务 ID 发起两次无 trace 请求：两个独立 trace 可按别名检索，不错误合并。
 - CLIProxyAPI 两次外部尝试、每次 gcli2api 三次内部尝试：保留 2 层父子关系及 6 次上游结果；Aitoapi 切换账号/并行请求同样不串线。
 - 高并发、流式延迟结束、客户端取消、异步生成器、后台日志线程、浏览器重连和迟到事件。
-- 每种服务至少两个实例，跨实例负载均衡/重试、同一容器多个 worker、实例重启、滚动发布；短 requestId/attemptNo/人工别名相同也不混淆。多实例实例身份错误配置时暴露冲突，不覆盖日志。
+- 每种服务至少两个实例，跨实例负载均衡/重试、同一容器多个 worker、实例重启、滚动发布；短 requestId/attemptNo/人工别名相同也不混淆。相同 instanceId 不同 bootId 的多个进程始终分开，不据此断言错误配置（也可能是正常多 worker/重启）；仅在存在额外矛盾证据时报告冲突，不覆盖日志。
 - 同一日志重复导入、导出重叠、跨机时钟偏移、缺少父节点和重复外部 trace；验证去重、请求/尝试分别计数和证据缺口提示。
 - 包装前后模型请求正文/响应正文一致、发送顺序和背压不变、Close/取消正确传递、无新增网络调用、无重复 attempt 结算；检查代理与自定义 transport 不受影响。
 - 流/非流/流转非流、保活、工具/媒体输出、内容拦截、空回复、缺少结束帧、错误帧出现在部分文本之后。
@@ -322,7 +328,7 @@ logSeq 在记录实际构造后、入队前分配；超长、队列满和关闭 
 - X-Diag-* 出站最后 Set、响应正常提交点替换；X-Request-Id/X-Trace-Id 原有含义保留。第三方路径阻止自动继承诊断头，提供方显式旧约定仍由其适配器负责。
 - 双边唯一配对还要核对已知 service/deployment、响应 ID、受控来源；多父、重复事件内容、来源冲突、循环均不能升级 verified。缺接收端记录时实际实例未知。
 - 入队前 logSeq 包含基础与 DEBUG、终局自身；expectedLastLogSeq 等于终局 logSeq。缺终局不能证明尾部完整，截断存根有相同身份和序号；sinkDroppedTotal 不冒充单请求丢弃。full 仅是声明采集范围内完整。
-- Aitoapi 保留旧 request/attempt/seq/deliveryOutcome/schemaVersion，公共投影采用新 logSeq/deliveryState；旧 wall-clock 和浏览器耗时标来源，浏览器子 span/WS 改动延后。
+- Aitoapi 保留旧 request/attempt/seq/deliveryOutcome/schemaVersion，公共投影采用新 logSeq/deliveryState；旧 wall-clock 和浏览器耗时不进入 v1 timing，只保留原日志/统计；公共 timingSource 固定 server_monotonic，未知指标 null。浏览器子 span/WS 改动延后。
 - 导出只选通过公开 schema 的 JSONL/@diag 记录。坏行仅导出位置/长度/原因，原文留本地，避免夹带旧 WARNING 正文。schema 不能证明值本身没有秘密，生产者还须限制字段来源。
 
 ### 11.2 制品与复现
@@ -338,3 +344,15 @@ DIAG-00 契约；DIAG-01 清理顺序/空白和旧正文 WARNING 独立修复；
 最大三个开发任务并行，每项新建任务和隔离 worktree；不复用旧任务、不在子任务派发其他任务、不跨仓库写入。退回原窗口修订，HEAD 改变重新审核。只在批准准确 HEAD 后由协调窗口放行推送任务分支；不合并主分支、不部署、不调用生产模型、不碰真实凭证/数据库/Volume。new-api 不改；gcli2api 不更新 panel-version.txt，钩子面板询问选 n，不恢复 GeminiCLI/旧管理项目。
 
 本次不证明任何运行时协议已覆盖；目标仍为 Gemini→Antigravity 与 Aitoapi 既有语义，真实流/非流/流转非流、取消、并发、多实例、重启、usage87 与缺失/零值、限速及行为等价由后续八任务矩阵完成。不得借诊断重写路由、账号/模型选择、重试、转换、发送、超时或计费。
+
+
+## 12. DIAG-00 R1 修订补充（待复审）
+
+R1 原文及逐项取舍见 [修订处置](coordination/diagnostics/20260924/reviews/DIAG-00-R1/disposition.zh-CN.md)。5 项 P2 与 10 项 P3 均在本候选处理，不构成自行批准。
+
+- Peer 响应 ID 仅在 peerConfigured=true 时采集，第三方 X-Diag-* 忽略为 null/none；未使用的 not_configured 枚举删除。
+- 公共 raw usage 增加 OpenAI total_tokens、Gemini cachedContentTokenCount 的协议专属白名单，保持缺失/零值，不改变业务计数或 normalized 输出口径。
+- 完整性优先级：已知丢失/截断/冲突/序号缺口先 partial；否则 accessCapture=unknown 或 none 与终局的矛盾先 unknown，即使 debugCapture=none。重复终局、终局序号矛盾同样不能得到 none/full。
+- diag.server/diag.call 的截断存根只证明终局曾构造：terminalMissing=false、debugCoverage=partial，无完整 outcome/coverage，不能单独证明成功或 verified；其他事件存根不证明终局存在。
+- DIAG_PEERS 匹配客户端规范化后的实际 destination origin 与 escaped request-target，不能要求 httpx 恢复已丢失的原始点段；向量明确最终发送边界。
+- 消费仓库必须加入 contracts/diagnostics/v1/** text eol=lf（实际复制目录不同时相应调整），核验工作区与 Git 暂存字节，不能只复制文件后依赖 core.autocrlf。

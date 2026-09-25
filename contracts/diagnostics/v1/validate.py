@@ -90,9 +90,9 @@ def header_oracle(case):
     context = "generated" if not parents else "invalid_replaced"
     trace, parent, flags, state = "<generated>", None, "00", None
     if len(parents) == 1:
-        value = parents[0].strip(" \t")
+        value = parents[0]
         match = re.fullmatch(r"([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})(.*)", value, flags=re.ASCII)
-        if match and len(parents[0]) <= 512 and all(32 <= ord(c) <= 126 for c in value):
+        if match and len(value) <= 512 and "," not in value and all(32 <= ord(c) <= 126 for c in value):
             version, tid, sid, incoming_flags, rest = match.groups()
             valid_version = version != "ff" and (not rest or (version != "00" and rest.startswith("-")))
             if valid_version and tid != "0" * 32 and sid != "0" * 16:
@@ -118,12 +118,14 @@ def header_oracle(case):
 
 def outbound_oracle(case):
     result = {}
+    response = case.get("response", False)
+    owned = case.get("diagnosticOwned", False)
     for key, value in case["headers"]:
         name = key.lower()
-        if name.startswith("x-diag-") or (not case.get("response") and name in ("traceparent", "tracestate")):
+        if name.startswith("x-diag-") or (not response and (case["allowed"] or owned) and name in ("traceparent", "tracestate")):
             continue
         result.setdefault(name, []).append(value)
-    if case.get("response"):
+    if response:
         result["x-diag-request-id"] = [case["requestId"]]
         result["x-diag-trace-id"] = [case["traceId"]]
     elif case["allowed"]:
@@ -131,14 +133,51 @@ def outbound_oracle(case):
         if case.get("tracestate"):
             result["tracestate"] = [case["tracestate"]]
         result["x-diag-request-id"] = [case["requestId"]]
-    else:
-        for key, value in case.get("providerOwnedTrace", {}).items():
-            require(key in ("traceparent", "tracestate"), "Invalid provider vector field")
-            result[key] = [value]
-    return result
+    return {"headers": result, "diagnosticOwned": not response and case["allowed"]}
+
+
+def copy_source_oracle(case):
+    return [[key, value] for key, value in case["headers"]
+            if key.lower() not in ("traceparent", "tracestate") and not key.lower().startswith("x-diag-")]
+
+
+def redirect_oracle(case):
+    current_headers = case["headers"]
+    owned = False
+    results = []
+    for step in case["steps"]:
+        peer_result = peers_oracle({"config": case["peers"], "target": step["target"]})
+        require((peer_result["match"] is not None) == step["allowed"], "Redirect peer policy fixture disagrees with actual target")
+        # Remove our own pair before a provider constructs new-hop headers.
+        current_headers = [[key, value] for key, value in current_headers
+                           if not key.lower().startswith("x-diag-") and
+                           not (owned and key.lower() in ("traceparent", "tracestate"))]
+        owned = False
+        current_headers += step.get("businessHeaders", [])
+        result = outbound_oracle({**step, "headers": current_headers, "diagnosticOwned": owned})
+        results.append(result)
+        current_headers = [[key, value] for key, vals in result["headers"].items() for value in vals]
+        owned = result["diagnosticOwned"]
+    return results
+
+
+def http_ingress_oracle(case):
+    # Exercise a real HTTP parser in memory, without sockets or service code.
+    import h11
+
+    conn = h11.Connection(h11.SERVER)
+    wire = "GET /fixture HTTP/1.1\r\nHost: fixture.test\r\n" + "\r\n".join(case["wireHeaderLines"]) + "\r\n\r\n"
+    conn.receive_data(wire.encode("ascii"))
+    request = conn.next_event()
+    require(isinstance(request, h11.Request), "HTTP fixture did not produce a request")
+    observed = [[key.decode("ascii"), value.decode("ascii")] for key, value in request.headers if key != b"host"]
+    require(observed == case["headers"], "HTTP framework field values differ from the fixture")
+    return header_oracle(case)
 
 
 def peer_response_oracle(case):
+    if not case["peerConfigured"]:
+        return {"peerRequestId": None, "peerTraceId": None, "peerIdRejected": "none"}
     request_id, request_reason = custom_id(values(case["headers"], "x-diag-request-id"))
     trace_id, trace_reason = custom_id(values(case["headers"], "x-diag-trace-id"))
     if trace_id is not None and not TRACE.fullmatch(trace_id):
@@ -349,10 +388,11 @@ def coverage_oracle(case):
     gaps = expected is not None and set(seq) != set(range(1, expected + 1))
     known_loss = (case["debugCapture"] == "interrupted" or case["accessCapture"] == "interrupted" or
                   (case["droppedForSpan"] or 0) > 0 or (case["truncatedEvents"] or 0) > 0 or
-                  case["conflict"] or gaps or case["exportKnownLoss"])
+                  case["terminalStubCount"] > 0 or case["conflict"] or gaps or case["exportKnownLoss"])
     if known_loss:
         coverage = "partial"
-    elif (case["terminalCount"] != 1 or expected is None or case["debugCapture"] == "unknown" or
+    elif (case["terminalCount"] != 1 or expected is None or case["terminalLogSeq"] != expected or
+          case["debugCapture"] == "unknown" or case["accessCapture"] in ("none", "unknown") or
           case["droppedForSpan"] is None or case["truncatedEvents"] is None):
         coverage = "unknown"
     elif case["debugCapture"] == "none":
@@ -361,7 +401,7 @@ def coverage_oracle(case):
         coverage = "unknown"
     else:
         coverage = "full"
-    return {"debugCoverage": coverage, "terminalMissing": case["terminalCount"] == 0}
+    return {"debugCoverage": coverage, "terminalMissing": case["terminalCount"] + case["terminalStubCount"] == 0}
 
 
 def mapping_oracle(case):
@@ -373,12 +413,14 @@ def mapping_oracle(case):
         state = "cancelled"
     elif case.get("localFailureObserved"):
         state = "failed"
-    timing = "browser_reported" if "browserDurationMs" in legacy else "legacy_wall" if "firstEffectiveMs" in legacy else "unknown"
+    timing = {key: case.get("monotonicMeasurements", {}).get(key) for key in
+              ("firstUpstreamByteMs", "firstEffectiveOutputMs", "responseCommitMs", "firstDownstreamEffectiveOutputMs")}
+    timing["timingSource"] = "server_monotonic"
     return {"requestId": legacy.get("request_id", legacy.get("requestId")),
             "attemptId": legacy.get("request_attempt_id", legacy.get("attemptId")),
             "deliveryState": state, "logSeq": case["allocatedLogSeq"],
             "sinkDroppedTotal": legacy.get("logsDropped"), "droppedForSpan": None,
-            "timingSource": timing, "legacyPreserved": legacy}
+            "timing": timing, "legacyPreserved": legacy}
 
 
 def semantic_issues(record):
@@ -452,7 +494,8 @@ def validate():
     oracles = {"headers": header_oracle, "outbound": outbound_oracle, "peer-response": peer_response_oracle, "peers": peers_oracle,
                "source-scope": source_oracle, "graph": graph_oracle, "coverage": coverage_oracle,
                "aito-mapping": mapping_oracle, "resources": resource_oracle, "counts": counts_oracle,
-               "semantic": lambda case: semantic_issues(case["record"])}
+               "semantic": lambda case: semantic_issues(case["record"]), "copy-source": copy_source_oracle,
+               "redirects": redirect_oracle, "http-ingress": http_ingress_oracle}
     vector_count = 0
     for name, oracle in oracles.items():
         vectors = read_json(ROOT / "vectors" / (name + ".json"))
@@ -460,6 +503,10 @@ def validate():
         for vector in vectors:
             require(vector["id"] not in seen, f"Duplicate vector ID: {name}")
             seen.add(vector["id"])
+            if name == "headers":
+                require(vector["boundary"] in ("framework_fields", "parser_unit"), "Missing header input boundary")
+            if name == "peers":
+                require(vector["boundary"] == "final_request_target", "Missing final URL input boundary")
             if name == "semantic":
                 SCHEMA.validate(vector["input"]["record"])
             actual = oracle(vector["input"])

@@ -914,10 +914,10 @@
           "deploymentId": "edge",
           "requestId": "local-1",
           "peerConfigured": false,
-          "peerService": "gcli2api",
-          "peerDeploymentId": "pool",
-          "peerRequestId": "remote-1",
-          "peerTraceId": "11111111111111111111111111111111",
+          "peerService": null,
+          "peerDeploymentId": null,
+          "peerRequestId": null,
+          "peerTraceId": null,
           "sourceTrusted": true
         },
         {

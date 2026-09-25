@@ -7,6 +7,9 @@ The coordinator alone records the approved full Git commit and manifest digest.
 Changing any candidate byte invalidates an earlier review. Consumers must copy
 this directory byte-for-byte from the approved commit, record both identities,
 and run the vectors in their own language. Do not invent a private v1 variant.
+Each consumer repository must also apply `contracts/diagnostics/v1/** text eol=lf`
+in its own `.gitattributes` (adjust the prefix if copied elsewhere), and verify
+both checked-out and indexed bytes. Copying files alone is insufficient on Windows.
 
 ## Contents and precedence
 
@@ -39,6 +42,10 @@ once per actual worker, after fork. Multiple workers can share instanceId but
 not bootId. A restart gets a new bootId. Existing Aitoapi bootId may be reused
 only if it already obeys this lifecycle. No identity files, registry or host/IP
 inference. buildCommit identifies code, not a machine. pid is auxiliary only.
+The same instanceId with different bootIds is not by itself evidence of bad
+configuration: legitimate workers/restarts have this shape too. Keep these
+processes distinct; report conflicts only when there is additional contradictory
+identity evidence, without claiming that configuration errors are always detectable.
 
 Resource labels are operator-selected non-sensitive tokens (1–64 ASCII
 alphanumeric/`._-`); instanceId permits 128 characters. Invalid optional resource
@@ -76,31 +83,46 @@ Never deduplicate on requestId, caller ID, timestamp, message or stream `seq`.
 ## Headers and source scope
 
 Use a conforming propagator for [W3C Trace Context Level 1 (2021)](https://www.w3.org/TR/2021/REC-trace-context-1-20211123/).
-Header names are case-insensitive; input vectors preserve raw repeated fields.
+Header names are case-insensitive. Application inputs are **framework-parsed
+per-field values**, with protocol OWS already removed, retaining field order and
+multiplicity. Go uses header value slices, ASGI uses its field-pair list, and Node
+must use `headersDistinct` or `rawHeaders` for both traceparent and tracestate,
+not comma-joined `req.headers`. Do not read raw sockets or reconstruct discarded
+wire whitespace. `http-ingress.json` distinguishes wire examples from observable
+fields; `headers.json` labels synthetic parser-unit negatives separately.
 Multiple traceparent values (even identical or comma-joined) are invalid.
 Use the Level 1 future-version algorithm; emitted context is version 00, with
 only the sampled bit retained. New roots use flags 00. Invalid/missing context
 creates fresh trace/server IDs without changing model HTTP behavior. Invalid
 traceparent discards tracestate; invalid tracestate alone does not discard the
-traceparent. Combine multiple tracestate fields in wire order, validate keys
+traceparent. Combine multiple observable tracestate values with exactly `,` in
+field order (no extra spaces inserted by Node's merged-header view), validate keys
 and limits, and emit at most one field. This profile drops the entire tracestate
 above 512 ASCII bytes or 32 nonempty members; empty members are ignored. No
 proprietary member is added. Traceparent is bounded to 512 bytes as an explicit
-local resource limit, not a universal W3C length rule. Only HTTP outer OWS is
-removed. Whitespace inside the fixed 55-character prefix is invalid;
+local resource limit, not a universal W3C length rule. Measure the observable
+field value; wire OWS removed by the HTTP parser cannot be counted. The application
+does not trim the supplied field again. Whitespace inside the fixed 55-character prefix is invalid;
 future-version extension bytes after the required hyphen remain opaque and may
-include ASCII spaces. This profile rejects control bytes/non-ASCII in that
-extension and measures its 512-byte cap before stripping outer OWS. Neither raw
-header is logged.
+include ASCII spaces. As a local profile restriction, a comma is forbidden
+anywhere, including unknown extensions, to reject merged multi-value context.
+Control/non-ASCII extension bytes are also rejected. No header value is logged.
 
 Custom IDs must be a single value, 1–128 ASCII characters from `[A-Za-z0-9._:/-]`.
-Do not trim custom IDs. Reject duplicates, comma lists, empty/control/non-ASCII
+Do not additionally trim custom IDs at the application boundary. Internal
+whitespace is invalid; HTTP `X-Request-Id:  a ` normally arrives as `a` and is
+valid. A synthetic parser-unit input ` a ` is invalid but is not a claim about
+that wire request. Reject duplicates, comma lists, empty/control/non-ASCII
 values; record only the rejection enum and bounded length, never the input.
 X-Diag-Trace-Id on a response additionally must be a nonzero lowercase 32-digit
 hex ID. Invalid peer IDs become null, with rejection metadata; no graph identity
 is fabricated. requestId must have a header-safe representation; if an existing
 internal ID does not, retain it internally and report this adapter gap instead
 of silently changing queue/cancellation keys.
+Only a configured peer's response contributes peerRequestId/peerTraceId.
+For other targets, ignore X-Diag-* response values and report null IDs with
+peerIdRejected=none. `not_configured` is not a rejection code. These ignored
+values must still be stripped at the local response commit boundary.
 
 Default callerRequestId source is X-Request-Id. A **locally authenticated,
 explicitly configured inbound adapter** may prefer X-Diag-Request-Id, then
@@ -122,20 +144,44 @@ fully matching scoped caller IDs are search aliases, not graph edges or billing
 keys. X-Trace-Id, X-Diag-Trace-Id and X-Correlation-Id never establish inbound
 parentage. No ID controls auth, account selection, cancellation, DEBUG or billing.
 
+At **every automatic inbound-to-outbound copy source**, exclude traceparent,
+tracestate and all X-Diag-* before copying; this is not a global deletion of
+headers deliberately constructed by a provider adapter. Inventory existing
+copy/write points, including error, retry and redirect branches. Do not infer
+header provenance from a value or from its resemblance to incoming context.
+Apply filtering only to proven automatic copies, not merely to an API that
+accepts optional explicit extra_headers. Inventory the call sites and actual
+arguments first; if no automatic copy exists, do not change that path. This
+contract does not assert that current gcli2api routes leak inbound context.
+
 On an allowed peer request, after existing business headers are built, operate
 on a per-request copy: case-insensitive remove/Set traceparent, tracestate and
 all X-Diag-*; emit only traceparent, optional valid tracestate, and
 X-Diag-Request-Id=local requestId. No request X-Diag-Trace-Id is needed.
 Existing X-Request-Id/X-Trace-Id retain their project/provider semantics. Do not
-globally delete those business fields. For other targets, strip inherited
-diagnostic context and all X-Diag-*; only an explicit provider adapter may supply
-its own supported trace headers. Never forward untrusted inbound context by an
-old automatic header whitelist. Every redirect rechecks target policy; across
-origins discard diagnostic headers before generating newly allowed context.
-Preserve existing redirect behavior; mark an unobservable/unsafe path uncovered.
+globally delete those business fields. When injecting traceparent/tracestate,
+the diagnostics module sets a minimal request-local ownership marker for that
+pair; the marker is local metadata, never an HTTP field, body property or log.
+For a non-peer request, always remove X-Diag-*; remove traceparent/tracestate
+only when this module owns them, then clear its marker. Other existing trace
+fields belong to explicit business construction after the source filtering and
+remain untouched. There is no `providerOwnedTrace` value supplied by a final hook.
+
+Every redirect retains ownership metadata until diagnostic-owned fields have
+been removed from the new request copy, **before** any new provider header writes.
+The final boundary rechecks the actual destination: re-inject a new call context
+and mark ownership for an allowed peer, or leave the cleaned non-peer request
+unmarked. This includes same-origin redirects outside the allowed path. It never
+restores previously overwritten provider values; a provider adapter may construct
+its new-hop fields through its existing supported path after cleanup. An owned
+pair left on a non-peer request is also removed defensively by the final boundary.
+Do not guess ownership by comparing values. Preserve the existing redirect policy;
+if metadata/cleanup cannot be retained on a path, report it uncovered and do not
+inject internal context on that path. No new redirects, requests or retries.
 
 At normal response commit, replace all peer X-Diag-* with exactly one local
-X-Diag-Request-Id and X-Diag-Trace-Id. Capture peer IDs before replacement. Do
+X-Diag-Request-Id and X-Diag-Trace-Id. Capture IDs only from configured peers
+before replacement. Do
 not change existing X-Request-Id/X-Trace-Id, force an early 200, add SSE frames,
 rewrite JSON, or widen allowed CORS origins. Cover error and streaming commits.
 
@@ -177,8 +223,13 @@ logged. Target fragments, dot/empty segments, any percent-encoded path or
 backslash conservatively suppress propagation (not the business request).
 This intentionally narrower target policy avoids cross-language URL-decoding
 disagreements; adding encoded route support is a future reviewed change.
-Inspect the actual outbound URL before lossy normalization, not user-facing
-base-URL strings. Same-origin overlapping prefixes are invalid, even if their
+Match the actual destination origin and escaped request-target path available
+at the final send boundary, after the client's URL normalization, not the original
+configuration spelling or base-URL input. A dot segment already removed by httpx
+cannot be observed and must not be reconstructed. A dot segment still present
+in the actual request-target suppresses propagation. Vectors explicitly identify
+this boundary; equivalent original URLs need not retain equivalent spellings.
+Same-origin overlapping prefixes are invalid, even if their
 alias/service values agree; no order-dependent first-match rule. Limits and
 canonicalization are tested independently of the JSON Schema shape checks.
 
@@ -215,7 +266,9 @@ the project's existing log. Public projection is separate from legacy shape.
 
 Unknown usage is null with present=false; observed zero is value=0/present=true.
 Usage metrics include source and basis. Raw numeric token fields are allowlisted
-by protocol (no arbitrary upstream object). Preserve candidate/reasoning/output
+by protocol (no arbitrary upstream object), including OpenAI `total_tokens` and
+Gemini `cachedContentTokenCount` when present. These raw fields do not create new
+business counters or redefine normalized output/reasoning totals. Preserve candidate/reasoning/output
 separately; completion_tokens may already contain reasoning. Never sum repeated
 cumulative frames or different attempts into deliveredUsage. A value of 87 has
 no special classification. Without DEBUG these details are unavailable.
@@ -270,6 +323,13 @@ debugCapture (`none`, `interrupted`, `enabled_throughout`, `unknown`) over the
 request not opted into mid-request enablement. Track truncatedEvents separately.
 Basic access disablement during a span is recorded as `accessCapture`.
 
+A diag.truncated whose originalEvent is diag.server/diag.call proves that a
+terminal was constructed: it is a terminal **stub**, not a full terminal or
+bilateral outcome record. Count it separately from full terminals, set
+terminalMissing=false, and mark debugCoverage=partial due to known truncation,
+even though its coverage snapshot is absent. Never infer success, complete
+coverage or a verified edge from the stub. Other stubs do not establish a terminal.
+
 Offline debugCoverage precedence: known interruption, loss, truncation, conflict
 or sequence gaps => `partial`; else missing/contradictory terminal or unknown
 capture/counters => `unknown`; else debugCapture=none => `none`; else
@@ -280,6 +340,11 @@ sink loss can only be detected with export/sink evidence. `full` is relative to
 the declared instrumented capabilities and observed export, never proof against
 undetectable crashes, uninstrumented paths or truncated export tails. Do not
 infer a stage never ran merely because its DEBUG event is absent.
+In particular, accessCapture=unknown prevents `none` as well as `full`.
+accessCapture=none alongside a full basic terminal is contradictory and yields
+`unknown` absent a higher-priority known loss. Duplicate full terminals, or a
+terminal logSeq disagreeing with expectedLastLogSeq, also yield `unknown` unless
+an actual event conflict/gap/truncation already requires `partial`.
 
 ## Bilateral evidence and conflicts
 
@@ -324,9 +389,8 @@ remain distinct nodes. Provenance time ranges and clock skew never repair an edg
 | deliveryOutcome=success | deliveryState=local_finished only when local response finish is known |
 | deliveryOutcome=aborted/error/unknown | map only verified local cancellation/failure; otherwise unknown; preserve legacy value |
 | logsDropped | sinkDroppedTotal; never droppedForSpan |
-| firstEffectiveMs | timingSource=legacy_wall with original duration; no conversion to monotonic assertion |
-| browserDurationMs | timingSource=browser_reported; do not subtract browser/server clocks |
-| new server observations | timingSource=server_monotonic |
+| firstEffectiveMs / browserDurationMs | Keep in existing gated legacy logs/statistics; do not project into public v1 timing |
+| new reliable monotonic server observations | Public timing metrics, timingSource=server_monotonic; unobserved values null |
 | generation.attempt_finished | upstream.attempt_finished, with existing attempt/result/usage evidence |
 | existing conversion boundary | response.converted only if actual delivered protocol usage is observable |
 | generation.request_finished | DEBUG semantic evidence only; not a replacement for independently gated diag.server |
@@ -338,6 +402,11 @@ No browser script/WS protocol, queue, ACK validation, retry, stats or management
 schema changes. The public holder must not enter proxyRequest spread/serialization.
 Unmapped legacy events stay in existing gated logs; they are not exported by
 copying arbitrary nested fields. `aito-mapping.json` contains mapping vectors.
+The public timing object only contains new, reliably identified monotonic server
+measurements; its source is fixed to server_monotonic, including when all values
+are null (no observation asserted). Never fill it from legacy wall-clock/browser
+fields or tag mixed clocks with a single source. No recalculation of Aitoapi
+business durations/statistics, and no required new timer just to populate a field.
 
 ## Export and versioning
 

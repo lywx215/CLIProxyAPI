@@ -1,0 +1,328 @@
+[
+  {
+    "id": "peer-to-third-party-no-context-leak",
+    "input": {
+      "peers": [
+        {
+          "alias": "gcli",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": null
+        }
+      ],
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ]
+      ],
+      "steps": [
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "2222222222222222",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": true,
+          "target": "https://gcli.example.test/v1/chat"
+        },
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "3333333333333333",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": false,
+          "target": "https://third.example.test/v1"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "00-11111111111111111111111111111111-2222222222222222-01"
+          ],
+          "tracestate": [
+            "vendor=one"
+          ],
+          "x-diag-request-id": [
+            "local-1"
+          ]
+        },
+        "diagnosticOwned": true
+      },
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ]
+        },
+        "diagnosticOwned": false
+      }
+    ]
+  },
+  {
+    "id": "peer-to-same-origin-disallowed-path",
+    "input": {
+      "peers": [
+        {
+          "alias": "gcli",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": null
+        }
+      ],
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ]
+      ],
+      "steps": [
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "2222222222222222",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": true,
+          "target": "https://gcli.example.test/v1/chat"
+        },
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "3333333333333333",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": false,
+          "target": "https://gcli.example.test/private"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "00-11111111111111111111111111111111-2222222222222222-01"
+          ],
+          "tracestate": [
+            "vendor=one"
+          ],
+          "x-diag-request-id": [
+            "local-1"
+          ]
+        },
+        "diagnosticOwned": true
+      },
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ]
+        },
+        "diagnosticOwned": false
+      }
+    ]
+  },
+  {
+    "id": "peer-to-peer-rebuild-new-call",
+    "input": {
+      "peers": [
+        {
+          "alias": "gcli",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": null
+        }
+      ],
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ]
+      ],
+      "steps": [
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "2222222222222222",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": true,
+          "target": "https://gcli.example.test/v1/chat"
+        },
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "3333333333333333",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": true,
+          "target": "https://gcli.example.test/v1/next"
+        }
+      ]
+    },
+    "expected": [
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "00-11111111111111111111111111111111-2222222222222222-01"
+          ],
+          "tracestate": [
+            "vendor=one"
+          ],
+          "x-diag-request-id": [
+            "local-1"
+          ]
+        },
+        "diagnosticOwned": true
+      },
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "00-11111111111111111111111111111111-3333333333333333-01"
+          ],
+          "tracestate": [
+            "vendor=one"
+          ],
+          "x-diag-request-id": [
+            "local-1"
+          ]
+        },
+        "diagnosticOwned": true
+      }
+    ]
+  },
+  {
+    "id": "owned-cleanup-before-new-provider-write",
+    "input": {
+      "peers": [
+        {
+          "alias": "gcli",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": null
+        }
+      ],
+      "headers": [
+        [
+          "X-Request-Id",
+          "provider-old"
+        ],
+        [
+          "X-Trace-Id",
+          "old-trace"
+        ]
+      ],
+      "steps": [
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "2222222222222222",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": true,
+          "target": "https://gcli.example.test/v1/chat"
+        },
+        {
+          "requestId": "local-1",
+          "traceId": "11111111111111111111111111111111",
+          "callSpanId": "3333333333333333",
+          "flags": "01",
+          "tracestate": "vendor=one",
+          "allowed": false,
+          "target": "https://third.example.test/v1",
+          "businessHeaders": [
+            [
+              "traceparent",
+              "provider-new-hop"
+            ]
+          ]
+        }
+      ]
+    },
+    "expected": [
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "00-11111111111111111111111111111111-2222222222222222-01"
+          ],
+          "tracestate": [
+            "vendor=one"
+          ],
+          "x-diag-request-id": [
+            "local-1"
+          ]
+        },
+        "diagnosticOwned": true
+      },
+      {
+        "headers": {
+          "x-request-id": [
+            "provider-old"
+          ],
+          "x-trace-id": [
+            "old-trace"
+          ],
+          "traceparent": [
+            "provider-new-hop"
+          ]
+        },
+        "diagnosticOwned": false
+      }
+    ]
+  }
+]

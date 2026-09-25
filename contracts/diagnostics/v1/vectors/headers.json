@@ -14,7 +14,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "valid-sampled",
@@ -36,7 +37,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "case-insensitive-name",
@@ -58,10 +60,11 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
-    "id": "outer-http-ows",
+    "id": "parser-unit-unstripped-outer-ows",
     "input": {
       "headers": [
         [
@@ -71,16 +74,17 @@
       ]
     },
     "expected": {
-      "contextSource": "accepted",
-      "traceId": "11111111111111111111111111111111",
-      "parentSpanId": "1111111111111111",
-      "outputFlags": "01",
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
       "tracestate": null,
       "callerRequestId": null,
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "unsampled",
@@ -102,7 +106,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "reserved-flags-masked",
@@ -124,7 +129,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-version",
@@ -146,7 +152,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-version-no-extension",
@@ -168,7 +175,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-opaque-extension-space",
@@ -190,7 +198,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-opaque-exact-512-limit",
@@ -212,7 +221,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "empty",
@@ -238,7 +248,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "trace-zero",
@@ -264,7 +275,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "parent-zero",
@@ -290,7 +302,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "uppercase-hex",
@@ -316,7 +329,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "version-ff",
@@ -342,7 +356,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "bad-version",
@@ -368,7 +383,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "bad-flags",
@@ -394,7 +410,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "too-short",
@@ -420,7 +437,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "v00-extra",
@@ -446,7 +464,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-no-separator",
@@ -472,7 +491,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "wrong-delimiter",
@@ -498,7 +518,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "embedded-whitespace",
@@ -524,7 +545,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "control",
@@ -550,7 +572,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "over-local-limit",
@@ -576,7 +599,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "future-opaque-tab-rejected-by-local-profile",
@@ -602,10 +626,11 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
-    "id": "raw-ows-over-local-limit",
+    "id": "parser-unit-observable-ows-over-local-limit",
     "input": {
       "headers": [
         [
@@ -628,7 +653,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "comma-joined",
@@ -654,7 +680,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "duplicate-identical",
@@ -680,7 +707,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "state-without-parent",
@@ -702,7 +730,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "state-multiple-fields",
@@ -732,7 +761,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "state-empty-members",
@@ -758,7 +788,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "duplicate-key",
@@ -784,7 +815,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "invalid-key",
@@ -810,7 +842,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "equals-value",
@@ -836,7 +869,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "control-value",
@@ -862,7 +896,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "state-over-limit",
@@ -888,7 +923,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "state-value-too-long",
@@ -914,7 +950,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "33-members",
@@ -940,7 +977,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "32-members",
@@ -966,7 +1004,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "tenant-state",
@@ -992,7 +1031,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "id-only",
@@ -1014,7 +1054,8 @@
       "callerHeader": "x-request-id",
       "callerTrust": "unverified",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "id-128",
@@ -1036,7 +1077,8 @@
       "callerHeader": "x-request-id",
       "callerTrust": "unverified",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "id-empty",
@@ -1058,7 +1100,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "invalid"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "id-129",
@@ -1080,10 +1123,11 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "too_long"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
-    "id": "id-space",
+    "id": "parser-unit-custom-untrimmed-value",
     "input": {
       "headers": [
         [
@@ -1102,7 +1146,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "invalid"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "id-unicode",
@@ -1110,7 +1155,7 @@
       "headers": [
         [
           "X-Request-Id",
-          "\u4e2d"
+          "中"
         ]
       ]
     },
@@ -1124,7 +1169,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "invalid"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "id-control",
@@ -1146,7 +1192,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "invalid"
-    }
+    },
+    "boundary": "parser_unit"
   },
   {
     "id": "id-comma",
@@ -1168,7 +1215,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "duplicate"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "id-duplicate",
@@ -1194,7 +1242,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "duplicate"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "untrusted-diag-ignored",
@@ -1224,7 +1273,8 @@
       "callerHeader": null,
       "callerTrust": "none",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "authenticated-standard",
@@ -1251,7 +1301,8 @@
       "callerHeader": "x-request-id",
       "callerTrust": "authenticated",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "configured-but-not-authenticated",
@@ -1278,7 +1329,8 @@
       "callerHeader": "x-request-id",
       "callerTrust": "unverified",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "authenticated-peer-prefers-diag",
@@ -1306,7 +1358,8 @@
       "callerHeader": "x-diag-request-id",
       "callerTrust": "configured_peer",
       "rejected": "none"
-    }
+    },
+    "boundary": "framework_fields"
   },
   {
     "id": "invalid-diag-falls-back",
@@ -1334,6 +1387,142 @@
       "callerHeader": "x-request-id",
       "callerTrust": "authenticated",
       "rejected": "invalid"
-    }
+    },
+    "boundary": "framework_fields"
+  },
+  {
+    "id": "future-duplicate-field-lines",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x"
+        ],
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    },
+    "boundary": "framework_fields"
+  },
+  {
+    "id": "future-comma-combined",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x, 01-11111111111111111111111111111111-1111111111111111-01-x"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    },
+    "boundary": "framework_fields"
+  },
+  {
+    "id": "future-extension-comma-local-profile",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x,opaque"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    },
+    "boundary": "framework_fields"
+  },
+  {
+    "id": "tracestate-observed-fields-exact-512",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "a=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        [
+          "tracestate",
+          "b=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": "a=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,b=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    },
+    "boundary": "framework_fields"
+  },
+  {
+    "id": "tracestate-observed-fields-513",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "a=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        [
+          "tracestate",
+          "b=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    },
+    "boundary": "framework_fields"
   }
 ]

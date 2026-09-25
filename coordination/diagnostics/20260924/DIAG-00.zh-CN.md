@@ -28,7 +28,7 @@
 ## v1 契约消费与审核门槛（DIAG-00 候选补充）
 
 契约候选：`contracts/diagnostics/v1`，`ai-proxy-diagnostics/1`，制品 `1.0.0-rc.1`。当前未获批准；除 DIAG-01 的独立业务修复外，依赖任务不可自行使用草稿开工。
-协调窗口批准后提供准确来源 Git SHA 与 SHA256SUMS 原始字节 SHA-256。其他仓库按字节纳入测试资源并记录来源；不运行时跨仓库导入。不改变已有 ID/seq/管理统计含义，不私自扩展公共 schema 或分叉版本。
+协调窗口批准后提供准确来源 Git SHA 与 SHA256SUMS 原始字节 SHA-256。消费仓库按字节纳入测试资源并记录来源，同时加入 `contracts/diagnostics/v1/** text eol=lf`（复制目录不同时调整路径），核验工作区与 Git 暂存字节；不运行时跨仓库导入。不改变已有 ID/seq/管理统计含义，不私自扩展公共 schema 或分叉版本。
 
 共同验收：合法/非法/重复头、未来版本、配置 origin/路径边界、调用方来源作用域、双边证据/冲突、缺父节点、实例/worker/重启、缺失/零值、DEBUG/基础日志独立门控、终局序号与完整性。runtime 测试须针对真实处理边界；DIAG-00 oracle 通过不代表运行时实现通过。
 报告每个命令及退出结果、完整 baseline/HEAD、契约来源/摘要、脱敏样例和覆盖缺口。协调窗口代码检查后再调用 Claude，准确 HEAD 通过才放行推送；任何修订重新提交/审核。无 P1/P2 才放行。保持最多三个开发任务并行，任务自身不得派发其他开发任务。
@@ -37,4 +37,4 @@
 
 ## 派发信息
 
-已创建本批独立任务：threadId `01a0d64a-0519-7fc0-9810-110cd3f6835b`；projectId `3ae4cfeb-efd4-4533-b1b1-8464dd33b4b4`；worktree `C:/Users/lywx2/.codex/worktrees/622a/CLIProxyAPI`；分支 `codex/diag-00-contract`；锁定基线 `fde3903689b8c9882d1f0233587fe33e2edfdf77`。本分支交付状态：待审核，未调用 Claude、未推送。
+已创建本批独立任务：threadId `01a0d64a-0519-7fc0-9810-110cd3f6835b`；projectId `3ae4cfeb-efd4-4533-b1b1-8464dd33b4b4`；worktree `C:/Users/lywx2/.codex/worktrees/622a/CLIProxyAPI`；分支 `codex/diag-00-contract`；锁定基线 `fde3903689b8c9882d1f0233587fe33e2edfdf77`。本分支 R1 修订交付状态：待审核。本开发窗口未自行调用 Claude、未推送；协调方 R1 对旧 HEAD 给出 request_changes，当前修订必须经准确新 HEAD 复审。
