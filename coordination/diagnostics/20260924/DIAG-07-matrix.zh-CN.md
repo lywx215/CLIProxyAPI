@@ -2,6 +2,8 @@
 
 **待代码审核；整体验收被Windows策略阻塞。**
 
+R2新增[21项范围/双边回归](DIAG-07-R2-validation/replay-03/checks.json)与[345项历史下游语义重放](DIAG-07-R2-validation/downstream-replay/semantic-checks.json)。属于既有导出重放或明确合成日志，没有将任何unexecuted项目升级为live；完整模式的两服务/四目标断言仍待合规六实例执行。
+
 `live`表示实际服务进程/网络执行的明确子集，本次均不能理解为六实例验收；组件和人工日志不提升为live。
 
 | 验收条目 | 证据等级 | 结论/缺口 | 证据 |
@@ -19,7 +21,7 @@
 | Aito重试/浏览器重连/网络错误 | live | 实际dispatch和callback，既有queue/ACK逻辑不改 | [文件](DIAG-07-run-06/semantic-checks.json) |
 | gcli取消/真实读断/部分内容后错误帧/缺终止 | live | 客户端IncompleteRead保留partial body，诊断和实际帧分别保存 | [文件](DIAG-07-run-06/requests.json) |
 | 内容拦截/空输出/工具/媒体/思考/缺失及零usage | live | gcli工具媒体、Aito工具思考；Aito媒体未live；工具碎片交付计数null不强写success | [文件](DIAG-07-run-06/semantic-checks.json) |
-| 正常close/flush和硬杀 | live | 正常回执exit0；硬杀活动dispatch可完全无日志，known-loss不造终局 | [文件](DIAG-07-run-06/analysis-known-hard-kill-command.json) |
+| 正常close/flush和硬杀 | live | 正常回执exit0；kill前已观察dispatch计数，但未证明kill时仍活动；known-loss不造终局 | [文件](DIAG-07-run-06/analysis-known-hard-kill-command.json) |
 | gcli server后迟到call落盘 | live | 最终所有已观察server的callCount均匹配，13条call晚于owner server | [文件](DIAG-07-run-06/analysis.json) |
 | 特定shutdown_asyncgens迟到时序 | unexecuted | 未隔离证明call发生于close writer之后/asyncgens期间；需要原02入口可观察生命周期专项 | [文件](DIAG-07-run-06/close.json) |
 | 400清理/连续空/空白/末尾model/工具/全空错误 | live | no-prefill模型3.7；不在限定范围的2.5不承诺删末尾model；假provider保留空contents400 | [文件](DIAG-07-run-06/semantic-checks.json) |

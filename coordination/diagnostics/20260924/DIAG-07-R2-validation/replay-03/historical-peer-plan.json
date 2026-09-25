@@ -1,0 +1,30 @@
+{
+  "cpa1": {
+    "aito1": {
+      "service": "aitoapi",
+      "deploymentId": "diag07-local",
+      "environment": "test",
+      "instanceId": "aito1"
+    },
+    "aito2": {
+      "service": "aitoapi",
+      "deploymentId": "diag07-local",
+      "environment": "test",
+      "instanceId": "aito2"
+    }
+  },
+  "cpa2": {
+    "aito1": {
+      "service": "aitoapi",
+      "deploymentId": "diag07-local",
+      "environment": "test",
+      "instanceId": "aito1"
+    },
+    "aito2": {
+      "service": "aitoapi",
+      "deploymentId": "diag07-local",
+      "environment": "test",
+      "instanceId": "aito2"
+    }
+  }
+}

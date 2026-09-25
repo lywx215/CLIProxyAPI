@@ -37,8 +37,33 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
 
 
+def responses_equivalent(on, off):
+    def stable(body):
+        value = json.loads(body)
+        for key in ('id', 'created'): value.pop(key, None)
+        return value
+    return on['status'] == off['status'] and stable(on['body']) == stable(off['body'])
+
+
 def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], creationflags=CREATE_FLAGS).decode().strip()
+
+
+def binary_identity(path, attestation=None):
+    # go version -m reads the binary; it does not execute the target program.
+    metadata = subprocess.run(['go', 'version', '-m', str(path)], capture_output=True, creationflags=CREATE_FLAGS)
+    lines = metadata.stdout.decode('utf-8', errors='replace').splitlines()
+    identity = {'file': path.name, 'sha256': sha(path.read_bytes()),
+                'embeddedBuildMetadata': lines[1:], 'metadataReadExitCode': metadata.returncode,
+                'buildSource': None, 'qualification': 'Unknown unless a matching build attestation is supplied; invocation HEAD is not build HEAD.'}
+    if attestation:
+        if not attestation.get('baseRevision') or not attestation.get('sourceQualification'):
+            raise RuntimeError('binary build attestation must identify source revision and qualification')
+        if attestation['sha256'] != identity['sha256']:
+            raise RuntimeError('binary build attestation digest mismatch')
+        identity['buildSource'] = attestation
+        identity['qualification'] = 'Hash-matched operator build attestation; embedded metadata is recorded separately.'
+    return identity
 
 
 def verify(root, revision, external=True):
@@ -282,6 +307,7 @@ def main():
     parser.add_argument('--node', type=Path, required=True)
     parser.add_argument('--driver', type=Path, required=True)
     parser.add_argument('--analyzer', type=Path, required=True)
+    parser.add_argument('--binary-provenance', type=Path, required=True, help='JSON driver/analyzer build attestations, each bound to the actual binary sha256')
     parser.add_argument('--qa-deps', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--downstream-only', action='store_true', help='run independent gcli/Aito coverage; explicitly leaves six-instance acceptance incomplete')
@@ -295,7 +321,11 @@ def main():
     status = 2
     try:
         revisions = {'cpa': verify(REPO, BASE, False), 'gcli': verify(args.gcli, GCLI), 'aito': verify(args.aito, AITO)}
+        provenance = json.loads(args.binary_provenance.read_text(encoding='utf-8'))
+        revisions['binaries'] = {key: binary_identity(path, provenance[key]) for key, path in (('driver', args.driver), ('analyzer', args.analyzer))}
+        revisions['supportSources'] = {p.name: sha(p.read_bytes()) for p in sorted(HERE.iterdir()) if p.suffix in ('.py', '.cjs')}
         write_json(output/'revisions.json', revisions)
+        write_json(output/'run-mode.json', {'mode': 'downstream-only' if args.downstream_only else 'full', 'requiredServices': [] if args.downstream_only else ['gcli2api', 'aitoapi']})
         if not subprocess.check_output([args.node, '--version'], creationflags=CREATE_FLAGS).decode().startswith('v24.'):
             raise RuntimeError('Node24 required')
         providers = [Provider('p1'), Provider('p2')]
@@ -329,6 +359,8 @@ def main():
                 if throttle: argv += ['--throttle']
                 if index == 3: argv += ['--rate','100','--first-delay','10']
             p = Process(label, argv, cwd, env)
+            if kind == 'cpa':
+                p.expected_peers = {target.label: {'service': service, 'deploymentId': 'diag07-local', 'environment': 'test', 'instanceId': target.label} for target in targets}
             processes.append(p)
             if kind == 'gcli':
                 p.address = f'http://127.0.0.1:{port}'
@@ -361,6 +393,8 @@ def main():
             result = request(p.address, path, payload, headers, cancel)
             entry = {'id': name, 'level': 'live', 'instance': p.label, 'scenario': scenario, 'stream': stream,
                      'expectedStatuses': list(expected), 'pass': result['status'] in expected, **result}
+            if p.label.startswith('cpa'):
+                entry.update(expectedPeers=p.expected_peers, graphPolicy='cancellation' if cancel else 'complete')
             matrix.append(entry)
             write_json(output/'requests.json', matrix)
             print(name, result['status'], flush=True)
@@ -398,11 +432,7 @@ def main():
             off = case('debug-off-'+p.label,p)
             if p.label.startswith('aito'): p.command({'op':'debug','enabled':True})
             else: request(p.address,'/__debug/on',{})
-            def stable(body):
-                value = json.loads(body)
-                for key in ('id','created'): value.pop(key,None)
-                return value
-            matrix.append({'id':'equivalence-'+p.label,'level':'live','pass':stable(on['body'])==stable(off['body']), 'evidence':[on['id'],off['id']], 'scope':'response JSON excluding generated id/created; status independently recorded'})
+            matrix.append({'id':'equivalence-'+p.label,'level':'live','pass':responses_equivalent(on,off), 'evidence':[on['id'],off['id']], 'scope':'equal HTTP status and response JSON excluding generated id/created'})
         # Cancellation and DEBUG interruption are held by a provider handshake.
         if cpas:
           with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -443,14 +473,15 @@ def main():
         exports.append(gclis[1].export(output))
         gcli_restart = launch('gcli',5,instance='gcli2')
         case('gcli-restart',gcli_restart)
-        # Kill during an observed browser dispatch, before its delayed frame.
+        # Observe a dispatch count before killing; this does not prove the
+        # response is still active or identify when unflushed records vanished.
         conn = http.client.HTTPConnection('127.0.0.1',urlsplit(worker.address).port)
-        conn.request('POST','/v1/chat/completions',json.dumps({'model':'diag-slow','messages':[{'role':'user','content':'synthetic'}],'stream':False}),{'Content-Type':'application/json','X-Request-Id':'hard-kill-active'})
+        conn.request('POST','/v1/chat/completions',json.dumps({'model':'diag-slow','messages':[{'role':'user','content':'synthetic'}],'stream':False}),{'Content-Type':'application/json','X-Request-Id':'hard-kill-dispatch-observed'})
         snapshot = worker.command({'op':'snapshot'})
         for _ in range(100):
             if snapshot['dispatches'] >= 2: break
             snapshot = worker.command({'op':'snapshot'})
-        matrix.append({'id':'hard-kill-active-dispatch','level':'live','pass':snapshot['dispatches']>=2,'snapshot':snapshot,'evidence':'aito4.jsonl','limit':'unflushed events may be wholly absent'})
+        matrix.append({'id':'hard-kill-dispatch-observed','level':'live','pass':snapshot['dispatches']>=2,'snapshot':snapshot,'evidence':'aito4.jsonl','limit':'dispatch count observed before kill; response activity at kill is unproven; unflushed events may be wholly absent'})
         closes.append(worker.close(hard=True))
         conn.close()
         exports.append({**worker.export(output), 'knownLoss':True})
@@ -477,20 +508,13 @@ def main():
         write_json(output/'requests.json',matrix)
         if any(c.get('forcedAfterFailedClose') for c in closes): status=1
         if exports:
-            argv = [str(args.analyzer)]
-            for e in exports:
-                if not e.get('missing'):
-                    alias=Path(e['file']).stem
-                    argv += ['-input',alias+'='+str(output/e['file']),'-trust',alias]
-                    if e.get('knownLoss'): argv += ['-known-loss',alias]
-            argv += ['-format','json']
-            with (output/'analysis.json').open('wb') as f:
-                analyzed = subprocess.run(argv,stdout=f,stderr=subprocess.PIPE,creationflags=CREATE_FLAGS)
-            write_json(output/'analyzer-command.json',{'command':'diag-analyze -input <each exported file> -trust <each controlled source> -format json','exitCode':analyzed.returncode})
-            if analyzed.returncode != 0: status=1
+            from bilateral import analyze_scopes
+            if any(e.get('missing') for e in exports): status=1
+            scopes = analyze_scopes(args.analyzer, [dict(e, alias=Path(e['file']).stem, path=output/e['file'], trusted=True) for e in exports if not e.get('missing')], output)
+            if any(s['exitCode'] != 0 for s in scopes): status=1
         if status in (1,3) and matrix:
             from check_evidence import check_run
-            semantic=check_run(output)
+            semantic=check_run(output, full=not args.downstream_only)
             if semantic['failed']: status=1
         write_json(output/'result.json',{'exitCode':status,'acceptanceComplete':False,'liveAssertions':len(matrix), 'failedAssertions':[x['id'] for x in matrix if not x['pass']], 'requiredGaps':['POSIX fork and container multiworker','CGO race','actual historical service rolling version','full deterministic end-to-end backpressure/proxy equivalence','see matrix report for remaining component-only and unexecuted items']})
     return status

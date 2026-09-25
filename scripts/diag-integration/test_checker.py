@@ -4,6 +4,17 @@ from pathlib import Path
 import unittest
 
 from check_evidence import read_error_evidence
+from run import responses_equivalent
+
+
+class ResponseEquivalenceTest(unittest.TestCase):
+    def test_status_mismatch_is_not_equivalent(self):
+        self.assertFalse(responses_equivalent({'status':200,'body':'{"value":1}'}, {'status':500,'body':'{"value":1}'}))
+
+    def test_generated_fields_only_are_ignored(self):
+        on={'status':200,'body':'{"id":"a","created":1,"value":1}'}
+        self.assertTrue(responses_equivalent(on, {'status':200,'body':'{"id":"b","created":2,"value":1}'}))
+        self.assertFalse(responses_equivalent(on, {'status':200,'body':'{"id":"b","created":2,"value":2}'}))
 
 
 class ReadErrorProjectionTest(unittest.TestCase):

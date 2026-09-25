@@ -1,0 +1,26 @@
+[
+  {
+    "path": "internal/util/util.go",
+    "startLine": 60,
+    "endLine": 76,
+    "sha256": "8bfcc97da2e3ad16683e1da3d24d42a1c28111494317f8391ab5800c7d896ed8",
+    "text": "func SetLogLevel(cfg *config.Config) {\n\tcurrentLevel := log.GetLevel()\n\tvar newLevel log.Level\n\tif cfg.Debug {\n\t\tnewLevel = log.DebugLevel\n\t} else {\n\t\tnewLevel = log.InfoLevel\n\t}\n\n\tif currentLevel != newLevel {\n\t\tif newLevel < log.DebugLevel {\n\t\t\tdiagnostics.NotifyDebugDisabled()\n\t\t}\n\t\tlog.SetLevel(newLevel)\n\t\tlog.Infof(\"log level changed from %s to %s (debug=%t)\", currentLevel, newLevel, cfg.Debug)\n\t}\n}",
+    "baseline": "9422a853a222aef0dbf67815888c53ef6f1ede77"
+  },
+  {
+    "path": "internal/diagnostics/semantic.go",
+    "startLine": 8,
+    "endLine": 19,
+    "sha256": "0c7707be1e80dae52c44e50e21c0484690480e814dc81e0952be171663e832ac",
+    "text": "// NotifyDebugDisabled is called before the application's logger disables DEBUG.\n// An epoch records even an off/on transition between two observations. Requests\n// never opt in halfway through their lifetime or resume an interrupted capture.\nvar debugDisabledEpoch atomic.Uint64\n\nfunc NotifyDebugDisabled() { debugDisabledEpoch.Add(1) }\n\nfunc (s *ServerSpan) debugActiveLocked() bool {\n\tif s.debugOpted && (s.debugEpoch != debugDisabledEpoch.Load() || s.engine.debug == nil || !s.engine.debug()) {\n\t\ts.debugInterrupted = true\n\t}\n\treturn !s.sealed && s.debugOpted && !s.debugInterrupted",
+    "baseline": "9422a853a222aef0dbf67815888c53ef6f1ede77"
+  },
+  {
+    "path": "internal/diagnostics/transport.go",
+    "startLine": 176,
+    "endLine": 183,
+    "sha256": "7db706026bbfc8259ce3ad954edaa20560dbcbe7d2c61f37384a1a834aa5c2cf",
+    "text": "\t}\n\tstop := c.stop\n\tc.record.TS = time.Now().UTC().Format(\"2006-01-02T15:04:05.000Z\")\n\tc.record.LogSeq = 1\n\tc.data.EndReason, c.data.TotalMS, c.data.Coverage = reason, elapsed(c.started), Coverage{ExpectedLastLogSeq: 1, DroppedForSpan: c.server.engine.knownDrops(0), DebugCapture: \"none\", AccessCapture: \"unknown\"}\n\tc.record.Data = c.data\n\tr := c.record\n\tc.mu.Unlock()",
+    "baseline": "9422a853a222aef0dbf67815888c53ef6f1ede77"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "scripts/diag-integration/aito-wrapper.cjs": "39a13adcbadd472fef9312a2bce8cf6984244111464ec3dc1e0685dff24e5e78",
+  "scripts/diag-integration/bilateral.py": "c444f13e31474a05717abb26d6eac94d8b48918b86887548fe25581369880efd",
+  "scripts/diag-integration/check_aito_controls.py": "a34cae45251d36f9b00e4e0b24150a28fb38fb93dba3eadf9527cc7b90c7451d",
+  "scripts/diag-integration/check_evidence.py": "739a1b03bd7a00f99aac1ed1877eb8ae33b8f0f6fe5cc83c9bc1428ca7d997f3",
+  "scripts/diag-integration/check_offline.py": "21252e526fb0fbd7a7f10fc204ad30e98e819ae6feaf07cd8fad87b8ce2a1c22",
+  "scripts/diag-integration/gcli-wrapper.py": "57c3c6d518fa954e59ad72ddd0595309def4fd0a5d303c57bfb0fd7ab9bb53e8",
+  "scripts/diag-integration/README.md": "e093491df84a41a4825f0d9d20103daacaa2aba0a1b3bd0145180a311fde03ee",
+  "scripts/diag-integration/replay_r1.py": "1c910f6f9d73c79dc22459d563a16713d2fb2032fc0e67c6482003437034da3c",
+  "scripts/diag-integration/run.py": "529f6b87fd2e4ec6d77cec87ef5508c946b6226ab4b63eba3237d824729d62ca",
+  "scripts/diag-integration/test_checker.py": "9d69ce0f56a00a9e1b0aac608fb6ea1321499852f9b700291c489f9c9d7fb401"
+}

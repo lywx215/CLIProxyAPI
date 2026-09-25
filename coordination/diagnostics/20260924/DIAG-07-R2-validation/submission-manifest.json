@@ -1,0 +1,805 @@
+{
+  "priorCandidate": "241a2cb4079488bf682bd23745e354944095c04a",
+  "baseRevision": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+  "scope": "R2 staged modifications/additions; excludes this manifest itself",
+  "entries": [
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "indexSha256": "bfb3a5d5aceb67db04c4c145d930a7a194e4195bd3a6094242a23c437f22a933",
+      "worktreeSha256": "bfb3a5d5aceb67db04c4c145d930a7a194e4195bd3a6094242a23c437f22a933",
+      "bytes": 8377
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/.gitattributes",
+      "indexSha256": "f06202a408fef9b9ea69bb6b1cb8160dbb0378c5bb67a444d510d231813824c8",
+      "worktreeSha256": "f06202a408fef9b9ea69bb6b1cb8160dbb0378c5bb67a444d510d231813824c8",
+      "bytes": 30
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/analyzer-build.json",
+      "indexSha256": "a7a744c3b32f6e4ba053c14d4dd9a2b697f5899dbac0ff8f6c2cefa6041f1ae7",
+      "worktreeSha256": "a7a744c3b32f6e4ba053c14d4dd9a2b697f5899dbac0ff8f6c2cefa6041f1ae7",
+      "bytes": 342
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/analyzer-build.txt",
+      "indexSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worktreeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/binary-identities.json",
+      "indexSha256": "5b15e6a5d7fbe604a99933cbf638afe8c3c0f0309dc8c3240d41e9204c5626b0",
+      "worktreeSha256": "5b15e6a5d7fbe604a99933cbf638afe8c3c0f0309dc8c3240d41e9204c5626b0",
+      "bytes": 10863
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/binary-provenance.json",
+      "indexSha256": "2fe601e836ba1d52311070440028ff1d35b264271d710afed0a5f3174c12f6a0",
+      "worktreeSha256": "2fe601e836ba1d52311070440028ff1d35b264271d710afed0a5f3174c12f6a0",
+      "bytes": 930
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/checker-regression-final.txt",
+      "indexSha256": "351f929ed84aacafade91b6fd67dc7be9217ffaea2ca9d1c9d59bd385ba30fb6",
+      "worktreeSha256": "351f929ed84aacafade91b6fd67dc7be9217ffaea2ca9d1c9d59bd385ba30fb6",
+      "bytes": 107
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/checker-regression.txt",
+      "indexSha256": "6db5414056f12ab722eda33f0dbe6e60d33e9778d8f882a7dfcf8ecfb9e4c93b",
+      "worktreeSha256": "6db5414056f12ab722eda33f0dbe6e60d33e9778d8f882a7dfcf8ecfb9e4c93b",
+      "bytes": 105
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/downstream-replay/analysis-known-loss.json",
+      "indexSha256": "56f7356fcba69f4f6abf8c830b61e3bfaf1359a812be214a9b79f2675d33546d",
+      "worktreeSha256": "56f7356fcba69f4f6abf8c830b61e3bfaf1359a812be214a9b79f2675d33546d",
+      "bytes": 1145487
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/downstream-replay/analysis-scopes.json",
+      "indexSha256": "4c0ce926af8d5a88e365c3aa8694f906cad88add645df86361a599f66e9e7114",
+      "worktreeSha256": "4c0ce926af8d5a88e365c3aa8694f906cad88add645df86361a599f66e9e7114",
+      "bytes": 3945
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/downstream-replay/analysis.json",
+      "indexSha256": "100f67f49d71352af47813c2193da74be04e96e0b4e78741664b2a40aa3d8865",
+      "worktreeSha256": "100f67f49d71352af47813c2193da74be04e96e0b4e78741664b2a40aa3d8865",
+      "bytes": 1123599
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/downstream-replay/full-mode-rejection.json",
+      "indexSha256": "8e3cf1cacb38124467413f5c2eb3790c120aca862a2149d45706f50c67f66b1a",
+      "worktreeSha256": "8e3cf1cacb38124467413f5c2eb3790c120aca862a2149d45706f50c67f66b1a",
+      "bytes": 434
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/downstream-replay/semantic-checks.json",
+      "indexSha256": "508d0976242910b870f6921457810321067eb3c2f88280309a50aa7de8b276a6",
+      "worktreeSha256": "508d0976242910b870f6921457810321067eb3c2f88280309a50aa7de8b276a6",
+      "bytes": 102286
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/final-preflight.json",
+      "indexSha256": "ca33abd3537515343dd5e86ba28492f4ab04c90a1a31b7bfd9b2c61d2eebb093",
+      "worktreeSha256": "ca33abd3537515343dd5e86ba28492f4ab04c90a1a31b7bfd9b2c61d2eebb093",
+      "bytes": 691
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/final-support-sources.json",
+      "indexSha256": "921c5e21394c5f1b730748e929b7b55b2ae815c0e417da3d21aa696e3c99c65d",
+      "worktreeSha256": "921c5e21394c5f1b730748e929b7b55b2ae815c0e417da3d21aa696e3c99c65d",
+      "bytes": 1145
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/final-validation.json",
+      "indexSha256": "135fd53b61ab164dbbeb5577e5879afa206288f4bcc742873efdacade55b372c",
+      "worktreeSha256": "135fd53b61ab164dbbeb5577e5879afa206288f4bcc742873efdacade55b372c",
+      "bytes": 1799
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/git-diff-check.json",
+      "indexSha256": "b5d09e8859d9e988160c19fd164901cff120cff9fec80e46195be6a0e9f37984",
+      "worktreeSha256": "b5d09e8859d9e988160c19fd164901cff120cff9fec80e46195be6a0e9f37984",
+      "bytes": 66
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/git-diff-check.txt",
+      "indexSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "worktreeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/go-source-hashes.json",
+      "indexSha256": "b5d1150476c873aad933b88d7162bb66d1f2d2ef6236232205e9f040c62445c5",
+      "worktreeSha256": "b5d1150476c873aad933b88d7162bb66d1f2d2ef6236232205e9f040c62445c5",
+      "bytes": 179955
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/link-check.json",
+      "indexSha256": "cd840c0441711671954a1ed819993561f7b865f9def43c34ba003cbe02f93e74",
+      "worktreeSha256": "cd840c0441711671954a1ed819993561f7b865f9def43c34ba003cbe02f93e74",
+      "bytes": 26864
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01.txt",
+      "indexSha256": "bdc4db1d07ba771f1982c73b0797b5fb179d14de21af639f8d02fad07a07d61f",
+      "worktreeSha256": "bdc4db1d07ba771f1982c73b0797b5fb179d14de21af639f8d02fad07a07d61f",
+      "bytes": 30
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/anonymous-alias.json",
+      "indexSha256": "6d27faacc471bece50bd73ac753814295e5886d9e5ac20b0769a3c557561a8a0",
+      "worktreeSha256": "6d27faacc471bece50bd73ac753814295e5886d9e5ac20b0769a3c557561a8a0",
+      "bytes": 120108
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/checks.json",
+      "indexSha256": "47d9b2cfdd006693611d20118e55a69ec8f557eb92b5a477ca1b9b0037f7219e",
+      "worktreeSha256": "47d9b2cfdd006693611d20118e55a69ec8f557eb92b5a477ca1b9b0037f7219e",
+      "bytes": 6922
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/clock-skew.json",
+      "indexSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "worktreeSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/controlled-bilateral.json",
+      "indexSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "worktreeSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "bytes": 16398
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/controlled-pair.json",
+      "indexSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "worktreeSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/duplicate-import.json",
+      "indexSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "worktreeSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "bytes": 196171
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/duplicate-parent.json",
+      "indexSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "worktreeSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "bytes": 192013
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/fixtures/clock-skew.jsonl",
+      "indexSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "worktreeSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "bytes": 26418
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/fixtures/duplicate-parent.jsonl",
+      "indexSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "worktreeSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "bytes": 1133
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/fixtures/mixed.jsonl",
+      "indexSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "worktreeSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "bytes": 31504
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/historical-log.json",
+      "indexSha256": "4f7d937e7e2d45c50f36d64328cb4723239357b82bbea1d755424447c79de0df",
+      "worktreeSha256": "4f7d937e7e2d45c50f36d64328cb4723239357b82bbea1d755424447c79de0df",
+      "bytes": 1167683
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/known-loss.json",
+      "indexSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "worktreeSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "bytes": 189811
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/mixed-framing.json",
+      "indexSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "worktreeSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "bytes": 189667
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/near-capacity.json",
+      "indexSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "worktreeSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "bytes": 4167
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-01/untrusted-pair.json",
+      "indexSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "worktreeSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "bytes": 190047
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/anonymous-alias.json",
+      "indexSha256": "2e5c316a9025f3a50ff83b44cf020f347f69a0857da6cc82480674c8305df94e",
+      "worktreeSha256": "2e5c316a9025f3a50ff83b44cf020f347f69a0857da6cc82480674c8305df94e",
+      "bytes": 120619
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/checks.json",
+      "indexSha256": "baa8152936659e0433af19e561a8a714305ff0d2c7d2ebe9a76e7747ef7029c2",
+      "worktreeSha256": "baa8152936659e0433af19e561a8a714305ff0d2c7d2ebe9a76e7747ef7029c2",
+      "bytes": 7004
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/clock-skew.json",
+      "indexSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "worktreeSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/controlled-bilateral.json",
+      "indexSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "worktreeSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "bytes": 16398
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/controlled-pair.json",
+      "indexSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "worktreeSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/duplicate-import.json",
+      "indexSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "worktreeSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "bytes": 196171
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/duplicate-parent.json",
+      "indexSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "worktreeSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "bytes": 192013
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/fixtures/clock-skew.jsonl",
+      "indexSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "worktreeSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "bytes": 26418
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/fixtures/duplicate-parent.jsonl",
+      "indexSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "worktreeSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "bytes": 1133
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/fixtures/mixed.jsonl",
+      "indexSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "worktreeSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "bytes": 31504
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/historical-log.json",
+      "indexSha256": "9d431e1711588251ecc9315fe245537780b121ac45d39522201f4996cdea3cdc",
+      "worktreeSha256": "9d431e1711588251ecc9315fe245537780b121ac45d39522201f4996cdea3cdc",
+      "bytes": 1173322
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/known-loss.json",
+      "indexSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "worktreeSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "bytes": 189811
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/mixed-framing.json",
+      "indexSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "worktreeSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "bytes": 189667
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/near-capacity.json",
+      "indexSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "worktreeSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "bytes": 4167
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-02/untrusted-pair.json",
+      "indexSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "worktreeSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "bytes": 190047
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest.txt",
+      "indexSha256": "95944f19862d1c0a9c7ecb9a5aa79c53db5566a1c7a5b58e15baa16dd21cdc5a",
+      "worktreeSha256": "95944f19862d1c0a9c7ecb9a5aa79c53db5566a1c7a5b58e15baa16dd21cdc5a",
+      "bytes": 30
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/anonymous-alias.json",
+      "indexSha256": "2e5c316a9025f3a50ff83b44cf020f347f69a0857da6cc82480674c8305df94e",
+      "worktreeSha256": "2e5c316a9025f3a50ff83b44cf020f347f69a0857da6cc82480674c8305df94e",
+      "bytes": 120619
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/checks.json",
+      "indexSha256": "9ad98364344605709c668baa7c3fa2dcf34e04e5a2f9c167edb355b618354cfa",
+      "worktreeSha256": "9ad98364344605709c668baa7c3fa2dcf34e04e5a2f9c167edb355b618354cfa",
+      "bytes": 7842
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/clock-skew.json",
+      "indexSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "worktreeSha256": "020c3beb814b8e1c197b4b3c173d986822e3b29f727ea8f95ff3100d9df87f0e",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/controlled-bilateral.json",
+      "indexSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "worktreeSha256": "5d23e2f804023caf65e4756eb73a67b6faf0d13fc423b312e329e67ed7b3845a",
+      "bytes": 16398
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/controlled-pair.json",
+      "indexSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "worktreeSha256": "700216edeb09687ef6d83b59434f64dd5b6e30d3a1c49cf97e87a6380f951b55",
+      "bytes": 188467
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/duplicate-import.json",
+      "indexSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "worktreeSha256": "10f64d5acc92895a7380e84831349c2f13d9da4a46f359f0371b020d820d3d36",
+      "bytes": 196171
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/duplicate-parent.json",
+      "indexSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "worktreeSha256": "728942e4562d3720184a34ab7b89cfe8057897a4103815a06a50d35faf17c66a",
+      "bytes": 192013
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/fixtures/clock-skew.jsonl",
+      "indexSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "worktreeSha256": "ca8d22cdea8ec456f033e4c572fa7a9f72d6c04b79d2f28c841a09f2d57f6e5d",
+      "bytes": 26418
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/fixtures/duplicate-parent.jsonl",
+      "indexSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "worktreeSha256": "8c790886bcb1ac8f8415db9fa742f0ac76283e5cc5dcb63fac8da3b1eebbfde0",
+      "bytes": 1133
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/fixtures/mixed.jsonl",
+      "indexSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "worktreeSha256": "20b7d3696a69c5f84c013aab958acad1edf8f2ce2f5600c730a2b0b10701ab99",
+      "bytes": 31504
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/historical-log.json",
+      "indexSha256": "9d431e1711588251ecc9315fe245537780b121ac45d39522201f4996cdea3cdc",
+      "worktreeSha256": "9d431e1711588251ecc9315fe245537780b121ac45d39522201f4996cdea3cdc",
+      "bytes": 1173322
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/known-loss.json",
+      "indexSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "worktreeSha256": "9a23a6c777e8ca6cb18a53aa4ecbfe2016d82191ab38ad68973d2c0b44f8ed47",
+      "bytes": 189811
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/mixed-framing.json",
+      "indexSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "worktreeSha256": "9d51b36caabf3861a6ac8b8ed38cd86c65d843d8aa937348e4fa11a4337ee871",
+      "bytes": 189667
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/near-capacity.json",
+      "indexSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "worktreeSha256": "78859b8161d6a2e5f42f0c0da4d0f44b9c5bd214d26fbeffb8bb37c91ebbbb86",
+      "bytes": 4167
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/pair-all-sources.json",
+      "indexSha256": "319c7727fbbadf85a6cebbe21cfa5d143250cb3c4dc00a8e1db16bd61b9bb6ad",
+      "worktreeSha256": "319c7727fbbadf85a6cebbe21cfa5d143250cb3c4dc00a8e1db16bd61b9bb6ad",
+      "bytes": 205755
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/offline-03-loss-manifest/untrusted-pair.json",
+      "indexSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "worktreeSha256": "9f38016a6cb97e1bcb6669c516dfc4813f9a284985c0ef559cfd065a4cb27d15",
+      "bytes": 190047
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/old-checker-reproduction.json",
+      "indexSha256": "b4909e325d60dfcbd297295838913eefecec0388cce39059cf2df4cfe146fa96",
+      "worktreeSha256": "b4909e325d60dfcbd297295838913eefecec0388cce39059cf2df4cfe146fa96",
+      "bytes": 423
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/alias-mismatch-inputs.json",
+      "indexSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "worktreeSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/analysis-known-loss.json",
+      "indexSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "worktreeSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "bytes": 1333317
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/analysis-scopes.json",
+      "indexSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "worktreeSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "bytes": 5689
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/analysis.json",
+      "indexSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "worktreeSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "bytes": 1310708
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/checks.json",
+      "indexSha256": "2dad2d4a9d2873d5c5761405a9f152ecaba6bbce5bebb1c089bf89a21936e3a6",
+      "worktreeSha256": "2dad2d4a9d2873d5c5761405a9f152ecaba6bbce5bebb1c089bf89a21936e3a6",
+      "bytes": 5550
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/duplicate-parent-inputs.json",
+      "indexSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "worktreeSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "bytes": 492
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/historical-peer-plan.json",
+      "indexSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "worktreeSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "bytes": 645
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/missing-receiver-inputs.json",
+      "indexSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "worktreeSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/normal-bilateral.json",
+      "indexSha256": "6393b0276eb4fca0f0424f1a417225752e8d6b21cb0754633b239fb06d386021",
+      "worktreeSha256": "6393b0276eb4fca0f0424f1a417225752e8d6b21cb0754633b239fb06d386021",
+      "bytes": 14655
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/optional-peer-ids-absent-inputs.json",
+      "indexSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "worktreeSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/peerDeploymentId-mismatch-inputs.json",
+      "indexSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "worktreeSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/peerRequestId-mismatch-inputs.json",
+      "indexSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "worktreeSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/peerService-mismatch-inputs.json",
+      "indexSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "worktreeSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/peerTraceId-mismatch-inputs.json",
+      "indexSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "worktreeSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/two-controlled-calls-inputs.json",
+      "indexSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "worktreeSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "bytes": 325
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-01/untrusted-receiver-inputs.json",
+      "indexSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "worktreeSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "bytes": 423
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02.txt",
+      "indexSha256": "1b10c5620b645f1cdc107b5e45563deb92ac48de14d275a1bcb8d46fd2a20106",
+      "worktreeSha256": "1b10c5620b645f1cdc107b5e45563deb92ac48de14d275a1bcb8d46fd2a20106",
+      "bytes": 30
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/alias-mismatch-inputs.json",
+      "indexSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "worktreeSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/analysis-known-loss.json",
+      "indexSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "worktreeSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "bytes": 1333317
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/analysis-scopes.json",
+      "indexSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "worktreeSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "bytes": 5689
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/analysis.json",
+      "indexSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "worktreeSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "bytes": 1310708
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/checks.json",
+      "indexSha256": "2dad2d4a9d2873d5c5761405a9f152ecaba6bbce5bebb1c089bf89a21936e3a6",
+      "worktreeSha256": "2dad2d4a9d2873d5c5761405a9f152ecaba6bbce5bebb1c089bf89a21936e3a6",
+      "bytes": 5550
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/duplicate-parent-inputs.json",
+      "indexSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "worktreeSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "bytes": 492
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/historical-peer-plan.json",
+      "indexSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "worktreeSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "bytes": 645
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/missing-receiver-inputs.json",
+      "indexSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "worktreeSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/normal-bilateral.json",
+      "indexSha256": "9a667dadad2393c219d30627660d4d7cb6bab3fe07d6455ff83fe048fe22fa40",
+      "worktreeSha256": "9a667dadad2393c219d30627660d4d7cb6bab3fe07d6455ff83fe048fe22fa40",
+      "bytes": 15950
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/optional-peer-ids-absent-inputs.json",
+      "indexSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "worktreeSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/peerDeploymentId-mismatch-inputs.json",
+      "indexSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "worktreeSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/peerRequestId-mismatch-inputs.json",
+      "indexSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "worktreeSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/peerService-mismatch-inputs.json",
+      "indexSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "worktreeSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/peerTraceId-mismatch-inputs.json",
+      "indexSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "worktreeSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/two-controlled-calls-inputs.json",
+      "indexSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "worktreeSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "bytes": 325
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-02/untrusted-receiver-inputs.json",
+      "indexSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "worktreeSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "bytes": 423
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/alias-mismatch-inputs.json",
+      "indexSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "worktreeSha256": "31dc87825f9354ae41a16f598495e3542e68955ecddb1358e0ed2d78b3495541",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/alias-wrong-receiver-inputs.json",
+      "indexSha256": "6342f5376333161a14588bfb048032fdd466aaa52f5d3246fab77dc028d0d569",
+      "worktreeSha256": "6342f5376333161a14588bfb048032fdd466aaa52f5d3246fab77dc028d0d569",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/analysis-known-loss.json",
+      "indexSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "worktreeSha256": "37eaf4b2abe1984f05bf6d82a20dc8ea8d076caa4f71ce31d016234d06e62134",
+      "bytes": 1333317
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/analysis-scopes.json",
+      "indexSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "worktreeSha256": "c91d0a91ebcf04af2c27b24e166e3c419b58e5fb4888138e5ea54ade9252823a",
+      "bytes": 5689
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/analysis.json",
+      "indexSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "worktreeSha256": "189ca94f06fdd81c6ea967d058b15b4f350bd51373b6a8e731ef11a5514fe74f",
+      "bytes": 1310708
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/checks.json",
+      "indexSha256": "efacb345cbce4069bc104186713be92886b97489e2b067b74968d627f12236da",
+      "worktreeSha256": "efacb345cbce4069bc104186713be92886b97489e2b067b74968d627f12236da",
+      "bytes": 6670
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/duplicate-parent-inputs.json",
+      "indexSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "worktreeSha256": "9abfd2a46b86ac5a1e96b9c8f752f65c4fad41ae95e4257f510d538c4269d6d1",
+      "bytes": 492
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/historical-peer-plan.json",
+      "indexSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "worktreeSha256": "59f15a4151ca72eb5f69010f3d9031820f800a34e210bcddd7226fd0bb554964",
+      "bytes": 645
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/missing-receiver-inputs.json",
+      "indexSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "worktreeSha256": "daaaee7b1f6085f621760a7b86f62da11d5dce21ef11fa57d4b5a9ee79728e35",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/missing-receiver-terminal-inputs.json",
+      "indexSha256": "464321c81bd18bf58380113667e06174d18596de4af6941ee47fca18ccd60f33",
+      "worktreeSha256": "464321c81bd18bf58380113667e06174d18596de4af6941ee47fca18ccd60f33",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/normal-bilateral.json",
+      "indexSha256": "9a667dadad2393c219d30627660d4d7cb6bab3fe07d6455ff83fe048fe22fa40",
+      "worktreeSha256": "9a667dadad2393c219d30627660d4d7cb6bab3fe07d6455ff83fe048fe22fa40",
+      "bytes": 15950
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/optional-peer-ids-absent-inputs.json",
+      "indexSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "worktreeSha256": "b5ac786e9a1e5399dde8ae8a07258c6abd420851d5b5073b5ca3ca6c490b431a",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/peerDeploymentId-mismatch-inputs.json",
+      "indexSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "worktreeSha256": "cd012bc9902bc8f3a0591c999d610dda8de0479c23374e19717410ff7cb3ebfc",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/peerRequestId-mismatch-inputs.json",
+      "indexSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "worktreeSha256": "90e244158d126f92ab734eebb8cc039830b36682af1abd9ef8d79442252d67ec",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/peerService-mismatch-inputs.json",
+      "indexSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "worktreeSha256": "b99d473fcc613b48d62c35a8c51cdf10016a2b9979c92effec8c75f16bb69837",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/peerTraceId-mismatch-inputs.json",
+      "indexSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "worktreeSha256": "dc446dfca5d83e23fd3120ebb8d2cabe1d76099b925d2bc98e887cdf34934d29",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/synthetic-both-services-inputs.json",
+      "indexSha256": "3332d692ea9b2e2e83c9b6aef5a601f3e3247d171f6c26062baa821650dd9df2",
+      "worktreeSha256": "3332d692ea9b2e2e83c9b6aef5a601f3e3247d171f6c26062baa821650dd9df2",
+      "bytes": 406
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/two-controlled-calls-inputs.json",
+      "indexSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "worktreeSha256": "752004aadb261b731c30b7ef40e6d117dd97ab91bcb5988ba3e13663321b8421",
+      "bytes": 325
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/replay-03/untrusted-receiver-inputs.json",
+      "indexSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "worktreeSha256": "6ceeb0d976c96f82964dea89210792b865f436eb3851e1f5c150950c58b4a8e8",
+      "bytes": 423
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/source-evidence.json",
+      "indexSha256": "904bcb99270991b6d6c7d14f64b1ddb80dda80b6682dd2fa6e023749e98cd27d",
+      "worktreeSha256": "904bcb99270991b6d6c7d14f64b1ddb80dda80b6682dd2fa6e023749e98cd27d",
+      "bytes": 2220
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-R2-validation/validation.json",
+      "indexSha256": "86782960ab3614a496f5fb879ea82dcb9a83d8807b5b70752280f8649b0736a0",
+      "worktreeSha256": "86782960ab3614a496f5fb879ea82dcb9a83d8807b5b70752280f8649b0736a0",
+      "bytes": 1562
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "indexSha256": "e01862c8fda799ca9d39a1f93c3c8c9f47b8235e3dac7df7ea6917882b335a42",
+      "worktreeSha256": "e6dff7670f8796c3f9f55ce27d1e07e1426f643f54c59e7257356bb1f6c956aa",
+      "bytes": 14783
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "indexSha256": "3c8b6d1230f57e8536600255d3588c54a209d2496925ff60666c382b144fe887",
+      "worktreeSha256": "685840439e8b2e30484ee95b6eb2422de9017a1890269ed46a2cf484a8792258",
+      "bytes": 16164
+    },
+    {
+      "path": "coordination/diagnostics/20260924/DIAG-07-validation/blocked-binary-note.md",
+      "indexSha256": "c1e8381f3318d299415b146dbf8b81e4b2be7ed7de2a12f24405c4d8fcfa4dba",
+      "worktreeSha256": "c1e8381f3318d299415b146dbf8b81e4b2be7ed7de2a12f24405c4d8fcfa4dba",
+      "bytes": 911
+    },
+    {
+      "path": "scripts/diag-integration/README.md",
+      "indexSha256": "e093491df84a41a4825f0d9d20103daacaa2aba0a1b3bd0145180a311fde03ee",
+      "worktreeSha256": "e093491df84a41a4825f0d9d20103daacaa2aba0a1b3bd0145180a311fde03ee",
+      "bytes": 11414
+    },
+    {
+      "path": "scripts/diag-integration/bilateral.py",
+      "indexSha256": "c444f13e31474a05717abb26d6eac94d8b48918b86887548fe25581369880efd",
+      "worktreeSha256": "c444f13e31474a05717abb26d6eac94d8b48918b86887548fe25581369880efd",
+      "bytes": 7934
+    },
+    {
+      "path": "scripts/diag-integration/check_evidence.py",
+      "indexSha256": "739a1b03bd7a00f99aac1ed1877eb8ae33b8f0f6fe5cc83c9bc1428ca7d997f3",
+      "worktreeSha256": "739a1b03bd7a00f99aac1ed1877eb8ae33b8f0f6fe5cc83c9bc1428ca7d997f3",
+      "bytes": 13652
+    },
+    {
+      "path": "scripts/diag-integration/check_offline.py",
+      "indexSha256": "21252e526fb0fbd7a7f10fc204ad30e98e819ae6feaf07cd8fad87b8ce2a1c22",
+      "worktreeSha256": "21252e526fb0fbd7a7f10fc204ad30e98e819ae6feaf07cd8fad87b8ce2a1c22",
+      "bytes": 8084
+    },
+    {
+      "path": "scripts/diag-integration/replay_r1.py",
+      "indexSha256": "1c910f6f9d73c79dc22459d563a16713d2fb2032fc0e67c6482003437034da3c",
+      "worktreeSha256": "1c910f6f9d73c79dc22459d563a16713d2fb2032fc0e67c6482003437034da3c",
+      "bytes": 11383
+    },
+    {
+      "path": "scripts/diag-integration/run.py",
+      "indexSha256": "529f6b87fd2e4ec6d77cec87ef5508c946b6226ab4b63eba3237d824729d62ca",
+      "worktreeSha256": "529f6b87fd2e4ec6d77cec87ef5508c946b6226ab4b63eba3237d824729d62ca",
+      "bytes": 30737
+    },
+    {
+      "path": "scripts/diag-integration/test_checker.py",
+      "indexSha256": "9d69ce0f56a00a9e1b0aac608fb6ea1321499852f9b700291c489f9c9d7fb401",
+      "worktreeSha256": "9d69ce0f56a00a9e1b0aac608fb6ea1321499852f9b700291c489f9c9d7fb401",
+      "bytes": 2092
+    }
+  ]
+}

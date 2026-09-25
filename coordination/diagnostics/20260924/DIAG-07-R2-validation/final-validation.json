@@ -1,0 +1,58 @@
+{
+  "checks": [
+    {
+      "id": "checker-regression",
+      "exitCode": 0,
+      "command": "python scripts/diag-integration/test_checker.py",
+      "evidence": "checker-regression-final.txt"
+    },
+    {
+      "id": "python-syntax-and-explicit-utf8",
+      "exitCode": 0
+    },
+    {
+      "id": "three-repository-frozen-preflight",
+      "exitCode": 0,
+      "evidence": "final-preflight.json"
+    },
+    {
+      "id": "binary-and-main-unchanged",
+      "exitCode": 0,
+      "evidence": "binary-provenance.json"
+    },
+    {
+      "id": "replay-03",
+      "exitCode": 0,
+      "checks": 21,
+      "evidence": "replay-03/checks.json"
+    },
+    {
+      "id": "offline-02",
+      "exitCode": 0,
+      "checks": 10,
+      "evidence": "offline-02/checks.json"
+    },
+    {
+      "id": "offline-pair-known-loss-manifest",
+      "exitCode": 0,
+      "evidence": "offline-03-loss-manifest/checks.json",
+      "inputQualification": "Temporary assembly of immutable smoke plus run-06 aito4, with explicit knownLoss manifest; no new live run."
+    },
+    {
+      "id": "no-existing-go-or-evidence-modified",
+      "exitCode": 0,
+      "trackedChanges": [
+        "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+        "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+        "scripts/diag-integration/README.md",
+        "scripts/diag-integration/check_evidence.py",
+        "scripts/diag-integration/check_offline.py",
+        "scripts/diag-integration/run.py",
+        "scripts/diag-integration/test_checker.py"
+      ],
+      "qualification": "Only DIAG-07 support and two delivery documents differ from prior candidate; all historical evidence unchanged."
+    }
+  ],
+  "failed": [],
+  "acceptanceComplete": false
+}

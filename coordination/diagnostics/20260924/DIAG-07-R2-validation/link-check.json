@@ -1,0 +1,780 @@
+{
+  "checks": [
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-R2-disposition.zh-CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/DELIVERY_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/manifest.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/sources.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-matrix.zh-CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-run-06/requests.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-aito-smoke/",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-offline-02/controlled-pair.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-run-06/analysis-known-hard-kill.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/blocked-binary.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/blocked-binary-note.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-source-snapshots/run-06/sources.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/final-support-sources.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "../../../scripts/diag-integration/README.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/server-build.exit.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/full-go-test-01.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/full-go-test-02.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/component-tests.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/throttle-components.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/contract.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/artifacts.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-offline-02/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-run-06/analysis-known-hard-kill-command.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-raw-analysis/summary.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-validation/python-syntax.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-delivery.zh-CN.md",
+      "target": "DIAG-07-aito-controls/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-R2-validation/replay-03/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-R2-validation/downstream-replay/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-02/failure.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/blocked-binary.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-offline-02/controlled-pair.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/DIAG-06-07-coordinator-handoff.zh-CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-02/failure.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/requests.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/analysis-known-hard-kill-command.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/analysis.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/close.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/blocked-binary.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/throttle-components.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/component-tests.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/component-tests.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/requests.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/component-tests.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-validation/component-tests.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-offline-02/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-offline-02/anonymous-alias.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-raw-analysis/summary.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-offline-02/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/DIAG-06-07-coordinator-handoff.zh-CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-offline-02/historical-log.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/DELIVERY_STATUS_CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-coordinator-snapshot/DIAG-06-07-coordinator-handoff.zh-CN.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-aito-controls/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito2.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/requests.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli3.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito1.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito3.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/aito4.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli4.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/gcli5.jsonl",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-matrix.zh-CN.md",
+      "target": "DIAG-07-run-06/requests.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/old-checker-reproduction.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/old-checker-reproduction.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/replay-03/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/replay-03/normal-bilateral.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/replay-03/analysis-scopes.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/replay-03/analysis-known-loss.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/downstream-replay/semantic-checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/offline-02/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/offline-03-loss-manifest/checks.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/final-validation.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/validation.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-validation/full-go-test-02.exit.txt",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/analyzer-build.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/binary-identities.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-validation/blocked-binary-note.md",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/source-evidence.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-R2-disposition.zh-CN.md",
+      "target": "DIAG-07-R2-validation/submission-manifest.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-validation/blocked-binary-note.md",
+      "target": "../DIAG-07-R2-validation/binary-identities.json",
+      "exists": true
+    },
+    {
+      "document": "coordination/diagnostics/20260924/DIAG-07-validation/blocked-binary-note.md",
+      "target": "../DIAG-07-R2-validation/binary-provenance.json",
+      "exists": true
+    }
+  ],
+  "failed": []
+}

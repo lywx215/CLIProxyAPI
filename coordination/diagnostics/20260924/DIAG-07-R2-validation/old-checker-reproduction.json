@@ -1,0 +1,10 @@
+{
+  "checkerSourceCommit": "241a2cb4079488bf682bd23745e354944095c04a",
+  "checkerSha256": "2f0e636a901d5212199ebec038873394f1f43866705040b1cc8e2115e5535c57",
+  "input": "DIAG-07-run-06",
+  "checks": 340,
+  "failed": [],
+  "knownLossAnalysisVerified": 0,
+  "bilateralAssertions": 0,
+  "qualification": "Reproduction: old semantics checker passes without any CPA calls or graph assertion. Not a six-process run."
+}

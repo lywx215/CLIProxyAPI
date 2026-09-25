@@ -1,0 +1,53 @@
+{
+  "checks": [
+    {
+      "id": "checker-regression",
+      "exitCode": 0
+    },
+    {
+      "id": "replay-02",
+      "exitCode": 0
+    },
+    {
+      "id": "offline-01",
+      "exitCode": 0
+    },
+    {
+      "id": "retained-340-and-new-scope-checks",
+      "exitCode": 0,
+      "originalChecks": 340,
+      "newChecks": 345,
+      "failed": [],
+      "allOriginalChecksRetainedAndPass": true,
+      "inputs": "DIAG-07-run-06 immutable JSONL and requests; knownLoss declaration for aito4 added explicitly in temporary replay manifest"
+    },
+    {
+      "id": "full-mode-rejects-downstream-only",
+      "exitCode": 0,
+      "failed": [
+        "bilateral/required-service/gcli2api",
+        "bilateral/required-service/aitoapi",
+        "bilateral/required-target/gcli2api/gcli1",
+        "bilateral/required-target/gcli2api/gcli2",
+        "bilateral/required-target/aitoapi/aito1",
+        "bilateral/required-target/aitoapi/aito2"
+      ]
+    },
+    {
+      "id": "python-ast",
+      "exitCode": 0
+    },
+    {
+      "id": "prior-full-go-validation-reuse",
+      "exitCode": 0,
+      "changedGoOrDependencies": "",
+      "untrackedGo": "",
+      "priorExitCode": "0",
+      "evidence": "DIAG-07-validation/full-go-test-02.txt",
+      "evidenceSha256": "8700c6c37687dc81d2e56f1f94a9a77e88d7abfe0990f07794565767cf80cceb",
+      "qualification": "Coordinator authorized reuse for Python/document-only revision; no blocked CPA build or execution."
+    }
+  ],
+  "failed": [],
+  "acceptanceComplete": false
+}

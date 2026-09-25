@@ -1,0 +1,7 @@
+{
+  "command": "go build -o <TEMP>/diag07-r2-analyze.exe ./cmd/diag-analyze",
+  "exitCode": 0,
+  "invocationHead": "241a2cb4079488bf682bd23745e354944095c04a",
+  "productionBaseline": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+  "qualification": "Only the frozen analyzer is built; blocked CPA driver is neither built nor executed."
+}

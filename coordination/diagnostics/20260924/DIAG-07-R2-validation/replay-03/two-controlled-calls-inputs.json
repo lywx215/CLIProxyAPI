@@ -1,0 +1,9 @@
+{
+  "level": "synthetic-log",
+  "sourceSha256": {
+    "aito1": "4fb66827f11530259a70dcb7a5ed29c3faf254a0f3f1bee082cf08ece0487a09",
+    "aito2": "01d4d350a645d555672ec2b621212552fd8cb5b7d4f0c9a4f76d49b27385abc9",
+    "cpa1": "2cf325abdb765527903644914375cf9781368b64082575669043fa5aa7bd21b9"
+  },
+  "untrusted": []
+}

@@ -23,7 +23,7 @@ def read_error_evidence(instance, response, attempts):
     return wire, diagnostic
 
 
-def check_run(root):
+def check_run(root, full=None):
     requests = json.loads((root/'requests.json').read_text(encoding='utf-8'))
     records = []
     for path in sorted(root.glob('*.jsonl')):
@@ -132,7 +132,8 @@ def check_run(root):
             a,b=process(first),process(second)
             if a and b:
                 check(service+'/'+label,a[0][1]['instanceId']==b[0][1]['instanceId'] and a[0][1]['bootId']!=b[0][1]['bootId'],a+b, 'real independent processes; not POSIX fork')
-    for service in ('gcli1','aito1'):
+    reuse_instances = ['gcli1', 'aito1'] + sorted({q['instance'] for q in requests if q.get('id', '').startswith('headers-cpa')})
+    for service in reuse_instances:
         same=[(loc,r) for loc,r in records if loc.startswith(service+'.jsonl:') and r['event']=='diag.server' and r['callerRequestId']=='shared-caller']
         check(service+'/reused-id-candidates',len(same)>=3 and len({r['spanId'] for _,r in same})==len(same),same)
     for name in ('trailing-model','multiple-empty','whitespace','tool','all-empty'):
@@ -147,6 +148,29 @@ def check_run(root):
         elif name=='tool': ok=data['after']['toolCallCount']==1 and data['after']['toolResponseCount']==1
         else: ok=data['after']['emptyMessageCount']==0
         check('cleaning/'+name,ok,selected,data)
+    from bilateral import check_bilateral, check_scope_loss
+    if full is None:
+        mode_path = root/'run-mode.json'
+        # Legacy exports must opt into downstream-only explicitly. Absence of
+        # CPA records is not evidence that a requested full run was optional.
+        full = not mode_path.exists() or json.loads(mode_path.read_text(encoding='utf-8'))['mode'] != 'downstream-only'
+    controlled = [q for q in requests if q.get('instance', '').startswith('cpa') and 'headers' in q]
+    ready = all(q.get('expectedPeers') for q in controlled)
+    check('bilateral/configured-request-plan', ready, [])
+    analysis_path = root/'analysis.json'
+    check('bilateral/normal-analysis-present', analysis_path.exists(), [])
+    if ready and analysis_path.exists():
+        analysis = json.loads(analysis_path.read_text(encoding='utf-8'))
+        check('bilateral/normal-scope-no-known-loss', not any(s['knownLoss'] for s in analysis['sources']), [])
+        graph = check_bilateral(analysis, controlled, ['gcli2api', 'aitoapi'] if full else [])
+        checks.extend(graph['checks'])
+        if full:
+            for target in ('gcli2api/gcli1', 'gcli2api/gcli2', 'aitoapi/aito1', 'aitoapi/aito2'):
+                check('bilateral/required-target/'+target, target in graph['verifiedTargets'], [], graph['verifiedTargets'])
+    export_path = root/'exports.json'
+    if export_path.exists() and any(e.get('knownLoss') for e in json.loads(export_path.read_text(encoding='utf-8'))):
+        loss_path = root/'analysis-known-loss.json'
+        check('bilateral/known-loss-blocks-verification', loss_path.exists() and check_scope_loss(json.loads(loss_path.read_text(encoding='utf-8'))), [])
     report={'checks':checks,'failed':[x['id'] for x in checks if not x['pass']],'acceptanceComplete':False,
             'qualification':'Scoped live producer semantics only; component/synthetic/unexecuted matrix remains separate.'}
     (root/'semantic-checks.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
@@ -156,7 +180,8 @@ def check_run(root):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run',type=Path)
+    parser.add_argument('--downstream-only', action='store_true', help='explicit scoped replay of historical downstream-only exports')
     args=parser.parse_args()
-    report=check_run(args.run)
+    report=check_run(args.run, full=False if args.downstream_only else None)
     print(json.dumps({'checks':len(report['checks']),'failed':report['failed']}))
     raise SystemExit(1 if report['failed'] else 0)

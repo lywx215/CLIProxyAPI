@@ -1,0 +1,272 @@
+{
+  "checks": [
+    {
+      "id": "normal-subset-real-smoke",
+      "pass": true,
+      "level": "live-export-replay",
+      "controlledCalls": 4,
+      "failed": []
+    },
+    {
+      "id": "all-sources-explicit-known-loss",
+      "pass": true,
+      "level": "live-export-replay",
+      "verified": 0,
+      "knownLossAliases": [
+        "run06-aito4"
+      ]
+    },
+    {
+      "id": "aito-only-cannot-pass-full-mode",
+      "pass": true,
+      "level": "regression",
+      "failed": [
+        "bilateral/required-service/gcli2api"
+      ]
+    },
+    {
+      "id": "zero-cpa-cannot-pass-full-mode",
+      "pass": true,
+      "level": "regression",
+      "failed": [
+        "bilateral/required-service/gcli2api",
+        "bilateral/required-service/aitoapi"
+      ]
+    },
+    {
+      "id": "dynamic-expectation-not-four",
+      "pass": true,
+      "level": "synthetic-log-subset",
+      "oldFixedFourWouldPass": false,
+      "controlledCalls": 2,
+      "verified": 2
+    },
+    {
+      "id": "missing-receiver",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          16
+        ],
+        "receivers": [],
+        "findings": [
+          "missing_peer"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "cancellation-specific-missing-peer",
+      "pass": true,
+      "level": "synthetic-log",
+      "failed": []
+    },
+    {
+      "id": "cancellation-with-complete-bilateral-evidence",
+      "pass": true,
+      "level": "synthetic-test-input",
+      "failed": [],
+      "qualification": "Synthetic caller cancellation flag over complete historical graph; no new live cancellation claim."
+    },
+    {
+      "id": "missing-receiver-terminal",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "terminal_evidence_incomplete"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "cancellation-specific-missing-terminal",
+      "pass": true,
+      "level": "synthetic-log",
+      "failed": []
+    },
+    {
+      "id": "duplicate-parent",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6,
+          27
+        ],
+        "findings": [
+          "ambiguous_parent"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "cancellation-cannot-excuse-conflict",
+      "pass": true,
+      "level": "synthetic-log"
+    },
+    {
+      "id": "untrusted-receiver",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "untrusted_source"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification",
+        "smoke-2/bilateral/4a61a343a935d1d4/identity-and-verification"
+      ]
+    },
+    {
+      "id": "peerRequestId-mismatch",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "peer_conflict"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "peerTraceId-mismatch",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "context_mismatch"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "peerService-mismatch",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "peer_conflict"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/configured-peer",
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "peerDeploymentId-mismatch",
+      "pass": true,
+      "level": "synthetic-log",
+      "edge": {
+        "kind": "remote",
+        "senders": [
+          18
+        ],
+        "receivers": [
+          6
+        ],
+        "findings": [
+          "peer_conflict"
+        ],
+        "verified": false
+      },
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/configured-peer",
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "alias-checked-against-configured-plan",
+      "pass": true,
+      "level": "synthetic-log",
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/configured-peer",
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ],
+      "qualification": "Frozen analyzer does not know driver alias configuration; driver must check it."
+    },
+    {
+      "id": "known-alias-must-match-receiver-instance",
+      "pass": true,
+      "level": "synthetic-log",
+      "rejectedByChecker": [
+        "smoke-0/bilateral/4857e109c866db1d/identity-and-verification"
+      ]
+    },
+    {
+      "id": "optional-peer-ids-absent",
+      "pass": true,
+      "level": "synthetic-log",
+      "failed": []
+    },
+    {
+      "id": "both-service-gate-positive-control",
+      "pass": true,
+      "level": "synthetic-log",
+      "failed": [],
+      "qualification": "Explicit service-label mutation tests checker branching only; never CPA-to-gcli live evidence."
+    }
+  ],
+  "failed": [],
+  "acceptanceComplete": false
+}

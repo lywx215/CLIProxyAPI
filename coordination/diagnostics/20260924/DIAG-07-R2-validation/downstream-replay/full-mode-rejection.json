@@ -1,0 +1,12 @@
+{
+  "failed": [
+    "bilateral/required-service/gcli2api",
+    "bilateral/required-service/aitoapi",
+    "bilateral/required-target/gcli2api/gcli1",
+    "bilateral/required-target/gcli2api/gcli2",
+    "bilateral/required-target/aitoapi/aito1",
+    "bilateral/required-target/aitoapi/aito2"
+  ],
+  "expectedRejection": true,
+  "qualification": "Historical downstream-only inputs must not pass full CPA integration mode."
+}

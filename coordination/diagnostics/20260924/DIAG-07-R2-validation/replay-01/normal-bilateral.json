@@ -1,0 +1,595 @@
+{
+  "checks": [
+    {
+      "id": "smoke-0/bilateral/owner-and-calls",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "ownerCount": 1,
+        "callCount": 1
+      }
+    },
+    {
+      "id": "smoke-0/bilateral/4857e109c866db1d/terminal",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-0/bilateral/4857e109c866db1d/configured-peer",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "declared": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328255995_0mkc3el3y",
+          "peerService": "aitoapi",
+          "peerTraceId": "736a3216c59daa45ad977fc29f68be92",
+          "providerRequestId": null,
+          "targetAlias": "aito1",
+          "totalMs": 22.9279,
+          "upstreamStatus": 200
+        },
+        "expectedPeers": {
+          "aito1": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito1"
+          },
+          "aito2": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito2"
+          }
+        }
+      }
+    },
+    {
+      "id": "smoke-0/bilateral/4857e109c866db1d/local-owner",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-0/bilateral/4857e109c866db1d/unique-remote-edge",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "edges": [
+          {
+            "kind": "remote",
+            "senders": [
+              18
+            ],
+            "receivers": [
+              6
+            ],
+            "findings": [
+              "verified"
+            ],
+            "verified": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "smoke-0/bilateral/4857e109c866db1d/identity-and-verification",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1286
+        },
+        {
+          "source": 1,
+          "line": 13,
+          "bytes": 1133
+        }
+      ],
+      "observed": {
+        "receiverCount": 1,
+        "findings": [
+          "verified"
+        ],
+        "verified": true,
+        "acceptedCancellationGap": false,
+        "qualification": "Graph identity is independent of business success and diagnostic coverage."
+      }
+    },
+    {
+      "id": "smoke-1/bilateral/owner-and-calls",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "ownerCount": 1,
+        "callCount": 1
+      }
+    },
+    {
+      "id": "smoke-1/bilateral/e77c7ccd825b5eeb/terminal",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-1/bilateral/e77c7ccd825b5eeb/configured-peer",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "declared": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328256020_9880a0bih",
+          "peerService": "aitoapi",
+          "peerTraceId": "91e01f3d986eea399f8f39b9c82dc74f",
+          "providerRequestId": null,
+          "targetAlias": "aito2",
+          "totalMs": 13.6184,
+          "upstreamStatus": 200
+        },
+        "expectedPeers": {
+          "aito1": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito1"
+          },
+          "aito2": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito2"
+          }
+        }
+      }
+    },
+    {
+      "id": "smoke-1/bilateral/e77c7ccd825b5eeb/local-owner",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-1/bilateral/e77c7ccd825b5eeb/unique-remote-edge",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "edges": [
+          {
+            "kind": "remote",
+            "senders": [
+              20
+            ],
+            "receivers": [
+              14
+            ],
+            "findings": [
+              "verified"
+            ],
+            "verified": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "smoke-1/bilateral/e77c7ccd825b5eeb/identity-and-verification",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 3,
+          "line": 8,
+          "bytes": 1286
+        },
+        {
+          "source": 2,
+          "line": 13,
+          "bytes": 1133
+        }
+      ],
+      "observed": {
+        "receiverCount": 1,
+        "findings": [
+          "verified"
+        ],
+        "verified": true,
+        "acceptedCancellationGap": false,
+        "qualification": "Graph identity is independent of business success and diagnostic coverage."
+      }
+    },
+    {
+      "id": "smoke-2/bilateral/owner-and-calls",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "ownerCount": 1,
+        "callCount": 1
+      }
+    },
+    {
+      "id": "smoke-2/bilateral/4a61a343a935d1d4/terminal",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-2/bilateral/4a61a343a935d1d4/configured-peer",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "declared": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328256035_6to84cayo",
+          "peerService": "aitoapi",
+          "peerTraceId": "ce47e1ef1282156cd3b6878229726c18",
+          "providerRequestId": null,
+          "targetAlias": "aito1",
+          "totalMs": 12.1178,
+          "upstreamStatus": 200
+        },
+        "expectedPeers": {
+          "aito1": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito1"
+          },
+          "aito2": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito2"
+          }
+        }
+      }
+    },
+    {
+      "id": "smoke-2/bilateral/4a61a343a935d1d4/local-owner",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-2/bilateral/4a61a343a935d1d4/unique-remote-edge",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "edges": [
+          {
+            "kind": "remote",
+            "senders": [
+              23
+            ],
+            "receivers": [
+              8
+            ],
+            "findings": [
+              "verified"
+            ],
+            "verified": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "smoke-2/bilateral/4a61a343a935d1d4/identity-and-verification",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1286
+        },
+        {
+          "source": 1,
+          "line": 17,
+          "bytes": 1133
+        }
+      ],
+      "observed": {
+        "receiverCount": 1,
+        "findings": [
+          "verified"
+        ],
+        "verified": true,
+        "acceptedCancellationGap": false,
+        "qualification": "Graph identity is independent of business success and diagnostic coverage."
+      }
+    },
+    {
+      "id": "smoke-3/bilateral/owner-and-calls",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "ownerCount": 1,
+        "callCount": 1
+      }
+    },
+    {
+      "id": "smoke-3/bilateral/39cf583acd54133e/terminal",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-3/bilateral/39cf583acd54133e/configured-peer",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "declared": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328256048_2ts2802ll",
+          "peerService": "aitoapi",
+          "peerTraceId": "585f379f9a281ed7574ba7b0f319fcc2",
+          "providerRequestId": null,
+          "targetAlias": "aito2",
+          "totalMs": 14.1818,
+          "upstreamStatus": 200
+        },
+        "expectedPeers": {
+          "aito1": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito1"
+          },
+          "aito2": {
+            "service": "aitoapi",
+            "deploymentId": "diag07-local",
+            "environment": "test",
+            "instanceId": "aito2"
+          }
+        }
+      }
+    },
+    {
+      "id": "smoke-3/bilateral/39cf583acd54133e/local-owner",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {}
+    },
+    {
+      "id": "smoke-3/bilateral/39cf583acd54133e/unique-remote-edge",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 8,
+          "bytes": 1286
+        }
+      ],
+      "observed": {
+        "edges": [
+          {
+            "kind": "remote",
+            "senders": [
+              25
+            ],
+            "receivers": [
+              16
+            ],
+            "findings": [
+              "verified"
+            ],
+            "verified": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "smoke-3/bilateral/39cf583acd54133e/identity-and-verification",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [
+        {
+          "source": 4,
+          "line": 8,
+          "bytes": 1286
+        },
+        {
+          "source": 2,
+          "line": 17,
+          "bytes": 1133
+        }
+      ],
+      "observed": {
+        "receiverCount": 1,
+        "findings": [
+          "verified"
+        ],
+        "verified": true,
+        "acceptedCancellationGap": false,
+        "qualification": "Graph identity is independent of business success and diagnostic coverage."
+      }
+    },
+    {
+      "id": "bilateral/all-cpa-calls-assigned",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "expectedCallCount": 4,
+        "assignedCallCount": 4
+      }
+    },
+    {
+      "id": "bilateral/required-service/aitoapi",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "verifiedServices": [
+          "aitoapi"
+        ]
+      }
+    }
+  ],
+  "failed": [],
+  "controlledCalls": 4,
+  "verifiedServices": [
+    "aitoapi"
+  ],
+  "acceptanceComplete": false
+}

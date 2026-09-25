@@ -42,6 +42,7 @@ python scripts/diag-integration/run.py `
   --gcli $Gcli --aito $Aito --python $Python --node $Node `
   --qa-deps $QaDeps --driver "$env:TEMP/diag07-driver.exe" `
   --analyzer "$env:TEMP/diag07-analyze.exe" `
+  --binary-provenance <hash-bound-build-provenance.json> `
   --output "$env:TEMP/diag07-new-six-process-run"
 $RunExit = $LASTEXITCODE
 ```
@@ -59,9 +60,19 @@ manifest digest, all member hashes and the 73-file set. CPA must descend from
 the frozen base and have changes only in DIAG-07 support/report paths. No remote
 branch is fetched. The published contract is never changed. Set
 `PYTHONDONTWRITEBYTECODE=1` for all validation commands too.
+`trackedProductionClean` checks tracked differences only; it does not certify
+untracked files. `revisions.json` separately records invocation HEAD, current
+support-file hashes, actual binary hashes, embedded Go build metadata and
+hash-matched build attestations. Do not label an older executable with invocation
+HEAD. The required provenance JSON has `driver` and `analyzer` objects, each with
+`sha256`, `baseRevision` and `sourceQualification`, plus any source hashes/build
+records. Generate these from the actual build, never from a guessed current HEAD.
+The retained R2 `binary-provenance.json` applies only to the exact recorded hashes.
+Only `main.go` in the historical blocked record corresponds to the driver binary;
+its Python/CJS hashes are contemporaneous support snapshots and later changed.
 
 Exit codes: `0` means executed assertions **and all acceptance gaps** cleared
-(not currently reachable by this Windows delivery); `1` is an assertion or
+(currently unreachable in every environment because required gaps are hardcoded); `1` is an assertion or
 collection/close failure; `2` is preflight/setup/uncaught execution failure;
 `3` means scoped checks passed but mandatory acceptance gaps remain. The live
 driver now invokes `check_evidence.py` before publishing a successful scoped
@@ -71,9 +82,16 @@ result. The HTTP result list alone is not semantic acceptance.
 python scripts/diag-integration/check_evidence.py <run-directory>
 python scripts/diag-integration/check_offline.py `
   --analyzer "$env:TEMP/diag07-analyze.exe" `
-  --live <run-directory> --pair <actual-CPA-and-Aito-export-directory> `
+  --live <run-directory> --pair <full-run-directory> `
   --output <new-offline-report-directory>
 ```
+
+For the historical Aito-only smoke, explicitly pass `--required-service aitoapi`
+and `--peer-plan <historical-peer-plan.json>` to the offline checker. R2 retains
+that independent configuration map in `replay-03/`. Historical run-06 replay also
+needs `--live-known-loss aito4`: its original export manifest predates that flag.
+Use `check_evidence.py --downstream-only` for historical downstream-only semantic
+replay; an absent mode declaration defaults to requiring full integration.
 
 The evidence checker joins response request/trace IDs to exact file/line
 records. It checks classification, EOF distinctions, candidate/reasoning/actual
@@ -81,6 +99,25 @@ converted usage, header handling, attempt identities, cleanup, DEBUG absence,
 workers and restarts. It does not infer a call from a timestamp. The offline
 checks distinguish actual exports from generated conflict/version/size inputs.
 Their exit 0 is scoped validation, never overall DIAG-07 approval.
+
+`analysis.json` imports only sources without declared loss;
+`analysis-known-loss.json` imports all sources and preserves each known-loss
+declaration. `analysis-scopes.json` records exact input hashes and exclusions.
+The first report proves relationships only within its stated subset. The frozen
+analyzer correctly blocks every verified edge in the all-source report when any
+source has known loss. Neither report certifies global collection completeness.
+
+Each CPA request records its independently configured peer map. The checker
+requires an actual call, unique owner/receiver, matching trace and parent span,
+expected service/deployment/instance/alias, matching response peer IDs when
+present, and the analyzer's unique verified remote edge. Full mode requires both
+services and all four configured peer targets. Offline expectations come from
+controlled requests and actual calls, not a fixed edge total. HTTP/provider
+errors do not by themselves invalidate graph identity. Cancellation permits only
+an observed absent receiver (`missing_peer`) or absent receiver terminal
+(`terminal_evidence_incomplete`); conflicts, distrust and known loss never qualify
+for this exception. Complete cancellation evidence may still verify a graph
+edge without proving business success or full diagnostic coverage.
 
 ## Configuration and controls
 
@@ -107,12 +144,27 @@ carry DIAG-05 throttle diagnostics; OpenAI handler responses alone cannot prove
 that diagnostic family. The first configuration has been built but its live
 execution is blocked. Actual elapsed credit/cancellation are separately covered
 by existing component tests and remain distinct from pending live coverage.
+The unchanged Go `-throttle` help still describes the old fixed values; the
+actual `-rate` and `-first-delay` flags control them. Its source stays byte-identical
+to the refused binary. CPA nested retry counts/statuses, Aito empty/thought 502
+projection and token-rate case 89/provider_output remain unexecuted expectations.
+On the first authorized live run, investigate any mismatch before changing an
+expectation; passing offline tests does not validate these predictions.
+
+`internal/util/util.go:60-76` calls `diagnostics.NotifyDebugDisabled()` before
+lowering logrus level. The epoch check in `internal/diagnostics/semantic.go`
+retains an off/on interruption even between observations; this is source evidence,
+not a new live CPA DEBUG result. CPA call terminals report `debugCapture:"none"`
+(`internal/diagnostics/transport.go:180`), while gcli can report
+`enabled_throughout`. Do not directly compare those call-level fields across
+services or infer full coverage; CPA access capture remains unknown.
 
 Aito control travels over the owned child's stdin: DEBUG change, browser
 reconnect, dispatch snapshot and explicit `fixture.close()`. Its close reply is
 recorded, followed by actual exit status. HTTP shutdown is used for gcli/CPA.
-The final Aito worker is intentionally killed during an observed dispatch;
-its missing unflushed records are declared with analyzer `-known-loss aito4`.
+The final Aito worker is killed after observing the browser dispatch count;
+this does not prove the response was still active at the instant of the kill.
+Its missing unflushed records are declared with analyzer `-known-loss aito4`.
 A server terminal does not prove HTTP EOF. Late independent calls are retained.
 
 ## Retained limits and rollback

@@ -2,6 +2,8 @@
 
 **状态：待代码审核；整体验收被 Windows 策略阻塞。DIAG-07 未完成，不放行推送或整体发布。**
 
+R1 审核后的代码修订见 [R2 处理说明](DIAG-07-R2-disposition.zh-CN.md)。新增范围隔离与双边断言仅做既有导出重放，没有新增 CPA live 证据；下文历史运行及其原始制品保持原有含义。
+
 任务 `01a0d7d6-ae7f-71f2-ab65-6732c27975d7`，隔离 worktree `da3a/CLIProxyAPI`，
 分支 `codex/diag-07-integration`。基线 `9422a853a222aef0dbf67815888c53ef6f1ede77`；
 开工时 Git 根、HEAD、tracked clean 全部符合派发。交付 HEAD 由提交后的消息给出，避免文档自引用。
@@ -58,7 +60,7 @@
 - gcli 400清理使用实际 no-prefill 范围内的 `gemini-3.7-flash`，验证连续空/纯空白/末尾model/工具上下文，
   全空保持空contents并由合成提供方返回既有400，没有注入虚构用户文本。
 - Aito正常关闭走批准 `fixture.close()`，收到close/dispatch计数回执，再等待exit0。
-  受控硬杀在浏览器dispatch=2时发生，文件仅保留先前完整请求；当前活动请求可能完全无记录。
+  受控硬杀前观察到浏览器dispatch=2，文件仅保留先前完整请求；未证明kill瞬间响应仍活动，也未隔离缺失记录的flush时序。
   不虚构terminalMissing节点。另按已知采集缺口显式输入 `-known-loss aito4`，
   [报告](DIAG-07-run-06/analysis-known-hard-kill.json)没有verified边。
 
@@ -73,6 +75,7 @@ DIAG_PEERS不认证调用方。只由受控导入和唯一双边证据验证边�
 `393abcdcaab6af5b449d2777debd180dbee49a70bb4cb9caee878bc49e3842e0`，基线加该独立入口，
 既有生产文件无diff。拒绝后源Go和该binary均未改变、重建或再执行；管理员精确本地路径已单独交协调方。
 [脱敏对象记录](DIAG-07-validation/blocked-binary.json)。未改安全策略、改名程序或通过修改代码换hash规避。
+该历史记录只有main.go对应可执行文件，Python/CJS属于当时支持脚本快照；见[旁注](DIAG-07-validation/blocked-binary-note.md)。
 
 | 运行 | 退出码 | 事实及修订 |
 |---|---:|---|

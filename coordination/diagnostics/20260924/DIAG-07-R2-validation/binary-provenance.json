@@ -1,0 +1,15 @@
+{
+  "driver": {
+    "sha256": "da12f45f2719a4e199eb160036caa6dc94eda4bc0cc3fdf40cf1fa5c4fb7c71f",
+    "baseRevision": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+    "mainSourceSha256": "393abcdcaab6af5b449d2777debd180dbee49a70bb4cb9caee878bc49e3842e0",
+    "sourceQualification": "Historical blocked-build record plus unchanged main.go; only main.go belongs to the executable, not the then-current Python/CJS runners. Not executed or rebuilt in R2."
+  },
+  "analyzer": {
+    "sha256": "9b7e75e50d7f980bd8f16bf7f9c351dc5fcc9d140977df8eba621e23f69399ef",
+    "baseRevision": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+    "sourceInventory": "go-source-hashes.json",
+    "sourceInventorySha256": "0611c583210d8bc188ec63ed8050b744d64da3e3e027d00df91cbb5439843381",
+    "sourceQualification": "R2 successful local build of unchanged frozen analyzer production sources; invocation commit is separately recorded."
+  }
+}

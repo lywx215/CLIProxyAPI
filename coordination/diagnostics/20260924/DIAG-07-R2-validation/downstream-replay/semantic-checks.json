@@ -1,0 +1,4511 @@
+{
+  "checks": [
+    {
+      "id": "topology-gcli1-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:7"
+      ],
+      "observed": {
+        "responseRequestId": "b758046f-1bf9-4e1e-9e83-f1a1d6283d95",
+        "responseTraceId": "209546665064179c8fe4186aa2196072"
+      }
+    },
+    {
+      "id": "topology-gcli1-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:3"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-gcli1-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:7",
+        "gcli1.jsonl:4"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-gcli1-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:12"
+      ],
+      "observed": {
+        "responseRequestId": "492041eb-4d6b-4ade-bd32-695cf7fbfb78",
+        "responseTraceId": "b24fd68c3a0767003d3335fe37fb2da2"
+      }
+    },
+    {
+      "id": "native-gcli1-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:8"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-gcli1-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:12",
+        "gcli1.jsonl:9"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-gcli1-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:16"
+      ],
+      "observed": {
+        "responseRequestId": "13c876f7-1f7c-4910-be0b-0a6d2cdd5425",
+        "responseTraceId": "ca08be664b9b77aa01a2394d9091c87c"
+      }
+    },
+    {
+      "id": "topology-gcli1-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:13"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-gcli1-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:16",
+        "gcli1.jsonl:17"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-gcli1-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:22"
+      ],
+      "observed": {
+        "responseRequestId": "becf4630-d53e-491b-956e-1f79c44ee8b7",
+        "responseTraceId": "04b5e34ad90571c7c1e33ea3118d028c"
+      }
+    },
+    {
+      "id": "native-gcli1-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:18"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-gcli1-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:22",
+        "gcli1.jsonl:19"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-gcli2-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:7"
+      ],
+      "observed": {
+        "responseRequestId": "e6c92e33-5ca0-4a48-9b00-f4cc2b97b694",
+        "responseTraceId": "8d8c200cad6dd22d13fb1ea7f98e14c9"
+      }
+    },
+    {
+      "id": "topology-gcli2-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:3"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-gcli2-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:7",
+        "gcli2.jsonl:4"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-gcli2-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:12"
+      ],
+      "observed": {
+        "responseRequestId": "eb4f316c-39d3-473e-a6db-a604b9715011",
+        "responseTraceId": "cd4c3c18b0d7d782a9e2d4e71450d680"
+      }
+    },
+    {
+      "id": "native-gcli2-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:8"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-gcli2-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:12",
+        "gcli2.jsonl:9"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-gcli2-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:16"
+      ],
+      "observed": {
+        "responseRequestId": "1ab9dfa0-d9a3-4553-b31b-46108ec45005",
+        "responseTraceId": "76ed2af03b0e1dc999d42c1ca0283285"
+      }
+    },
+    {
+      "id": "topology-gcli2-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:13"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-gcli2-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:16",
+        "gcli2.jsonl:17"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-gcli2-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:22"
+      ],
+      "observed": {
+        "responseRequestId": "38b3a202-e765-4752-b909-c0b164b0be66",
+        "responseTraceId": "e02c89acc92279ae42890e545f09e67d"
+      }
+    },
+    {
+      "id": "native-gcli2-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:18"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-gcli2-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:22",
+        "gcli2.jsonl:19"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-aito1-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:5"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751512_w2781lfxj",
+        "responseTraceId": "09a1b3c40f0793b6f505b52230268c27"
+      }
+    },
+    {
+      "id": "topology-aito1-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:2"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-aito1-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:5",
+        "aito1.jsonl:2"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-aito1-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:9"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751538_iuz155on8",
+        "responseTraceId": "8fb960b65754a3e0461cceae723ad29a"
+      }
+    },
+    {
+      "id": "native-aito1-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:6"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-aito1-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:9",
+        "aito1.jsonl:6"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-aito1-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:13"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751548_kgopzp00l",
+        "responseTraceId": "0d9ed9ee848e0d6ced1c3fee151b7e28"
+      }
+    },
+    {
+      "id": "topology-aito1-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:10"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-aito1-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:13",
+        "aito1.jsonl:10"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-aito1-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:17"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751565_3m0sqfiyf",
+        "responseTraceId": "daf871e4a50a1f7d7c1e946f5577d8bf"
+      }
+    },
+    {
+      "id": "native-aito1-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:14"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-aito1-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:17",
+        "aito1.jsonl:14"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-aito2-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:5"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751582_cgzwj3ixi",
+        "responseTraceId": "cab48f956dbed7f4cf6dd33282c74a1e"
+      }
+    },
+    {
+      "id": "topology-aito2-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:2"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-aito2-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:5",
+        "aito2.jsonl:2"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-aito2-nonstream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:9"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751601_z987ooq6v",
+        "responseTraceId": "f9fc07d819a0a11e173022de77a3b4aa"
+      }
+    },
+    {
+      "id": "native-aito2-nonstream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:6"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-aito2-nonstream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:9",
+        "aito2.jsonl:6"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "topology-aito2-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:13"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751629_nh5qm0ez1",
+        "responseTraceId": "7d51b9d1053662b3724c36737672c1ff"
+      }
+    },
+    {
+      "id": "topology-aito2-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:10"
+      ],
+      "observed": null
+    },
+    {
+      "id": "topology-aito2-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:13",
+        "aito2.jsonl:10"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "native-aito2-stream/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:17"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751644_ri056u7rz",
+        "responseTraceId": "ae719471cb44f4b80e7f8c1482b10c14"
+      }
+    },
+    {
+      "id": "native-aito2-stream/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:14"
+      ],
+      "observed": null
+    },
+    {
+      "id": "native-aito2-stream/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:17",
+        "aito2.jsonl:14"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-request-only/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:27"
+      ],
+      "observed": {
+        "responseRequestId": "4c42f1bc-6ba0-4ed8-aaac-63ce2155148d",
+        "responseTraceId": "217813a11af0c2038c859b7c0fb89601"
+      }
+    },
+    {
+      "id": "headers-gcli1-request-only/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:23"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-request-only/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:27",
+        "gcli1.jsonl:24"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-standard/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:32"
+      ],
+      "observed": {
+        "responseRequestId": "66c7edab-06f5-4e02-9099-5be5448e94b9",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-gcli1-standard/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:28"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-standard/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:32",
+        "gcli1.jsonl:29"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-standard/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:32"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-invalid/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:37"
+      ],
+      "observed": {
+        "responseRequestId": "148402a8-1033-4a2e-8ef0-fb71bf90c3bf",
+        "responseTraceId": "bb5df3c66b81c0e9280fadb6228d1af9"
+      }
+    },
+    {
+      "id": "headers-gcli1-invalid/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:33"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-invalid/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:37",
+        "gcli1.jsonl:34"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-invalid/invalid-replaced",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:37"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-duplicate/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:42"
+      ],
+      "observed": {
+        "responseRequestId": "4c810a3a-ba0e-4203-824c-a704a3b2cff2",
+        "responseTraceId": "25505fa64e563b0b36aa04ffde6a8091"
+      }
+    },
+    {
+      "id": "headers-gcli1-duplicate/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:38"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-duplicate/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:42",
+        "gcli1.jsonl:39"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-duplicate/invalid-replaced",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:42"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-reuse-a/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:47"
+      ],
+      "observed": {
+        "responseRequestId": "9a0178a8-0070-4460-897a-2de5ae47f071",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-gcli1-reuse-a/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:43"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-reuse-a/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:47",
+        "gcli1.jsonl:44"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-reuse-a/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:47"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-reuse-b/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:52"
+      ],
+      "observed": {
+        "responseRequestId": "b7774a9e-b346-4a54-9072-09b65cc2296e",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-gcli1-reuse-b/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:48"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-reuse-b/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:52",
+        "gcli1.jsonl:49"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-reuse-b/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:52"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-duplicate-id/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:57"
+      ],
+      "observed": {
+        "responseRequestId": "fa995921-eed9-4b61-aa1c-91c2c473b4e4",
+        "responseTraceId": "c0a59fdbee9ac70749273d166ae36efa"
+      }
+    },
+    {
+      "id": "headers-gcli1-duplicate-id/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:53"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-gcli1-duplicate-id/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:57",
+        "gcli1.jsonl:54"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-gcli1-duplicate-id/duplicate-caller-rejected",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:57"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-request-only/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:21"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751880_fp3ivd8rk",
+        "responseTraceId": "a1e0e2d009d197d0e04f75adb4fd5707"
+      }
+    },
+    {
+      "id": "headers-aito1-request-only/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:18"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-request-only/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:21",
+        "aito1.jsonl:18"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-standard/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:25"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751890_ejnif04vt",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-aito1-standard/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:22"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-standard/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:25",
+        "aito1.jsonl:22"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-standard/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:25"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-invalid/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:29"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751910_4y2bxxdg5",
+        "responseTraceId": "8409cfd73e03145dba2d341b5a0d3184"
+      }
+    },
+    {
+      "id": "headers-aito1-invalid/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:26"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-invalid/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:29",
+        "aito1.jsonl:26"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-invalid/invalid-replaced",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:29"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-duplicate/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:33"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751924_khjnp7fil",
+        "responseTraceId": "8effe16d67e11e3fee067dcf4d7168b8"
+      }
+    },
+    {
+      "id": "headers-aito1-duplicate/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:30"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-duplicate/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:33",
+        "aito1.jsonl:30"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-duplicate/invalid-replaced",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:33"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-reuse-a/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:37"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751940_q05v1m3ep",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-aito1-reuse-a/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:34"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-reuse-a/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:37",
+        "aito1.jsonl:34"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-reuse-a/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:37"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-reuse-b/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:41"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751955_jv5wg5hms",
+        "responseTraceId": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "headers-aito1-reuse-b/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:38"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-reuse-b/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:41",
+        "aito1.jsonl:38"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-reuse-b/accepted-parent",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:41"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-duplicate-id/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:45"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328751971_oyb8rbp4p",
+        "responseTraceId": "49f2a6bc1eed02e1e2c8d16d1d533ab3"
+      }
+    },
+    {
+      "id": "headers-aito1-duplicate-id/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:42"
+      ],
+      "observed": null
+    },
+    {
+      "id": "headers-aito1-duplicate-id/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:45",
+        "aito1.jsonl:42"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "headers-aito1-duplicate-id/duplicate-caller-rejected",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:45"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-thought13/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:61"
+      ],
+      "observed": {
+        "responseRequestId": "c01370cb-a3c0-4431-950d-4ecfaeca465c",
+        "responseTraceId": "c8d44e604a0042b617d22c3924f634a2"
+      }
+    },
+    {
+      "id": "semantics-gcli1-thought13/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:58"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-thought13/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:61",
+        "gcli1.jsonl:62"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-thought13/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:60"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-thought13/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:61"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-thought13/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:60"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-thought13/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:60"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": 10,
+          "present": true,
+          "source": "upstream"
+        },
+        "candidate": {
+          "value": 87,
+          "present": true,
+          "source": "upstream"
+        },
+        "reasoning": {
+          "value": 13,
+          "present": true,
+          "source": "upstream"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "provider_cumulative",
+        "reasoningIncludedInOutput": null,
+        "raw": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13
+        }
+      }
+    },
+    {
+      "id": "semantics-gcli1-thought13/reasoning",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:60"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": 10,
+          "present": true,
+          "source": "upstream"
+        },
+        "candidate": {
+          "value": 87,
+          "present": true,
+          "source": "upstream"
+        },
+        "reasoning": {
+          "value": 13,
+          "present": true,
+          "source": "upstream"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "provider_cumulative",
+        "reasoningIncludedInOutput": null,
+        "raw": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13
+        }
+      }
+    },
+    {
+      "id": "semantics-gcli1-thought13/converted-total",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:59"
+      ],
+      "observed": [
+        87
+      ]
+    },
+    {
+      "id": "semantics-gcli1-tail13/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:66"
+      ],
+      "observed": {
+        "responseRequestId": "a2366dc1-a2d3-4b83-8e1e-54b622466669",
+        "responseTraceId": "7d3f1c2e634ca0ce95f7a8b4ea2a83fc"
+      }
+    },
+    {
+      "id": "semantics-gcli1-tail13/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:63"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-tail13/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:66",
+        "gcli1.jsonl:67"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-tail13/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:65"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-tail13/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:66"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-tail13/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:65"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-tail13/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:65"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": 10,
+          "present": true,
+          "source": "upstream"
+        },
+        "candidate": {
+          "value": 87,
+          "present": true,
+          "source": "upstream"
+        },
+        "reasoning": {
+          "value": 13,
+          "present": true,
+          "source": "upstream"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "provider_cumulative",
+        "reasoningIncludedInOutput": null,
+        "raw": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13
+        }
+      }
+    },
+    {
+      "id": "semantics-gcli1-tail13/reasoning",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:65"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": 10,
+          "present": true,
+          "source": "upstream"
+        },
+        "candidate": {
+          "value": 87,
+          "present": true,
+          "source": "upstream"
+        },
+        "reasoning": {
+          "value": 13,
+          "present": true,
+          "source": "upstream"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "provider_cumulative",
+        "reasoningIncludedInOutput": null,
+        "raw": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13
+        }
+      }
+    },
+    {
+      "id": "semantics-gcli1-tail13/converted-total",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:64"
+      ],
+      "observed": [
+        null
+      ]
+    },
+    {
+      "id": "semantics-gcli1-zero/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:71"
+      ],
+      "observed": {
+        "responseRequestId": "5da384f1-427f-4759-96c9-c6f580326445",
+        "responseTraceId": "4e21472397791a4c1bdbd8da9117c86b"
+      }
+    },
+    {
+      "id": "semantics-gcli1-zero/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:68"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-zero/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:71",
+        "gcli1.jsonl:72"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-zero/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:70"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-zero/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:71"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-zero/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:70"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-zero/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:70"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": 10,
+          "present": true,
+          "source": "upstream"
+        },
+        "candidate": {
+          "value": 0,
+          "present": true,
+          "source": "upstream"
+        },
+        "reasoning": {
+          "value": 2,
+          "present": true,
+          "source": "upstream"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "provider_cumulative",
+        "reasoningIncludedInOutput": null,
+        "raw": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 0,
+          "thoughtsTokenCount": 2
+        }
+      }
+    },
+    {
+      "id": "semantics-gcli1-missing/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:76"
+      ],
+      "observed": {
+        "responseRequestId": "de46b69c-a710-4c26-bd7d-3a57c998b03c",
+        "responseTraceId": "62dc08c472b3e7900b42882dcb807789"
+      }
+    },
+    {
+      "id": "semantics-gcli1-missing/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:73"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-missing/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:76",
+        "gcli1.jsonl:77"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-missing/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:75"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-missing/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:76"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-missing/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:75"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-missing/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:75"
+      ],
+      "observed": {
+        "protocol": "gemini",
+        "input": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "candidate": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "reasoning": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "outputTotal": {
+          "value": null,
+          "present": false,
+          "source": "unknown"
+        },
+        "basis": "unknown",
+        "reasoningIncludedInOutput": null,
+        "raw": {}
+      }
+    },
+    {
+      "id": "semantics-gcli1-tool/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:81"
+      ],
+      "observed": {
+        "responseRequestId": "d639d868-6fe9-414e-958d-e3420102941a",
+        "responseTraceId": "962fd90ff07aaee10aca93446e6c2009"
+      }
+    },
+    {
+      "id": "semantics-gcli1-tool/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:78"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-tool/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:81",
+        "gcli1.jsonl:82"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-tool/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:80"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-tool/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:81"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-tool/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:80"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-tool/upstream-effective-output",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:80"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-media/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:86"
+      ],
+      "observed": {
+        "responseRequestId": "8dd6162a-f0ce-44a2-bf29-ba07a8f931c9",
+        "responseTraceId": "26fef23de70f8a8666d6ce00466a1a6c"
+      }
+    },
+    {
+      "id": "semantics-gcli1-media/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:83"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-media/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:86",
+        "gcli1.jsonl:87"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-media/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:85"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-media/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:86"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-media/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:85"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-media/upstream-effective-output",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:85"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-empty/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:91"
+      ],
+      "observed": {
+        "responseRequestId": "86ee44ad-a5c3-4097-8c2c-423b3bd04251",
+        "responseTraceId": "96529724e2fd8a4a93871053e25acbcb"
+      }
+    },
+    {
+      "id": "semantics-gcli1-empty/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:88"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-empty/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:91",
+        "gcli1.jsonl:92"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-empty/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:90"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-empty/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:91"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-empty/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:90"
+      ],
+      "observed": [
+        "empty"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-blocked/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:96"
+      ],
+      "observed": {
+        "responseRequestId": "68cf3ee9-38d7-4dcd-b4b0-1b1cfc9fe448",
+        "responseTraceId": "3b5c09747888f363b3819a4cb478ecd6"
+      }
+    },
+    {
+      "id": "semantics-gcli1-blocked/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:93"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-blocked/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:96",
+        "gcli1.jsonl:97"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-blocked/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:95"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-blocked/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:96"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-blocked/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:95"
+      ],
+      "observed": [
+        "blocked"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-incomplete/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:102"
+      ],
+      "observed": {
+        "responseRequestId": "706fff6b-e798-44b4-ab3d-5c27ffe10ab4",
+        "responseTraceId": "31ce2b56c4c331fac2eb63f5842a1e06"
+      }
+    },
+    {
+      "id": "semantics-gcli1-incomplete/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:98"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-incomplete/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:102",
+        "gcli1.jsonl:99"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-incomplete/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:100"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-incomplete/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:102"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-incomplete/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:100"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-errorframe/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:106"
+      ],
+      "observed": {
+        "responseRequestId": "61f5f380-bd92-4961-8b2a-f7e2ca13ecc5",
+        "responseTraceId": "ff0017a749a42848fbe5fbff88ea5d92"
+      }
+    },
+    {
+      "id": "semantics-gcli1-errorframe/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:103"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-errorframe/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:106",
+        "gcli1.jsonl:107"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-errorframe/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:105"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-errorframe/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:106"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-errorframe/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:105"
+      ],
+      "observed": [
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-readerror/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:112"
+      ],
+      "observed": {
+        "responseRequestId": "e674bf24-3cfb-46e4-97d1-36258716bd1f",
+        "responseTraceId": "d969de82c80c70f65e3844f32924cfb7"
+      }
+    },
+    {
+      "id": "semantics-gcli1-readerror/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:108"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-readerror/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:112",
+        "gcli1.jsonl:109"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-gcli1-readerror/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:110"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-readerror/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:112"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-readerror/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:110"
+      ],
+      "observed": [
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-readerror/wire-read-error",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:110"
+      ],
+      "observed": {
+        "readError": "incomplete_read",
+        "protocolErrorOrCompletionFrame": false
+      }
+    },
+    {
+      "id": "semantics-gcli1-readerror/diagnostic-read-error",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:110"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-retry/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:120"
+      ],
+      "observed": {
+        "responseRequestId": "8adbe7b4-93d8-4224-9978-9fe621c19d54",
+        "responseTraceId": "5f8ed44a5bd9abdbbb5a72a23f256f6b"
+      }
+    },
+    {
+      "id": "semantics-gcli1-retry/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:113"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-retry/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:120",
+        "gcli1.jsonl:114",
+        "gcli1.jsonl:116",
+        "gcli1.jsonl:121"
+      ],
+      "observed": {
+        "declared": 3,
+        "observed": 3
+      }
+    },
+    {
+      "id": "semantics-gcli1-retry/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:115",
+        "gcli1.jsonl:117",
+        "gcli1.jsonl:119"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-retry/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:120"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-retry/attempt-identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:115",
+        "gcli1.jsonl:117",
+        "gcli1.jsonl:119"
+      ],
+      "observed": {
+        "ids": 3,
+        "attemptNo": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-retry/http-or-dispatch-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:114",
+        "gcli1.jsonl:116",
+        "gcli1.jsonl:121"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-nested/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:129"
+      ],
+      "observed": {
+        "responseRequestId": "92b23ff3-53d1-46e8-be6f-9a328e29a660",
+        "responseTraceId": "46076e8aa614dfd8f6fde9fe5054b016"
+      }
+    },
+    {
+      "id": "semantics-gcli1-nested/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:122"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-nested/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:129",
+        "gcli1.jsonl:123",
+        "gcli1.jsonl:125",
+        "gcli1.jsonl:127"
+      ],
+      "observed": {
+        "declared": 3,
+        "observed": 3
+      }
+    },
+    {
+      "id": "semantics-gcli1-nested/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:124",
+        "gcli1.jsonl:126",
+        "gcli1.jsonl:128"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-nested/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:129"
+      ],
+      "observed": {
+        "status": 429,
+        "expected": [
+          429
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-nested/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:124",
+        "gcli1.jsonl:126",
+        "gcli1.jsonl:128"
+      ],
+      "observed": [
+        "error",
+        "error",
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-nested/attempt-identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:124",
+        "gcli1.jsonl:126",
+        "gcli1.jsonl:128"
+      ],
+      "observed": {
+        "ids": 3,
+        "attemptNo": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-nested/http-or-dispatch-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:123",
+        "gcli1.jsonl:125",
+        "gcli1.jsonl:127"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-reasoning/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:49"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752493_ddolrb9p2",
+        "responseTraceId": "b60772e32845d72bbfc8c205a86646c8"
+      }
+    },
+    {
+      "id": "semantics-aito1-reasoning/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:46"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-reasoning/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:49",
+        "aito1.jsonl:46"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-reasoning/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:47"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-reasoning/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:49"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-reasoning/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:47"
+      ],
+      "observed": [
+        "success"
+      ]
+    },
+    {
+      "id": "semantics-aito1-reasoning/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:47"
+      ],
+      "observed": {
+        "basis": "provider_cumulative",
+        "candidate": {
+          "present": true,
+          "source": "upstream",
+          "value": 87
+        },
+        "input": {
+          "present": true,
+          "source": "upstream",
+          "value": 3
+        },
+        "outputTotal": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "protocol": "gemini",
+        "raw": {
+          "promptTokenCount": 3,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13,
+          "totalTokenCount": 103
+        },
+        "reasoning": {
+          "present": true,
+          "source": "upstream",
+          "value": 13
+        },
+        "reasoningIncludedInOutput": null
+      }
+    },
+    {
+      "id": "semantics-aito1-reasoning/reasoning",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:47"
+      ],
+      "observed": {
+        "basis": "provider_cumulative",
+        "candidate": {
+          "present": true,
+          "source": "upstream",
+          "value": 87
+        },
+        "input": {
+          "present": true,
+          "source": "upstream",
+          "value": 3
+        },
+        "outputTotal": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "protocol": "gemini",
+        "raw": {
+          "promptTokenCount": 3,
+          "candidatesTokenCount": 87,
+          "thoughtsTokenCount": 13,
+          "totalTokenCount": 103
+        },
+        "reasoning": {
+          "present": true,
+          "source": "upstream",
+          "value": 13
+        },
+        "reasoningIncludedInOutput": null
+      }
+    },
+    {
+      "id": "semantics-aito1-reasoning/converted-total",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:48"
+      ],
+      "observed": [
+        100
+      ]
+    },
+    {
+      "id": "semantics-aito1-zero/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:53"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752499_yu01vge29",
+        "responseTraceId": "4d38477d3c6776f07eeac5166c5e3f6a"
+      }
+    },
+    {
+      "id": "semantics-aito1-zero/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:50"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-zero/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:53",
+        "aito1.jsonl:50"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-zero/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:51"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-zero/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:53"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-zero/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:51"
+      ],
+      "observed": [
+        "success"
+      ]
+    },
+    {
+      "id": "semantics-aito1-zero/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:51"
+      ],
+      "observed": {
+        "basis": "provider_cumulative",
+        "candidate": {
+          "present": true,
+          "source": "upstream",
+          "value": 0
+        },
+        "input": {
+          "present": true,
+          "source": "upstream",
+          "value": 3
+        },
+        "outputTotal": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "protocol": "gemini",
+        "raw": {
+          "promptTokenCount": 3,
+          "candidatesTokenCount": 0,
+          "thoughtsTokenCount": 0,
+          "totalTokenCount": 3
+        },
+        "reasoning": {
+          "present": true,
+          "source": "upstream",
+          "value": 0
+        },
+        "reasoningIncludedInOutput": null
+      }
+    },
+    {
+      "id": "semantics-aito1-missing/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:57"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752516_592tbmvmq",
+        "responseTraceId": "2774f4249880b6d76781ebeb148ab0ee"
+      }
+    },
+    {
+      "id": "semantics-aito1-missing/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:54"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-missing/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:57",
+        "aito1.jsonl:54"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-missing/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:55"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-missing/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:57"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-missing/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:55"
+      ],
+      "observed": [
+        "success"
+      ]
+    },
+    {
+      "id": "semantics-aito1-missing/candidate-1",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:55"
+      ],
+      "observed": {
+        "basis": "unknown",
+        "candidate": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "input": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "outputTotal": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "protocol": "gemini",
+        "raw": {},
+        "reasoning": {
+          "present": false,
+          "source": "unknown",
+          "value": null
+        },
+        "reasoningIncludedInOutput": null
+      }
+    },
+    {
+      "id": "semantics-aito1-tool/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:61"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752532_bvnqyh6jm",
+        "responseTraceId": "4f73dc1c537344e6794efaa6bb2a3e0b"
+      }
+    },
+    {
+      "id": "semantics-aito1-tool/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:58"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-tool/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:61",
+        "aito1.jsonl:58"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-tool/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:59"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-tool/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:61"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-tool/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:59"
+      ],
+      "observed": [
+        "success"
+      ]
+    },
+    {
+      "id": "semantics-aito1-tool/upstream-effective-output",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:59"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-empty/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:66"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752549_9co6baoo8",
+        "responseTraceId": "1184a820cf055cc6001af3ae0725d3ca"
+      }
+    },
+    {
+      "id": "semantics-aito1-empty/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:62"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-empty/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:66",
+        "aito1.jsonl:62",
+        "aito1.jsonl:64"
+      ],
+      "observed": {
+        "declared": 2,
+        "observed": 2
+      }
+    },
+    {
+      "id": "semantics-aito1-empty/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:63",
+        "aito1.jsonl:65"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-empty/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:66"
+      ],
+      "observed": {
+        "status": 502,
+        "expected": [
+          502
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-empty/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:63",
+        "aito1.jsonl:65"
+      ],
+      "observed": [
+        "empty",
+        "empty"
+      ]
+    },
+    {
+      "id": "semantics-aito1-blocked/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:70"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752567_8zvdsehja",
+        "responseTraceId": "10b3d692e5828640368c7381a628a452"
+      }
+    },
+    {
+      "id": "semantics-aito1-blocked/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:67"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-blocked/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:70",
+        "aito1.jsonl:67"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-blocked/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:68"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-blocked/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:70"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-blocked/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:68"
+      ],
+      "observed": [
+        "blocked"
+      ]
+    },
+    {
+      "id": "semantics-aito1-truncated/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:74"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752577_9cannkxh4",
+        "responseTraceId": "ed42e13fc44a1756450bc68f7abcdd03"
+      }
+    },
+    {
+      "id": "semantics-aito1-truncated/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:71"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-truncated/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:74",
+        "aito1.jsonl:71"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-truncated/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:72"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-truncated/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:74"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-truncated/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:72"
+      ],
+      "observed": [
+        "incomplete"
+      ]
+    },
+    {
+      "id": "semantics-aito1-retry/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:80"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752593_3k8ywdufo",
+        "responseTraceId": "a566806a73bd3423c2cd03d503867f62"
+      }
+    },
+    {
+      "id": "semantics-aito1-retry/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:75"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-retry/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:80",
+        "aito1.jsonl:75",
+        "aito1.jsonl:77"
+      ],
+      "observed": {
+        "declared": 2,
+        "observed": 2
+      }
+    },
+    {
+      "id": "semantics-aito1-retry/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:76",
+        "aito1.jsonl:78"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-retry/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:80"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-retry/attempt-identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:76",
+        "aito1.jsonl:78"
+      ],
+      "observed": {
+        "ids": 2,
+        "attemptNo": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-retry/http-or-dispatch-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:75",
+        "aito1.jsonl:77"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-http429/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:85"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752682_hiclrwsbn",
+        "responseTraceId": "ea41a158bd24527083ed7b6a97dea4bc"
+      }
+    },
+    {
+      "id": "semantics-aito1-http429/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:81"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-http429/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:85",
+        "aito1.jsonl:81",
+        "aito1.jsonl:83"
+      ],
+      "observed": {
+        "declared": 2,
+        "observed": 2
+      }
+    },
+    {
+      "id": "semantics-aito1-http429/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:82",
+        "aito1.jsonl:84"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-http429/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:85"
+      ],
+      "observed": {
+        "status": 429,
+        "expected": [
+          429
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-http429/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:82",
+        "aito1.jsonl:84"
+      ],
+      "observed": [
+        "error",
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-aito1-http503/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:90"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752705_aw0f2hiwp",
+        "responseTraceId": "9b0d3e025ea544785b165a1e310ffa79"
+      }
+    },
+    {
+      "id": "semantics-aito1-http503/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:86"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-http503/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:90",
+        "aito1.jsonl:86",
+        "aito1.jsonl:88"
+      ],
+      "observed": {
+        "declared": 2,
+        "observed": 2
+      }
+    },
+    {
+      "id": "semantics-aito1-http503/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:87",
+        "aito1.jsonl:89"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-http503/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:90"
+      ],
+      "observed": {
+        "status": 503,
+        "expected": [
+          503
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-http503/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:87",
+        "aito1.jsonl:89"
+      ],
+      "observed": [
+        "error",
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-aito1-network/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:93"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752734_om6bz1a7i",
+        "responseTraceId": "70b95a8ac9ce650e81c72288747b1501"
+      }
+    },
+    {
+      "id": "semantics-aito1-network/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:91"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-network/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:93",
+        "aito1.jsonl:91"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "semantics-aito1-network/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:92"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-network/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:93"
+      ],
+      "observed": {
+        "status": 504,
+        "expected": [
+          504
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-network/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:92"
+      ],
+      "observed": [
+        "error"
+      ]
+    },
+    {
+      "id": "semantics-aito1-thought/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:98"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328752750_i6pn0sn27",
+        "responseTraceId": "37fe015f1a65b337a1877c522f9260c3"
+      }
+    },
+    {
+      "id": "semantics-aito1-thought/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:94"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-thought/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:98",
+        "aito1.jsonl:94",
+        "aito1.jsonl:96"
+      ],
+      "observed": {
+        "declared": 2,
+        "observed": 2
+      }
+    },
+    {
+      "id": "semantics-aito1-thought/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:95",
+        "aito1.jsonl:97"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-aito1-thought/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:98"
+      ],
+      "observed": {
+        "status": 502,
+        "expected": [
+          502
+        ]
+      }
+    },
+    {
+      "id": "semantics-aito1-thought/classification",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:95",
+        "aito1.jsonl:97"
+      ],
+      "observed": [
+        "empty",
+        "empty"
+      ]
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:139"
+      ],
+      "observed": {
+        "responseRequestId": "de82e5ca-44ee-4694-99a8-00427313a577",
+        "responseTraceId": "61f225974898071c40835e7b009de4a4"
+      }
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:130"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:139",
+        "gcli1.jsonl:131",
+        "gcli1.jsonl:133",
+        "gcli1.jsonl:135",
+        "gcli1.jsonl:140"
+      ],
+      "observed": {
+        "declared": 4,
+        "observed": 4
+      }
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/attempt-evidence",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:132",
+        "gcli1.jsonl:134",
+        "gcli1.jsonl:136",
+        "gcli1.jsonl:138"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/wire-status",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:139"
+      ],
+      "observed": {
+        "status": 200,
+        "expected": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/attempt-identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:132",
+        "gcli1.jsonl:134",
+        "gcli1.jsonl:136",
+        "gcli1.jsonl:138"
+      ],
+      "observed": {
+        "ids": 4,
+        "attemptNo": [
+          1,
+          2,
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/http-or-dispatch-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:131",
+        "gcli1.jsonl:133",
+        "gcli1.jsonl:135",
+        "gcli1.jsonl:140"
+      ],
+      "observed": null
+    },
+    {
+      "id": "semantics-gcli1-anti_nested/reset-no-preserved",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:132",
+        "gcli1.jsonl:134",
+        "gcli1.jsonl:136",
+        "gcli1.jsonl:138"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-trailing-model/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:145"
+      ],
+      "observed": {
+        "responseRequestId": "f9fb09bd-a78e-4953-a834-9184040660eb",
+        "responseTraceId": "45f7017aea0bf95b0b3d08543c0ad3ed"
+      }
+    },
+    {
+      "id": "cleaning-trailing-model/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:141"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-trailing-model/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:145",
+        "gcli1.jsonl:142"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "cleaning-multiple-empty/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:150"
+      ],
+      "observed": {
+        "responseRequestId": "1a33cb35-9855-40ce-b89a-c2c7bb06542e",
+        "responseTraceId": "747b80ef7d0379eacbfd8c39ab0ebac2"
+      }
+    },
+    {
+      "id": "cleaning-multiple-empty/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:146"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-multiple-empty/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:150",
+        "gcli1.jsonl:147"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "cleaning-whitespace/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:155"
+      ],
+      "observed": {
+        "responseRequestId": "8d448e35-19c4-4e21-9746-0e74ecd60ecd",
+        "responseTraceId": "7b96c5a13194ce938553115d9f218a14"
+      }
+    },
+    {
+      "id": "cleaning-whitespace/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:151"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-whitespace/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:155",
+        "gcli1.jsonl:152"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "cleaning-tool/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:160"
+      ],
+      "observed": {
+        "responseRequestId": "311f0267-5593-42d2-960e-d70bac7fe9a4",
+        "responseTraceId": "5a075050485b56140ba24d77e1380993"
+      }
+    },
+    {
+      "id": "cleaning-tool/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:156"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-tool/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:160",
+        "gcli1.jsonl:157"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "cleaning-all-empty/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:164"
+      ],
+      "observed": {
+        "responseRequestId": "104329ff-d8b6-4856-b708-f98d3ab73859",
+        "responseTraceId": "e49986d38d90bdd12e5e7548aee532ca"
+      }
+    },
+    {
+      "id": "cleaning-all-empty/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:161"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning-all-empty/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:164",
+        "gcli1.jsonl:162"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "debug-on-aito1/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:102"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328753062_ihynlq942",
+        "responseTraceId": "e9f0d7a3ac8ba239595ed50c7d141c39"
+      }
+    },
+    {
+      "id": "debug-on-aito1/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:99"
+      ],
+      "observed": null
+    },
+    {
+      "id": "debug-on-aito1/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:102",
+        "aito1.jsonl:99"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "debug-off-aito1/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:105"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328753073_6zwsxldmn",
+        "responseTraceId": "8fb40ac38f2e4937cec4d5e2eb4cc6f2"
+      }
+    },
+    {
+      "id": "debug-off-aito1/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:104"
+      ],
+      "observed": null
+    },
+    {
+      "id": "debug-off-aito1/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:105",
+        "aito1.jsonl:104"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "debug-off-aito1/basic-only",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:104",
+        "aito1.jsonl:105"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cancel-gcli1/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:169"
+      ],
+      "observed": {
+        "responseRequestId": "3e1464f2-2a97-4408-9f84-a96962d11e98",
+        "responseTraceId": "fb03352697e55fdd01b27474809c6d01"
+      }
+    },
+    {
+      "id": "cancel-gcli1/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:165"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cancel-gcli1/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:169",
+        "gcli1.jsonl:166"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "cancel-aito1/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:110"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328753118_w6jbltdkz",
+        "responseTraceId": "0137726f11de462a26997702e2b355bb"
+      }
+    },
+    {
+      "id": "cancel-aito1/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:107"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cancel-aito1/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:110",
+        "aito1.jsonl:107"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "debug-off-gcli/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli3.jsonl:4"
+      ],
+      "observed": {
+        "responseRequestId": "bb05a538-ed31-46ee-a0dd-92d0cee2ea0e",
+        "responseTraceId": "aef9f1c546f14ba9392e58436a130036"
+      }
+    },
+    {
+      "id": "debug-off-gcli/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli3.jsonl:3"
+      ],
+      "observed": null
+    },
+    {
+      "id": "debug-off-gcli/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli3.jsonl:4",
+        "gcli3.jsonl:3"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "debug-off-gcli/basic-only",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli3.jsonl:3",
+        "gcli3.jsonl:4"
+      ],
+      "observed": null
+    },
+    {
+      "id": "aito-browser-reconnect/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:114"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328754440_gahkfher5",
+        "responseTraceId": "3ece514e69abd542fab41af038e50618"
+      }
+    },
+    {
+      "id": "aito-browser-reconnect/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:111"
+      ],
+      "observed": null
+    },
+    {
+      "id": "aito-browser-reconnect/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:114",
+        "aito1.jsonl:111"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "aito-restart/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito3.jsonl:5"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328755068_69jnc3oji",
+        "responseTraceId": "bdc94835be64809b6f9e5f3dec32e0be"
+      }
+    },
+    {
+      "id": "aito-restart/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito3.jsonl:2"
+      ],
+      "observed": null
+    },
+    {
+      "id": "aito-restart/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito3.jsonl:5",
+        "aito3.jsonl:2"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "aito-multiworker/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito4.jsonl:5"
+      ],
+      "observed": {
+        "responseRequestId": "req_1790328755672_qmufnfj7m",
+        "responseTraceId": "4f5ef6cfdbb7496f296538edec21253a"
+      }
+    },
+    {
+      "id": "aito-multiworker/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito4.jsonl:2"
+      ],
+      "observed": null
+    },
+    {
+      "id": "aito-multiworker/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito4.jsonl:5",
+        "aito4.jsonl:2"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "gcli-multiworker/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli4.jsonl:7"
+      ],
+      "observed": {
+        "responseRequestId": "fc22ccfe-2bfc-4e45-b79a-72b11217f85c",
+        "responseTraceId": "66bf1a730fc99870b1598a2b3bd9f753"
+      }
+    },
+    {
+      "id": "gcli-multiworker/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli4.jsonl:3"
+      ],
+      "observed": null
+    },
+    {
+      "id": "gcli-multiworker/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli4.jsonl:7",
+        "gcli4.jsonl:4"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "gcli-restart/identity",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli5.jsonl:7"
+      ],
+      "observed": {
+        "responseRequestId": "b303f2bb-756b-48f2-88fb-257c71e90a40",
+        "responseTraceId": "18159df4d5da8636c7e9b7c6b338a926"
+      }
+    },
+    {
+      "id": "gcli-restart/anonymous",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli5.jsonl:3"
+      ],
+      "observed": null
+    },
+    {
+      "id": "gcli-restart/call-count",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli5.jsonl:7",
+        "gcli5.jsonl:4"
+      ],
+      "observed": {
+        "declared": 1,
+        "observed": 1
+      }
+    },
+    {
+      "id": "gcli/workers",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:1",
+        "gcli4.jsonl:1"
+      ],
+      "observed": "real independent processes; not POSIX fork"
+    },
+    {
+      "id": "gcli/restart",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli2.jsonl:1",
+        "gcli5.jsonl:1"
+      ],
+      "observed": "real independent processes; not POSIX fork"
+    },
+    {
+      "id": "aito/workers",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:1",
+        "aito1.jsonl:103",
+        "aito1.jsonl:106",
+        "aito4.jsonl:1"
+      ],
+      "observed": "real independent processes; not POSIX fork"
+    },
+    {
+      "id": "aito/restart",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito2.jsonl:1",
+        "aito3.jsonl:1"
+      ],
+      "observed": "real independent processes; not POSIX fork"
+    },
+    {
+      "id": "gcli1/reused-id-candidates",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:27",
+        "gcli1.jsonl:47",
+        "gcli1.jsonl:52"
+      ],
+      "observed": null
+    },
+    {
+      "id": "aito1/reused-id-candidates",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "aito1.jsonl:21",
+        "aito1.jsonl:37",
+        "aito1.jsonl:41"
+      ],
+      "observed": null
+    },
+    {
+      "id": "cleaning/trailing-model",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:141"
+      ],
+      "observed": {
+        "before": {
+          "messageCount": 3,
+          "emptyMessageCount": 1,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "model",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 9
+            },
+            {
+              "index": 2,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 0
+            }
+          ],
+          "complete": true
+        },
+        "after": {
+          "messageCount": 1,
+          "emptyMessageCount": 0,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            }
+          ],
+          "complete": true
+        },
+        "transformations": [
+          {
+            "operation": "remove_empty",
+            "index": 2,
+            "reason": "empty"
+          },
+          {
+            "operation": "remove_trailing_model",
+            "index": 1,
+            "reason": "no_prefill"
+          }
+        ],
+        "requestedModelAlias": null,
+        "effectiveModelAlias": null
+      }
+    },
+    {
+      "id": "cleaning/multiple-empty",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:146"
+      ],
+      "observed": {
+        "before": {
+          "messageCount": 4,
+          "emptyMessageCount": 3,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 0
+            },
+            {
+              "index": 2,
+              "role": "model",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 0
+            },
+            {
+              "index": 3,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 2
+            }
+          ],
+          "complete": true
+        },
+        "after": {
+          "messageCount": 1,
+          "emptyMessageCount": 0,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            }
+          ],
+          "complete": true
+        },
+        "transformations": [
+          {
+            "operation": "remove_empty",
+            "index": 1,
+            "reason": "empty"
+          },
+          {
+            "operation": "remove_empty",
+            "index": 2,
+            "reason": "empty"
+          },
+          {
+            "operation": "trim_whitespace",
+            "index": 3,
+            "reason": "whitespace"
+          },
+          {
+            "operation": "remove_empty",
+            "index": 3,
+            "reason": "empty"
+          }
+        ],
+        "requestedModelAlias": null,
+        "effectiveModelAlias": null
+      }
+    },
+    {
+      "id": "cleaning/whitespace",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:151"
+      ],
+      "observed": {
+        "before": {
+          "messageCount": 3,
+          "emptyMessageCount": 1,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "model",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 3
+            },
+            {
+              "index": 2,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 9
+            }
+          ],
+          "complete": true
+        },
+        "after": {
+          "messageCount": 2,
+          "emptyMessageCount": 0,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 9
+            }
+          ],
+          "complete": true
+        },
+        "transformations": [
+          {
+            "operation": "trim_whitespace",
+            "index": 1,
+            "reason": "whitespace"
+          },
+          {
+            "operation": "remove_empty",
+            "index": 1,
+            "reason": "empty"
+          }
+        ],
+        "requestedModelAlias": null,
+        "effectiveModelAlias": null
+      }
+    },
+    {
+      "id": "cleaning/tool",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:156"
+      ],
+      "observed": {
+        "before": {
+          "messageCount": 3,
+          "emptyMessageCount": 0,
+          "toolCallCount": 1,
+          "toolResponseCount": 1,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "model",
+              "partKinds": [
+                "tool_call"
+              ],
+              "textUtf8Bytes": 0
+            },
+            {
+              "index": 2,
+              "role": "user",
+              "partKinds": [
+                "tool_response"
+              ],
+              "textUtf8Bytes": 0
+            }
+          ],
+          "complete": true
+        },
+        "after": {
+          "messageCount": 3,
+          "emptyMessageCount": 0,
+          "toolCallCount": 1,
+          "toolResponseCount": 1,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 13
+            },
+            {
+              "index": 1,
+              "role": "model",
+              "partKinds": [
+                "tool_call"
+              ],
+              "textUtf8Bytes": 0
+            },
+            {
+              "index": 2,
+              "role": "user",
+              "partKinds": [
+                "tool_response"
+              ],
+              "textUtf8Bytes": 0
+            }
+          ],
+          "complete": true
+        },
+        "transformations": [],
+        "requestedModelAlias": null,
+        "effectiveModelAlias": null
+      }
+    },
+    {
+      "id": "cleaning/all-empty",
+      "level": "live",
+      "pass": true,
+      "evidence": [
+        "gcli1.jsonl:161"
+      ],
+      "observed": {
+        "before": {
+          "messageCount": 2,
+          "emptyMessageCount": 2,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [
+            {
+              "index": 0,
+              "role": "user",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 0
+            },
+            {
+              "index": 1,
+              "role": "model",
+              "partKinds": [
+                "text"
+              ],
+              "textUtf8Bytes": 2
+            }
+          ],
+          "complete": true
+        },
+        "after": {
+          "messageCount": 0,
+          "emptyMessageCount": 0,
+          "toolCallCount": 0,
+          "toolResponseCount": 0,
+          "tail": [],
+          "complete": true
+        },
+        "transformations": [
+          {
+            "operation": "remove_empty",
+            "index": 0,
+            "reason": "empty"
+          },
+          {
+            "operation": "trim_whitespace",
+            "index": 1,
+            "reason": "whitespace"
+          },
+          {
+            "operation": "remove_empty",
+            "index": 1,
+            "reason": "empty"
+          }
+        ],
+        "requestedModelAlias": null,
+        "effectiveModelAlias": null
+      }
+    },
+    {
+      "id": "bilateral/configured-request-plan",
+      "level": "live",
+      "pass": true,
+      "evidence": [],
+      "observed": null
+    },
+    {
+      "id": "bilateral/normal-analysis-present",
+      "level": "live",
+      "pass": true,
+      "evidence": [],
+      "observed": null
+    },
+    {
+      "id": "bilateral/normal-scope-no-known-loss",
+      "level": "live",
+      "pass": true,
+      "evidence": [],
+      "observed": null
+    },
+    {
+      "id": "bilateral/all-cpa-calls-assigned",
+      "level": "export-replay",
+      "pass": true,
+      "evidence": [],
+      "observed": {
+        "expectedCallCount": 0,
+        "assignedCallCount": 0
+      }
+    },
+    {
+      "id": "bilateral/known-loss-blocks-verification",
+      "level": "live",
+      "pass": true,
+      "evidence": [],
+      "observed": null
+    }
+  ],
+  "failed": [],
+  "acceptanceComplete": false,
+  "qualification": "Scoped live producer semantics only; component/synthetic/unexecuted matrix remains separate."
+}
