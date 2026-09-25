@@ -63,3 +63,5 @@
 候选契约与验证：[README](contracts/diagnostics/v1/README.md)。完整文档与历史审查原文均已纳入本任务分支。任何本地版本文件中的待审核标识不得解释为批准。
 
 R1 审查对象：`583201f29c8b4ef65391bdf605ba9d6a2c12f08b`，实际模型 `claude-opus-5-5`，结论 request_changes；处置见 [R1 记录](coordination/diagnostics/20260924/reviews/DIAG-00-R1/disposition.zh-CN.md)。仅协调窗口对新 HEAD 复审后才可放行，依赖仍未启动。
+
+R2 已批准准确 HEAD `990d5ee75fd0878dc1f24753cccf3000701a94ea`（无 P1/P2）。按协调要求做最终文档/标签澄清后，新 HEAD 仍待复核，不沿用旧批准；依赖尚未启动。见 [R2 取舍](coordination/diagnostics/20260924/reviews/DIAG-00-R2/disposition.zh-CN.md)。

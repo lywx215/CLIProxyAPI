@@ -51,6 +51,17 @@ or a value-based provenance guess. Source-filter cases require an actual automat
 copy site; a shared API merely accepting explicit extra_headers is not such proof.
 Marker continuity and final URL selection still need runtime integration tests.
 
+The redirect oracle models consecutive hops that actually carry this module's
+injected headers forward; it does not require all clients to copy headers the
+same way. Apply each hop to the headers actually reaching its final boundary.
+Go http.Client builds redirect headers from the initial request (`ireq.Header`),
+not from a RoundTripper's modified request copy. The RoundTripper must clone
+before injecting and must never mutate the incoming request/ireq to mimic these
+vectors. If the actual next hop already has no module-injected headers, its
+ownership marker may be empty. Final non-leakage and per-hop target policy remain
+mandatory. On paths that really inherit injected headers (such as the reviewed
+httpx path), the existing ownership/cleanup requirements remain unchanged.
+
 Fixtures under `fixtures/invalid` must fail record.schema.json itself. Valid
 fixtures must pass both JSON Schema and the documented cross-field invariants.
 Semantic negative vectors pass shape validation before failing their expected

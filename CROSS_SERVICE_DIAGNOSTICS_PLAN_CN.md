@@ -4,7 +4,7 @@
 
 执行授权：用户已明确要求实施八任务计划。DIAG-00 已在本批新建隔离任务交付待审；DIAG-01 已经协调窗口代码检查、Claude R1 审核并推送准确 HEAD，其他任务仍等待批准依赖。旧 Transport closed 阻塞已解除。本文件为 DIAG-00 分支中的完整修订方案，源工作区台账保持只读；执行状态以协调窗口为准。
 
-审查状态：2026-09-24 的历史 Claude 架构审查已完成，其意见不表示当前契约获批。DIAG-00 R1 对提交 583201f29c8b4ef65391bdf605ba9d6a2c12f08b 给出 request_changes（5 项 P2）；本版按协调取舍修订，仍待准确新 HEAD 复审，不是代码审计或上线验收。原始意见、处理取舍及原方案快照见 [Claude 审查记录](CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md)。首期收敛为“最小访问关联 + 双边证据校验 + 四类 DEBUG 语义观察”，浏览器子 span、跨部署内容指纹和 OTLP 延后。
+审查状态：2026-09-24 的历史 Claude 架构审查已完成，其意见不表示当前契约获批。DIAG-00 R1 对提交 583201f29c8b4ef65391bdf605ba9d6a2c12f08b 给出 request_changes（5 项 P2）；随后 R2 批准准确 HEAD 990d5ee75fd0878dc1f24753cccf3000701a94ea（无 P1/P2）；本版仅收尾文档/标签澄清，准确新 HEAD 仍待复核，不沿用旧批准，不是上线验收。原始意见、处理取舍及原方案快照见 [Claude 审查记录](CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md)。首期收敛为“最小访问关联 + 双边证据校验 + 四类 DEBUG 语义观察”，浏览器子 span、跨部署内容指纹和 OTLP 延后。
 
 补充约束：每种服务都可能同时部署多台、多副本、多进程；诊断必须准确归属到实际执行实例。实现优先独立模块、入口中间件、共享传输包装与现有事件适配，减少主体流程修改。
 
@@ -134,9 +134,11 @@ X-Trace-Id / X-Diag-Trace-Id 不作为入站标准父子上下文。只有 X-Req
 
 ## 6. 公共日志契约
 
+机器契约以 `contracts/diagnostics/v1` 的 schema、README 与共享向量为准，三者必须一致；本节为实施概述，§11/12 提供补充。发现实际字段或判定冲突须先协调修订，不能自行扩展封闭 schema。
+
 统一交换格式为单行 JSON，新增 `diagnosticSchema: "ai-proxy-diagnostics/1"`。保留项目已有 schemaVersion 和既有字段含义；新协议版本独立管理。公共字段采用 camelCase，CLIProxyAPI 的 request_id、gcli2api 原字段通过明确适配映射，旧文本日志保留可检索性。
 
-公共信封：diagnosticSchema、ts（UTC ISO 毫秒）、level、event、environment、deploymentId、service、nodeLabel、instanceId、instanceIdentitySource、bootId、buildCommit、traceId、spanId、parentSpanId、requestId、callerRequestId、callerAlias、callerIdSource、attemptId、attemptNo、retryScope、callNo、logSeq、stage。按事件需要输出相关字段；可空字段不能以空字符串冒充有效 ID。未知计数用 null，观测到零才写 0。logSeq 在本地 span 内分配且并发安全，与已有流事件 seq 分开。
+公共信封：diagnosticSchema、ts（UTC ISO 毫秒）、level、event、recordKind、spanKind、environment、deploymentId、service、nodeLabel、instanceId、instanceIdentitySource、bootId、buildCommit、traceId、spanId、parentSpanId、serverSpanId、requestId、contextSource、callerRequestId、callerAlias、callerAliasScope、callerIdSource、attemptId、attemptNo、retryScope、callNo、logSeq、data。顶层没有 stage；事件属性放在各事件 data 的白名单中。必填和 nullable 以 schema 为准，不能省略必填字段或以空字符串冒充有效 ID。未知计数用 null，观测到零才写 0。logSeq 在本地 span 内分配且并发安全，与已有流事件 seq 分开。
 
 日志关联方式与 [OpenTelemetry Logs Data Model](https://opentelemetry.io/docs/specs/otel/logs/data-model/) 的 TraceId/SpanId 对齐，后续可映射到 OTLP；本期不依赖部署 Collector 或集中日志平台。
 
@@ -202,7 +204,7 @@ v1 不新增或投影任何模型文本/工具参数哈希或指纹。旧 CLIPro
 
 logSeq 在记录实际构造后、入队前分配；超长、队列满和关闭 DEBUG 清队列都必须记丢弃原因。基础终局记录附 expectedLastLogSeq、可得的 droppedForSpan、debugCapture（none/interrupted/enabled_throughout/unknown）。异步写入后才发生的损失不假装已知，sink 计数只是辅助证据。
 
-导入工具计算 debugCoverage：只有起止覆盖已知、声明序号连续、终局齐全且没有已知丢失时才为 full；已知关闭/丢失为 partial；从未开启为 none；其余为 unknown。缺少终局时无法证明尾部完整。进程崩溃及日志出口被截断无法靠应用内计数完全检测；任何“完整”都限于可观测的采集范围。
+导入工具计算 debugCoverage，严格遵循 [当前契约完整优先级](contracts/diagnostics/v1/README.md#lifecycle-and-completeness)：已知采集中断、丢失、截断、冲突或序号缺口先判 partial；否则缺少/矛盾终局、未知 capture/单 span 计数判 unknown，accessCapture=unknown 或 none 与完整终局的矛盾也必须先于 debugCapture=none 判断；只有排除上述情况后，debugCapture=none 才为 none。full 要求 debugCapture 与 accessCapture 都为 enabled_throughout、恰有一个有效完整终局、终局 logSeq 与 expectedLastLogSeq 相符、1..expectedLastLogSeq 连续且已知丢失/截断为零。diag.server/diag.call 截断存根仅证明终局曾构造，terminalMissing=false、debugCoverage=partial，不能证明成功或 verified；其他事件存根不证明终局存在。缺少终局时无法证明尾部完整。进程崩溃及日志出口被截断无法靠应用内计数完全检测；任何“完整”都限于声明的可观测采集范围。
 
 ## 7. 日志级别、负载与数据边界
 

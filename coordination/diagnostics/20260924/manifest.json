@@ -37,7 +37,7 @@
       "worktree": "C:\\Users\\lywx2\\.codex\\worktrees\\622a\\CLIProxyAPI",
       "baseSha": "fde3903689b8c9882d1f0233587fe33e2edfdf77",
       "headSha": null,
-      "contractSha256": "26904145b3f1713577f41cd4bbd588ffe48b5f2670b91705537e386f1aafd57a",
+      "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
       "claudeReviewRounds": [
         {
           "round": 1,
@@ -51,13 +51,25 @@
           },
           "reviewFile": "reviews/DIAG-00-R1/review.zh-CN.md",
           "dispositionFile": "reviews/DIAG-00-R1/disposition.zh-CN.md"
+        },
+        {
+          "round": 2,
+          "headSha": "990d5ee75fd0878dc1f24753cccf3000701a94ea",
+          "contractSha256": "26904145b3f1713577f41cd4bbd588ffe48b5f2670b91705537e386f1aafd57a",
+          "status": "approved",
+          "findings": {
+            "P1": 0,
+            "P2": 0
+          },
+          "reviewFile": "reviews/DIAG-00-R2/review.zh-CN.md",
+          "dispositionFile": "reviews/DIAG-00-R2/disposition.zh-CN.md"
         }
       ],
       "pushed": false,
       "dispatchFile": "DIAG-00.zh-CN.md",
       "dispatchSha256": "0bfbfae8d22d42c5a287e9896b0febe6369b924e6c448a84e37fb38d7c668ec2",
       "headShaNote": "Resolve the containing reviewed Git commit; final report carries the exact SHA without self-reference.",
-      "revisionBaseSha": "583201f29c8b4ef65391bdf605ba9d6a2c12f08b",
+      "revisionBaseSha": "990d5ee75fd0878dc1f24753cccf3000701a94ea",
       "tests": {
         "contract": "3 schemas, 53 fixtures/schema cases, 9 JSONL lines, 242 vectors passed",
         "httpBoundary": "6 in-memory h11 0.16.0 wire/field fixtures passed; no service integration claim",
@@ -228,9 +240,9 @@
     }
   ],
   "inputs": {
-    "CROSS_SERVICE_DIAGNOSTICS_PLAN_CN.md": "8e5b446999f6ab120c10fa31bdfa60678db7634d5bf67534676b70dfd76379a3",
-    "CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md": "59d43aec322e8bb4dc0966f1041eb29135355db0c479b19873917451fee21f89",
-    "CROSS_SERVICE_DIAGNOSTICS_TASKS_CN.md": "492e32282af4f7b2578efe92732dd63af573df0197d2785d1868d7ed0c216865"
+    "CROSS_SERVICE_DIAGNOSTICS_PLAN_CN.md": "bc8045c80eb692623ed75d6d147dbaa7a9cbe7d7588179c389cb38daa879bbe7",
+    "CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md": "d1f460faec68c6d53f638ec6489e3d87786b9a7347927615d7bb8de81e9e2c1e",
+    "CROSS_SERVICE_DIAGNOSTICS_TASKS_CN.md": "3a3c38b02dcc29dce670a4341ac5cb4a7a868af710286d70f82d05c32f8cfbf3"
   },
-  "snapshotKind": "DIAG-00 R1 revision delivery copy; source coordination ledger remains read-only"
+  "snapshotKind": "DIAG-00 R2 narrow clarification delivery copy; source coordination ledger remains read-only"
 }

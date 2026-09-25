@@ -1,6 +1,6 @@
 # 跨服务诊断方案：历史审查与当前复审记录（不表示批准）
 
-以下开头的架构审查属于 2026-09-24 历史记录。当前 DIAG-00 R1 为 request_changes；修订尚待准确新 HEAD 的协调与 Claude 复审。
+以下开头的架构审查属于 2026-09-24 历史记录。DIAG-00 R2 已批准准确 HEAD 990d5ee75fd0878dc1f24753cccf3000701a94ea（无 P1/P2）。本次窄范围收尾修改产生新 HEAD，仍待复核，不沿用旧批准。
 
 历史日期：2026-09-24。审查工具：Claude Code 2.1.280。CLI 返回模型：`claude-opus-5-5`。审查完成状态：success，1 次审查回合。
 
@@ -51,13 +51,19 @@ Claude 提出的“两类请求/调用终局记录 + 双边校验 + 按需语义
 
 本候选的日志格式采用公共信封＋data，旧字段由适配投影且不重复输出同一终局；这要求 DIAG-02/03/04 明确各自白名单接入点并用真实处理边界通过向量。公开 schema 不能替代敏感值来源审查，也不能替代 DIAG-07 行为等价与多 worker 输出测试。
 
-## DIAG-00 R1 当前修订（2026-09-25，待复审）
+## DIAG-00 R1 修订（2026-09-25，历史版本）
 
 协调窗口对准确 HEAD `583201f29c8b4ef65391bdf605ba9d6a2c12f08b` 调用 Claude，实际模型 `claude-opus-5-5`，结论 request_changes（无 P1，5 项 P2）。本开发任务没有自行调用 Claude。R1 原文与逐项 P2/P3 取舍已纳入 [修订处置](coordination/diagnostics/20260924/reviews/DIAG-00-R1/disposition.zh-CN.md)，未复制审查 prompt 或其他项目源码。
 
 本次接受框架解析后头值、未来扩展逗号拒绝、单调时钟限定、完整性优先级及源头过滤＋自身头拥有权。P2-5 不照搬“非 peer 永远不碰 trace 头”：自身在前一跳注入的标准头必须在离开允许目标时清理。协调方确认 gcli 可选 extra_headers 的白名单不证明路由自动转发，规范仅要求先查真实调用来源，再过滤已证实自动复制点，不强制删除显式业务能力。
 
 P3 一并收敛：删未定义拒绝枚举、仅 peer 采集响应 ID、不新增指纹、标题明确历史、raw usage 专属字段、终局存根的存在/不完整状态、实例冲突证据边界、最终发送 URL 和消费仓库 LF 属性。公共 timing 只接新可靠单调时钟观察，旧 firstEffectiveMs/browserDurationMs 留既有日志/统计；不再沿用首次候选中的混合时钟映射。当前版本仍为候选，不能把本记录当作批准。
+
+## DIAG-00 R2 批准与收尾澄清（新 HEAD 待复核）
+
+协调方提供的 R2 完整评审为 approve，无 P1/P2，**只批准** `990d5ee75fd0878dc1f24753cccf3000701a94ea`，对应摘要 `26904145b3f1713577f41cd4bbd588ffe48b5f2670b91705537e386f1aafd57a`。本开发窗口未自行调用 Claude。
+
+按协调要求，本次只修正 control-value 的 parser_unit 标签、§6 实际信封字段和完整性概述，补充 Go/httpx 重定向复制差异、IPv4/IPv6 拼写规则与已验证 Python 3.12 基线。保留 coverage_oracle 的无行为影响冗余分支以减少改动；全部 expected 不变，不扩展矩阵或功能。完整 R2 原文和逐项取舍见 [R2 记录](coordination/diagnostics/20260924/reviews/DIAG-00-R2/disposition.zh-CN.md)。修改后的准确 HEAD/摘要必须由协调方重新复核，不把本段当作新批准。
 
 ## Claude 原始审查结果
 

@@ -169,6 +169,9 @@ remain untouched. There is no `providerOwnedTrace` value supplied by a final hoo
 
 Every redirect retains ownership metadata until diagnostic-owned fields have
 been removed from the new request copy, **before** any new provider header writes.
+This applies to headers actually carried to that next hop. A client rebuilding
+from a pristine initial request may already have no module-owned fields and an
+empty marker; never mutate the original request to force header inheritance.
 The final boundary rechecks the actual destination: re-inject a new call context
 and mark ownership for an allowed peer, or leave the cleaned non-peer request
 unmarked. This includes same-origin redirects outside the allowed path. It never
@@ -209,9 +212,12 @@ Canonical origin is scheme (`http`/`https`, lowercase), ASCII DNS host
 (lowercase, no trailing dot), canonical IPv4 or bracketed RFC5952 IPv6, and
 effective port (80/443 defaults). Explicit default ports match omitted defaults.
 Reject Unicode hostnames (configure their punycode ASCII form), IPv6 zone IDs,
-noncanonical numeric hosts, invalid ports, backslashes and percent escapes in
+noncanonical IPv4 numeric spellings, invalid ports, backslashes and percent escapes in
 authority. Configuration origin may have no path or a single `/`, normalized
 away. No path/query/fragment can be embedded in the configured origin.
+The numeric-spelling rejection applies to IPv4 alternatives such as leading
+zeroes or integer/hex forms. Valid IPv6 spellings, including expanded forms,
+are accepted and normalized to RFC5952 form before comparison.
 
 pathPrefix is `/` or an ASCII slash-separated path using alphanumeric/`._~-`
 segments, maximum 256 characters; no trailing slash except `/`, empty, dot or
@@ -418,6 +424,10 @@ are counted with file/line/byte-length/reason, never copied verbatim into report
 retain the original locally for investigation. Unknown schema versions are
 reported, not coerced. Bounded imported line/file/record sizes belong in DIAG-06.
 
+The minimum supported validation baseline for this artifact is Python 3.12;
+the verified interpreter is CPython 3.12.10 with the locked requirements.
+No compatibility claim is made for older Python versions. Newer interpreters
+must rerun the vectors; they have not been verified in this delivery.
 Run `python contracts/diagnostics/v1/validate.py` with requirements installed.
 `--write-manifest` deliberately regenerates SHA256SUMS after validation; regular
 validation never modifies it. Manifest entries cover every file in this directory
