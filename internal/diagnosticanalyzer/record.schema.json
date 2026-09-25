@@ -1,0 +1,2698 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-proxy-diagnostics:v1:record",
+  "title": "Diagnostics public record v1",
+  "type": "object",
+  "properties": {
+    "diagnosticSchema": {
+      "const": "ai-proxy-diagnostics/1"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "level": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR"
+      ]
+    },
+    "recordKind": {
+      "enum": [
+        "basic",
+        "debug"
+      ]
+    },
+    "event": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "deploymentId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "service": {
+      "enum": [
+        "cliproxyapi",
+        "gcli2api",
+        "aitoapi"
+      ]
+    },
+    "nodeLabel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "instanceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "instanceIdentitySource": {
+      "enum": [
+        "platform",
+        "configured",
+        "ephemeral"
+      ]
+    },
+    "bootId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "buildCommit": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,64}$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "spanKind": {
+      "enum": [
+        "process",
+        "server",
+        "call"
+      ]
+    },
+    "traceId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?!0{32}$)[0-9a-f]{32}$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "spanId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "parentSpanId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "serverSpanId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:/-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "contextSource": {
+      "enum": [
+        "accepted",
+        "generated",
+        "invalid_replaced",
+        null
+      ]
+    },
+    "callerRequestId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:/-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "callerAlias": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "callerAliasScope": {
+      "enum": [
+        "deployment",
+        "boot",
+        "unknown"
+      ]
+    },
+    "callerIdSource": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "enum": [
+            "x-request-id",
+            "x-diag-request-id",
+            null
+          ]
+        },
+        "trust": {
+          "enum": [
+            "none",
+            "unverified",
+            "authenticated",
+            "configured_peer"
+          ]
+        },
+        "rejected": {
+          "enum": [
+            "none",
+            "missing",
+            "invalid",
+            "duplicate",
+            "too_long"
+          ]
+        }
+      },
+      "required": [
+        "header",
+        "trust",
+        "rejected"
+      ],
+      "additionalProperties": false
+    },
+    "attemptId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:/-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attemptNo": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retryScope": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "callNo": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "logSeq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "diagnosticSchema",
+    "ts",
+    "level",
+    "recordKind",
+    "event",
+    "environment",
+    "deploymentId",
+    "service",
+    "nodeLabel",
+    "instanceId",
+    "instanceIdentitySource",
+    "bootId",
+    "buildCommit",
+    "spanKind",
+    "traceId",
+    "spanId",
+    "parentSpanId",
+    "serverSpanId",
+    "requestId",
+    "contextSource",
+    "callerRequestId",
+    "callerAlias",
+    "callerAliasScope",
+    "callerIdSource",
+    "attemptId",
+    "attemptNo",
+    "retryScope",
+    "callNo",
+    "logSeq",
+    "data"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "metric": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "upstream",
+            "converted",
+            "estimated",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "present",
+        "source"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "present": {
+                "const": false
+              }
+            },
+            "required": [
+              "present"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "source": {
+                "const": "unknown"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "present": {
+                "const": true
+              }
+            },
+            "required": [
+              "present"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "enum": [
+                  "upstream",
+                  "converted",
+                  "estimated"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "enum": [
+            "gemini",
+            "openai_chat",
+            "openai_responses",
+            "claude",
+            "unknown"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/metric"
+        },
+        "candidate": {
+          "$ref": "#/$defs/metric"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/metric"
+        },
+        "outputTotal": {
+          "$ref": "#/$defs/metric"
+        },
+        "basis": {
+          "enum": [
+            "provider_cumulative",
+            "provider_delta",
+            "estimated",
+            "converted",
+            "unknown"
+          ]
+        },
+        "reasoningIncludedInOutput": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raw": {
+          "type": "object",
+          "properties": {
+            "promptTokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "candidatesTokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "thoughtsTokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "totalTokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "prompt_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "completion_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reasoning_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "input_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "output_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "total_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cachedContentTokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "input",
+        "candidate",
+        "reasoning",
+        "outputTotal",
+        "basis",
+        "reasoningIncludedInOutput",
+        "raw"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "gemini"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "raw": {
+                "properties": {
+                  "prompt_tokens": false,
+                  "completion_tokens": false,
+                  "reasoning_tokens": false,
+                  "input_tokens": false,
+                  "output_tokens": false,
+                  "total_tokens": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "openai_chat"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "raw": {
+                "properties": {
+                  "promptTokenCount": false,
+                  "candidatesTokenCount": false,
+                  "thoughtsTokenCount": false,
+                  "totalTokenCount": false,
+                  "input_tokens": false,
+                  "output_tokens": false,
+                  "cachedContentTokenCount": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "openai_responses"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "raw": {
+                "properties": {
+                  "promptTokenCount": false,
+                  "candidatesTokenCount": false,
+                  "thoughtsTokenCount": false,
+                  "totalTokenCount": false,
+                  "prompt_tokens": false,
+                  "completion_tokens": false,
+                  "cachedContentTokenCount": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "claude"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "raw": {
+                "properties": {
+                  "promptTokenCount": false,
+                  "candidatesTokenCount": false,
+                  "thoughtsTokenCount": false,
+                  "totalTokenCount": false,
+                  "prompt_tokens": false,
+                  "completion_tokens": false,
+                  "reasoning_tokens": false,
+                  "total_tokens": false,
+                  "cachedContentTokenCount": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "raw": {
+                "properties": {
+                  "promptTokenCount": false,
+                  "candidatesTokenCount": false,
+                  "thoughtsTokenCount": false,
+                  "totalTokenCount": false,
+                  "prompt_tokens": false,
+                  "completion_tokens": false,
+                  "reasoning_tokens": false,
+                  "input_tokens": false,
+                  "output_tokens": false,
+                  "total_tokens": false,
+                  "cachedContentTokenCount": false
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "expectedLastLogSeq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "droppedForSpan": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sinkDroppedTotal": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "truncatedEvents": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "debugCapture": {
+          "enum": [
+            "none",
+            "interrupted",
+            "enabled_throughout",
+            "unknown"
+          ]
+        },
+        "accessCapture": {
+          "enum": [
+            "none",
+            "interrupted",
+            "enabled_throughout",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "expectedLastLogSeq",
+        "droppedForSpan",
+        "sinkDroppedTotal",
+        "truncatedEvents",
+        "debugCapture",
+        "accessCapture"
+      ],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "candidateCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ordinaryTextUtf8Bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thoughtUtf8Bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validToolCalls": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mediaParts": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ordinaryTextNonWhitespaceChars": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "candidateCount",
+        "ordinaryTextUtf8Bytes",
+        "thoughtUtf8Bytes",
+        "validToolCalls",
+        "mediaParts",
+        "ordinaryTextNonWhitespaceChars"
+      ],
+      "additionalProperties": false
+    },
+    "structure": {
+      "type": "object",
+      "properties": {
+        "messageCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "emptyMessageCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolCallCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolResponseCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tail": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "role": {
+                "enum": [
+                  "user",
+                  "model",
+                  "assistant",
+                  "system",
+                  "tool",
+                  "unknown",
+                  null
+                ]
+              },
+              "partKinds": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "text",
+                    "thought",
+                    "tool_call",
+                    "tool_response",
+                    "media",
+                    "other"
+                  ]
+                },
+                "maxItems": 8
+              },
+              "textUtf8Bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "index",
+              "role",
+              "partKinds",
+              "textUtf8Bytes"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 4
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "messageCount",
+        "emptyMessageCount",
+        "toolCallCount",
+        "toolResponseCount",
+        "tail",
+        "complete"
+      ],
+      "additionalProperties": false
+    },
+    "timing": {
+      "type": "object",
+      "properties": {
+        "firstUpstreamByteMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "firstEffectiveOutputMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responseCommitMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "firstDownstreamEffectiveOutputMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timingSource": {
+          "const": "server_monotonic"
+        }
+      },
+      "required": [
+        "firstUpstreamByteMs",
+        "firstEffectiveOutputMs",
+        "responseCommitMs",
+        "firstDownstreamEffectiveOutputMs",
+        "timingSource"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "event": {
+          "const": "diag.process"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "pid": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "reason": {
+              "enum": [
+                "startup",
+                "config_changed"
+              ]
+            },
+            "accessEnabled": {
+              "type": "boolean"
+            },
+            "debugEnabled": {
+              "type": "boolean"
+            },
+            "configRevision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._-]+$",
+              "not": {
+                "pattern": "[\\r\\n]"
+              }
+            },
+            "contractVersion": {
+              "const": "1.0.0-rc.1"
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "http_inbound",
+                  "http_outbound",
+                  "browser_dispatch",
+                  "normalization",
+                  "attempt_result",
+                  "conversion",
+                  "throttle"
+                ]
+              },
+              "maxItems": 7
+            },
+            "sinkDroppedTotal": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "configStatus": {
+              "enum": [
+                "valid",
+                "config_invalid",
+                "defaults"
+              ]
+            }
+          },
+          "required": [
+            "pid",
+            "reason",
+            "accessEnabled",
+            "debugEnabled",
+            "configRevision",
+            "contractVersion",
+            "capabilities",
+            "sinkDroppedTotal",
+            "configStatus"
+          ],
+          "additionalProperties": false
+        },
+        "recordKind": {
+          "const": "basic"
+        },
+        "spanKind": {
+          "const": "process"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "diag.server"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "routeTemplate": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^/[A-Za-z0-9_:/{}.*-]*$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "headersCommitted": {
+              "type": "boolean"
+            },
+            "wireStatus": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endReason": {
+              "enum": [
+                "finished",
+                "client_cancel",
+                "error",
+                "unknown"
+              ]
+            },
+            "deliveryState": {
+              "enum": [
+                "local_finished",
+                "cancelled",
+                "failed",
+                "unknown"
+              ]
+            },
+            "totalMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "callCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "coverage": {
+              "$ref": "#/$defs/coverage"
+            }
+          },
+          "required": [
+            "routeTemplate",
+            "headersCommitted",
+            "wireStatus",
+            "endReason",
+            "deliveryState",
+            "totalMs",
+            "callCount",
+            "coverage"
+          ],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "headersCommitted": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "headersCommitted"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "wireStatus": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "recordKind": {
+          "const": "basic"
+        },
+        "spanKind": {
+          "const": "server"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "diag.call"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "targetAlias": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9._-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peerConfigured": {
+              "type": "boolean"
+            },
+            "peerService": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "cliproxyapi",
+                    "gcli2api",
+                    "aitoapi"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peerDeploymentId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9._-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "callKind": {
+              "enum": [
+                "model",
+                "redirect",
+                "browser_dispatch",
+                "auth",
+                "metadata",
+                "other"
+              ]
+            },
+            "upstreamStatus": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endReason": {
+              "enum": [
+                "eof",
+                "closed_early",
+                "cancelled",
+                "transport_error",
+                "read_error",
+                "dispatch_finished",
+                "unknown"
+              ]
+            },
+            "totalMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peerRequestId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9._:/-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peerTraceId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?!0{32}$)[0-9a-f]{32}$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peerIdRejected": {
+              "enum": [
+                "none",
+                "missing",
+                "invalid",
+                "duplicate",
+                "too_long"
+              ]
+            },
+            "providerRequestId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9._:/-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "coverage": {
+              "$ref": "#/$defs/coverage"
+            }
+          },
+          "required": [
+            "targetAlias",
+            "peerConfigured",
+            "peerService",
+            "peerDeploymentId",
+            "callKind",
+            "upstreamStatus",
+            "endReason",
+            "totalMs",
+            "peerRequestId",
+            "peerTraceId",
+            "peerIdRejected",
+            "providerRequestId",
+            "coverage"
+          ],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "peerConfigured": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "peerConfigured"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "targetAlias": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9._-]+$",
+                    "not": {
+                      "pattern": "[\\r\\n]"
+                    }
+                  },
+                  "peerService": {
+                    "enum": [
+                      "cliproxyapi",
+                      "gcli2api",
+                      "aitoapi"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "peerConfigured": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "peerConfigured"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "peerService": {
+                    "type": "null"
+                  },
+                  "peerDeploymentId": {
+                    "type": "null"
+                  },
+                  "peerRequestId": {
+                    "type": "null"
+                  },
+                  "peerTraceId": {
+                    "type": "null"
+                  },
+                  "peerIdRejected": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "recordKind": {
+          "const": "basic"
+        },
+        "spanKind": {
+          "const": "call"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "request.normalized"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "before": {
+              "$ref": "#/$defs/structure"
+            },
+            "after": {
+              "$ref": "#/$defs/structure"
+            },
+            "transformations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "remove_empty",
+                      "trim_whitespace",
+                      "remove_trailing_model",
+                      "preserve_tool",
+                      "other"
+                    ]
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reason": {
+                    "enum": [
+                      "empty",
+                      "whitespace",
+                      "no_prefill",
+                      "tool_integrity",
+                      "other"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation",
+                  "index",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 16
+            },
+            "requestedModelAlias": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9._-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "effectiveModelAlias": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9._-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "legacyEvent": {
+              "enum": [
+                "generation.accepted",
+                "generation.request_started",
+                "generation.attempt_finished",
+                "generation.request_finished",
+                "generation.response_committed",
+                "generation.first_effective_output"
+              ]
+            }
+          },
+          "required": [
+            "before",
+            "after",
+            "transformations",
+            "requestedModelAlias",
+            "effectiveModelAlias"
+          ],
+          "additionalProperties": false
+        },
+        "recordKind": {
+          "const": "debug"
+        },
+        "spanKind": {
+          "const": "server"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "upstream.attempt_finished"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "resultClass": {
+              "enum": [
+                "success",
+                "blocked",
+                "empty",
+                "incomplete",
+                "error",
+                "cancelled",
+                "unknown"
+              ]
+            },
+            "failureOrigin": {
+              "enum": [
+                "none",
+                "client",
+                "local",
+                "upstream",
+                "browser",
+                "unknown"
+              ]
+            },
+            "failureStage": {
+              "enum": [
+                "none",
+                "routing",
+                "normalization",
+                "dispatch",
+                "read",
+                "parse",
+                "conversion",
+                "delivery",
+                "throttle",
+                "unknown"
+              ]
+            },
+            "errorClass": {
+              "enum": [
+                "none",
+                "quota_exhausted",
+                "capacity_unavailable",
+                "rate_limited",
+                "resource_exhausted_unknown",
+                "invalid_request",
+                "blocked",
+                "empty",
+                "incomplete",
+                "parse_error",
+                "transport_error",
+                "cancelled",
+                "other",
+                "unknown"
+              ]
+            },
+            "usage": {
+              "$ref": "#/$defs/usage"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            },
+            "terminalSeen": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "eofSeen": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "parserFinishOk": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "totalMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "credentialRef": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9._-]+$",
+                  "not": {
+                    "pattern": "[\\r\\n]"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "credentialRefScope": {
+              "enum": [
+                "deployment",
+                "boot",
+                "unknown"
+              ]
+            },
+            "timing": {
+              "$ref": "#/$defs/timing"
+            },
+            "legacyEvent": {
+              "enum": [
+                "generation.accepted",
+                "generation.request_started",
+                "generation.attempt_finished",
+                "generation.request_finished",
+                "generation.response_committed",
+                "generation.first_effective_output"
+              ]
+            }
+          },
+          "required": [
+            "resultClass",
+            "failureOrigin",
+            "failureStage",
+            "errorClass",
+            "usage",
+            "output",
+            "terminalSeen",
+            "eofSeen",
+            "parserFinishOk",
+            "totalMs",
+            "credentialRef",
+            "credentialRefScope",
+            "timing"
+          ],
+          "additionalProperties": false
+        },
+        "recordKind": {
+          "const": "debug"
+        },
+        "spanKind": {
+          "const": "server"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "response.converted"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "inputProtocol": {
+              "enum": [
+                "gemini",
+                "openai_chat",
+                "openai_responses",
+                "claude",
+                "unknown"
+              ]
+            },
+            "outputProtocol": {
+              "enum": [
+                "gemini",
+                "openai_chat",
+                "openai_responses",
+                "claude",
+                "unknown"
+              ]
+            },
+            "clientStreaming": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "upstreamStreaming": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "deliveryMode": {
+              "enum": [
+                "stream",
+                "nonstream",
+                "collected",
+                "pseudo_stream",
+                "unknown"
+              ]
+            },
+            "upstreamUsage": {
+              "$ref": "#/$defs/usage"
+            },
+            "deliveredUsage": {
+              "$ref": "#/$defs/usage"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            },
+            "resultClass": {
+              "enum": [
+                "success",
+                "blocked",
+                "empty",
+                "incomplete",
+                "error",
+                "cancelled",
+                "unknown"
+              ]
+            },
+            "legacyEvent": {
+              "enum": [
+                "generation.accepted",
+                "generation.request_started",
+                "generation.attempt_finished",
+                "generation.request_finished",
+                "generation.response_committed",
+                "generation.first_effective_output"
+              ]
+            }
+          },
+          "required": [
+            "inputProtocol",
+            "outputProtocol",
+            "clientStreaming",
+            "upstreamStreaming",
+            "deliveryMode",
+            "upstreamUsage",
+            "deliveredUsage",
+            "output",
+            "resultClass"
+          ],
+          "additionalProperties": false
+        },
+        "recordKind": {
+          "const": "debug"
+        },
+        "spanKind": {
+          "const": "server"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "throttle.finished"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "configRevision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._-]+$",
+              "not": {
+                "pattern": "[\\r\\n]"
+              }
+            },
+            "targetTokensPerSecond": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "selectedFirstTokenDelayMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tokenCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tokenSource": {
+              "enum": [
+                "provider_output",
+                "provider_candidate",
+                "estimated",
+                "unknown"
+              ]
+            },
+            "plannedWaitMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "actualWaitMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "elapsedMs": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cancelled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled",
+            "configRevision",
+            "targetTokensPerSecond",
+            "selectedFirstTokenDelayMs",
+            "tokenCount",
+            "tokenSource",
+            "plannedWaitMs",
+            "actualWaitMs",
+            "elapsedMs",
+            "cancelled"
+          ],
+          "additionalProperties": false
+        },
+        "recordKind": {
+          "const": "debug"
+        },
+        "spanKind": {
+          "const": "server"
+        }
+      }
+    },
+    {
+      "properties": {
+        "event": {
+          "const": "diag.truncated"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "originalEvent": {
+              "enum": [
+                "diag.process",
+                "diag.server",
+                "diag.call",
+                "request.normalized",
+                "upstream.attempt_finished",
+                "response.converted",
+                "throttle.finished"
+              ]
+            },
+            "originalRecordKind": {
+              "enum": [
+                "basic",
+                "debug"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "line_limit",
+                "serialization_failure"
+              ]
+            }
+          },
+          "required": [
+            "originalEvent",
+            "originalRecordKind",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "spanKind": {
+            "const": "process"
+          }
+        },
+        "required": [
+          "spanKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "traceId": {
+            "type": "null"
+          },
+          "spanId": {
+            "type": "null"
+          },
+          "parentSpanId": {
+            "type": "null"
+          },
+          "serverSpanId": {
+            "type": "null"
+          },
+          "requestId": {
+            "type": "null"
+          },
+          "contextSource": {
+            "type": "null"
+          },
+          "callerRequestId": {
+            "type": "null"
+          },
+          "callerAlias": {
+            "type": "null"
+          },
+          "attemptId": {
+            "type": "null"
+          },
+          "attemptNo": {
+            "type": "null"
+          },
+          "retryScope": {
+            "type": "null"
+          },
+          "callNo": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spanKind": {
+            "enum": [
+              "server",
+              "call"
+            ]
+          }
+        },
+        "required": [
+          "spanKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "traceId": {
+            "type": "string",
+            "pattern": "^(?!0{32}$)[0-9a-f]{32}$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "spanId": {
+            "type": "string",
+            "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "serverSpanId": {
+            "type": "string",
+            "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:/-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "contextSource": {
+            "enum": [
+              "accepted",
+              "generated",
+              "invalid_replaced"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spanKind": {
+            "const": "call"
+          }
+        },
+        "required": [
+          "spanKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "parentSpanId": {
+            "type": "string",
+            "pattern": "^(?!0{16}$)[0-9a-f]{16}$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          "callNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        },
+        "required": [
+          "spanKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "callNo": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "callerAlias": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "callerAlias"
+        ]
+      },
+      "then": {
+        "properties": {
+          "callerAliasScope": {
+            "const": "unknown"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "callerAlias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          }
+        },
+        "required": [
+          "callerAlias"
+        ]
+      },
+      "then": {
+        "properties": {
+          "callerAliasScope": {
+            "enum": [
+              "deployment",
+              "boot"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:/-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          }
+        },
+        "required": [
+          "attemptId"
+        ]
+      },
+      "then": {
+        "properties": {
+          "retryScope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attemptNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "attemptNo"
+        ]
+      },
+      "then": {
+        "properties": {
+          "retryScope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "recordKind": {
+            "const": "basic"
+          }
+        },
+        "required": [
+          "event",
+          "recordKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "originalRecordKind": {
+                "const": "basic"
+              },
+              "originalEvent": {
+                "enum": [
+                  "diag.process",
+                  "diag.server",
+                  "diag.call"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "recordKind": {
+            "const": "debug"
+          }
+        },
+        "required": [
+          "event",
+          "recordKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "originalRecordKind": {
+                "const": "debug"
+              },
+              "originalEvent": {
+                "enum": [
+                  "request.normalized",
+                  "upstream.attempt_finished",
+                  "response.converted",
+                  "throttle.finished"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "diag.process"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "process"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "diag.server"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "diag.call"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "call"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "request.normalized"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "upstream.attempt_finished"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "response.converted"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "diag.truncated"
+          },
+          "data": {
+            "properties": {
+              "originalEvent": {
+                "const": "throttle.finished"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "spanKind": {
+            "const": "server"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "callerRequestId": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "callerIdSource": {
+            "properties": {
+              "header": {
+                "type": "null"
+              },
+              "trust": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "callerRequestId": {
+            "type": "string"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "callerIdSource": {
+            "properties": {
+              "header": {
+                "enum": [
+                  "x-request-id",
+                  "x-diag-request-id"
+                ]
+              },
+              "trust": {
+                "enum": [
+                  "unverified",
+                  "authenticated",
+                  "configured_peer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

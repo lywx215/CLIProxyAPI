@@ -1,0 +1,167 @@
+{
+  "exit": 0,
+  "counts": {
+    "requests": 29,
+    "observedServerOwners": 29,
+    "callCount": 32,
+    "knownAttemptCount": 32,
+    "unknownAttemptCallCount": 0,
+    "requestFailures": 10,
+    "callFailures": 19,
+    "attemptFailures": 20,
+    "conflicted": false
+  },
+  "limited": false,
+  "quarantined": [],
+  "sources": [
+    {
+      "id": 1,
+      "alias": "gcli",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 8417,
+      "scannedBytes": 8417,
+      "lines": 6,
+      "accepted": 6,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "1c05eca992ce28f0c6a06710a8168734f2c6510deb543315cba6e90fe7319c0d",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "harness",
+          "service": "gcli2api",
+          "instanceId": "gcli-zero",
+          "bootId": "07cd9cb4-d2dd-4af1-ac67-c00bdfe4bd83"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 2,
+      "alias": "aito",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 103677,
+      "scannedBytes": 103677,
+      "lines": 67,
+      "accepted": 67,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "dba0e04670f76169fbf7feeebaa1fde722838de929ae398d7867a09b5e8fad47",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "fixture-pool",
+          "service": "aitoapi",
+          "instanceId": "fixture-one",
+          "bootId": "1a81d8f6-2fb5-4b90-ba70-4f336871c292"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 3,
+      "alias": "cpa",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 92686,
+      "scannedBytes": 92686,
+      "lines": 70,
+      "accepted": 70,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "df6bbd39a77a4574dcbe289a9ae0266916a375d9427d82183bc08aab8d867ef9",
+      "resources": [
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "86858e89-6986-444d-aef4-18332e76ce4b",
+          "bootId": "01c85a77-0ac5-4491-9e29-e9008e50ccce"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "300257b4-3eed-4d0b-8c70-abcd7c2be153",
+          "bootId": "94a86f7d-d2f5-43b7-a83b-b6abdd0a7edc"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "d6398526-ef54-4269-b7fb-8fd7f411b28f",
+          "bootId": "2b633509-4de0-412e-9809-477b83e9f4da"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "96e1ece0-79f1-4f4f-ae73-922e7aee47f5",
+          "bootId": "95875843-b197-4103-a47c-3ccf3a62b6ed"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "bb5aab3e-4b77-49ea-85b3-7a4a66d316db",
+          "bootId": "c73d1d13-439d-425c-a2ea-fae9ffec9191"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "de65a328-a9de-4ab3-8da3-43cecca650a4",
+          "bootId": "bbf010bd-d971-4ab7-9e25-55ede95d40c8"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "b61a75e4-ed75-4eb3-b332-fb95519b730d",
+          "bootId": "96fd01f9-cd94-44b3-a4ff-257b67169d85"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "a928902a-db39-4e7c-af16-fc2be80a72c0",
+          "bootId": "abfaf34a-4a36-41a4-8ac8-9cd5ae615f3b"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "7a620e4d-f87a-4607-a2d9-37e86699fee8",
+          "bootId": "e54f81ab-8987-4c85-a405-728c0a99fc0c"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "b4ca037f-4e16-4137-835f-cc2e04c297fc",
+          "bootId": "d8daa5bb-b9cb-4a64-9357-3cb99f5e17f7"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "1151d089-4cf9-497d-b5e9-fe6d6cf5c7f4",
+          "bootId": "d7c1f999-a708-43bf-afe1-1dbd69d77c52"
+        },
+        {
+          "environment": "unassigned",
+          "deploymentId": "unassigned",
+          "service": "cliproxyapi",
+          "instanceId": "bb22a298-a07b-4404-a6d7-964f50e64fb2",
+          "bootId": "890caf16-a4b2-4eb1-b8fc-2f8f3386b9d6"
+        }
+      ],
+      "findings": []
+    }
+  ]
+}

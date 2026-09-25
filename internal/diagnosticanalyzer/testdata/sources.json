@@ -1,0 +1,46 @@
+{
+  "contractSourceCommit": "bb291667f7b6bd7a1dab6f9b7f906b5871d1306c",
+  "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+  "fixtures": [
+    {
+      "file": "gcli-zero.jsonl",
+      "sourceCommit": "0b3a07e003ead2ba7a9f7827426c09f8ff996813",
+      "sourcePath": "docs/diagnostics/sample-zero.jsonl",
+      "sha256": "1c05eca992ce28f0c6a06710a8168734f2c6510deb543315cba6e90fe7319c0d",
+      "records": 6,
+      "description": "Actual producer output for synthetic offline/loopback test requests; no production traffic."
+    },
+    {
+      "file": "gcli-incomplete.jsonl",
+      "sourceCommit": "0b3a07e003ead2ba7a9f7827426c09f8ff996813",
+      "sourcePath": "docs/diagnostics/sample-incomplete.jsonl",
+      "sha256": "c144e7e3e3e1d69c8ea676aca1bbfedcf24e52b516d495480e0a2242e9760f7f",
+      "records": 6,
+      "description": "Actual producer output for synthetic offline/loopback test requests; no production traffic."
+    },
+    {
+      "file": "aito-r1.jsonl",
+      "sourceCommit": "a2d51383bc91751f23bc0f8927c19ef736593cea",
+      "sourcePath": "docs/diagnostics/synthetic-r1-runtime.jsonl",
+      "sha256": "dba0e04670f76169fbf7feeebaa1fde722838de929ae398d7867a09b5e8fad47",
+      "records": 67,
+      "description": "Actual producer output for synthetic offline/loopback test requests; no production traffic."
+    },
+    {
+      "file": "cpa-r2-read.jsonl",
+      "sourceCommit": "4996e7ae12b2af38f3bdc490eedf32e1887aeed6",
+      "sourcePath": "coordination/diagnostics/20260924/DIAG-05-R2-read-synthetic.jsonl",
+      "sha256": "df6bbd39a77a4574dcbe289a9ae0266916a375d9427d82183bc08aab8d867ef9",
+      "records": 70,
+      "description": "Actual producer output for synthetic offline/loopback test requests; no production traffic."
+    },
+    {
+      "file": "cpa-r2-limits.jsonl",
+      "sourceCommit": "4996e7ae12b2af38f3bdc490eedf32e1887aeed6",
+      "sourcePath": "coordination/diagnostics/20260924/DIAG-05-R2-limits-synthetic.jsonl",
+      "sha256": "ce1c532bf92c615cfa5161ab51cdda4c3d3273b28f7d0c9cb2854f74a3475aeb",
+      "records": 224,
+      "description": "Actual producer output for synthetic offline/loopback test requests; no production traffic."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "C:\Users\lywx2\.codex\worktrees\ac87\CLIProxyAPI\internal\diagnostics\testdata\validate_records.py", line 20, in <module>
+    assert raw.startswith(b"@diag "), (source, number, "framing")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('internal/diagnosticanalyzer/testdata/gcli-zero.jsonl', 1, 'framing')

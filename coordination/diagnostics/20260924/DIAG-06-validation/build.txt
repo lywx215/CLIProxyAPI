@@ -1,0 +1,2 @@
+server exit=0
+diag-analyze exit=0
