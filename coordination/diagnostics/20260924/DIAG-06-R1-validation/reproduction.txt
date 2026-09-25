@@ -1,0 +1,19 @@
+--- FAIL: TestOtherSourceGapBlocksVerification (0.01s)
+    --- FAIL: TestOtherSourceGapBlocksVerification/empty-read-error (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root verified]
+        analyze_test.go:796: zero-byte failure must name next line: [{Provenance:{Source:2 Line:0 Bytes:0} LengthComplete:false Reason:read_error}]
+    --- FAIL: TestOtherSourceGapBlocksVerification/later-read-error (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root source_evidence_gap verified]
+        analyze_test.go:796: zero-byte failure must name next line: [{Provenance:{Source:2 Line:1 Bytes:0} LengthComplete:false Reason:read_error}]
+    --- FAIL: TestOtherSourceGapBlocksVerification/empty-size-changed (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root verified]
+    --- FAIL: TestOtherSourceGapBlocksVerification/later-size-changed (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root source_evidence_gap verified]
+    --- FAIL: TestOtherSourceGapBlocksVerification/empty-known-loss (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root verified]
+    --- FAIL: TestOtherSourceGapBlocksVerification/later-known-loss (0.00s)
+        analyze_test.go:772: other source gap still permits verification: verified=1 findings=[missing_call_terminals root source_evidence_gap verified]
+FAIL
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnosticanalyzer	5.047s
+FAIL
+exit=1

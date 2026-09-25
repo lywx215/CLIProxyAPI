@@ -1,0 +1,1 @@
+PASS: 373 producer records against frozen schema and semantic oracle

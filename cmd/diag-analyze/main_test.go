@@ -97,4 +97,10 @@ func TestActualCommand(t *testing.T) {
 	if !ok || exit.ExitCode() != 1 || bytes.Contains(output, []byte("FORBIDDEN")) {
 		t.Fatalf("quarantine command: %v %s", err, output)
 	}
+	cmd = exec.Command(binary, "-input", "local="+t.TempDir())
+	output, err = cmd.CombinedOutput()
+	exit, ok = err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != 2 || string(output) != "input_1: not_readable_regular_file\n" {
+		t.Fatalf("nonregular directory: %v %s", err, output)
+	}
 }

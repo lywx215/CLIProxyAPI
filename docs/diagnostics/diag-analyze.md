@@ -19,6 +19,10 @@ in paths, command arguments, or aliases. Errors contain fixed reason codes and
 generated input numbers, never filesystem errors, input text, or flag values.
 The tool does not read export bundle files: pass their constituent local record
 files explicitly. No trust fields are added to the frozen bundle schema.
+The CLI checks regular-file status before opening and again on the open handle.
+The preflight avoids opening an ordinary FIFO, but does not eliminate a path
+replacement race. Directory rejection is tested on Windows; POSIX FIFO behavior
+has not been exercised in this delivery.
 
 Inputs are **untrusted by default**. `-trust ALIAS` explicitly attests that the
 operator controls that export. Trust is never derived from a record's service,
@@ -41,6 +45,8 @@ Unknown aliases and unassigned deployments widen the candidate search; the
 report marks `caller_scope_unknown`. A caller ID never replaces local request,
 span, or attempt identity. Results list all matching candidate traces and the
 matching node IDs. Trace selection and caller selection are mutually exclusive.
+An unassigned environment alone does not widen an otherwise known alias scope;
+the subsequent exact scope comparison can conservatively omit that candidate.
 
 ## Evidence and interpretation
 
@@ -68,6 +74,12 @@ gaps do not overwrite a valid independent edge. Cycles are marked and excluded
 from the forest. Ambiguous candidate groups are retained once, not expanded into
 a cross product. The forest caps indentation at 32 levels and lists remaining
 nodes separately with an explicit depth notice.
+However, any source with `CompleteScan=false` blocks verification globally with
+`source_scan_incomplete`: unread records could contain another matching receiver.
+Any operator-declared `KnownLoss` similarly adds global `export_known_loss`.
+These findings preserve read evidence and the original source reasons such as
+`read_error` or `size_changed`; they do not set `limited` unless a scan quota was
+actually reached. Per-span coverage still describes observed span/source evidence.
 
 Request counts use observed server identities; call counts use call identities;
 attempt counts use resource/server/retryScope/attemptId. Conflicted totals are
@@ -111,6 +123,8 @@ gcli files at least 16,773,120 bytes receive
 This is only a clue: it does not assert loss, a stopped sink, or completeness of
 smaller files. Full scan means the reader reached the end of its input, not that
 the export contains the producer's complete history.
+API callers must supply `Input.Size` to receive this capacity clue. Without it,
+the tool does not substitute scanned bytes for an original file-size observation.
 
 ## Bounds and quarantine
 
@@ -136,6 +150,9 @@ omitted count; source quarantine totals remain exact for scanned lines. Sequence
 ranges use observed cardinality and comparisons, never `1..expectedLastLogSeq`
 allocation or iteration. Graph endpoints and conflict context are bounded by
 observed nodes, including adversarial repeated identities.
+The line-byte limit includes CRLF as two bytes. Exporting a 4,096-byte LF record
+as CRLF makes it 4,097 bytes and causes quarantine; no newline normalization is
+performed before enforcing the frozen byte limit.
 
 Unknown versions, malformed JSON, duplicate keys, invalid UTF-8, closed-schema
 violations and conditional/cross-field violations are quarantined. Bad records
@@ -156,8 +173,13 @@ go test -timeout 120s ./internal/diagnosticanalyzer ./cmd/diag-analyze
 go test -timeout 10m ./...
 ```
 
-The package tests consume all frozen offline graph, source-scope, count,
-coverage, semantic and record-schema cases. The separate frozen Python oracle
+The package tests consume all 80 frozen offline algorithm vectors. Graph (20),
+source-scope (12), counts (10) and semantic (12) cases exercise the analyzer's
+actual algorithms; the 26 coverage cases directly exercise the reused pure
+`diagnostics.AssessCoverage` function. Separate `Analyze` tests cover assembly
+of coverage evidence from records, terminals/stubs, sequence gaps, source gaps
+and late graph conflicts. Record-schema cases exercise the embedded validator.
+The separate frozen Python oracle
 covers all 242 artifact vectors (including producer-only header/peer/mapping
 vectors); oracle success is not a claim that this reader implements producers.
 Tests also execute the built command and check error redaction, source trust,

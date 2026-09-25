@@ -202,6 +202,9 @@ func readInputs(inputs []Input, limits Limits) (*dataset, error) {
 			}
 			p := Provenance{s.ID, s.Lines, length}
 			if !complete {
+				if length == 0 {
+					p.Line++
+				}
 				if readFailed {
 					s.Findings = append(s.Findings, "read_error")
 					issue(p, "read_error", false)

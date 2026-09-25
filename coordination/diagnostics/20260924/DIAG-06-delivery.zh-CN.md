@@ -1,5 +1,8 @@
 # DIAG-06 交付：待审核
 
+本页保留首轮提交 `189b53f71137241f3143a8f4678742cd84b93d98` 的交付记录。
+R1 退回后的修订与最新验证见 [R1 修订处置](DIAG-06-R1-disposition.zh-CN.md)。
+
 任务 ID：`01a0d7a0-b595-7d42-a767-96eba54ae48d`。
 项目/worktree：`C:/Users/lywx2/.codex/worktrees/ac87/CLIProxyAPI`。
 分支：`codex/diag-06-log-analyzer`。
@@ -77,7 +80,7 @@ Python 设置 `PYTHONDONTWRITEBYTECODE=1`，只复用临时目录
 | `go build -o C:/Users/lywx2/AppData/Local/Temp/diag06-validation-20260925-ac87/server.exe ./cmd/server` | 0；`build.txt`。未运行 server。 |
 | `go build -o C:/Users/lywx2/AppData/Local/Temp/diag06-validation-20260925-ac87/diag-analyze.exe ./cmd/diag-analyze` | 0；最终工具 `final-tool-build.txt`。 |
 | `python contracts/diagnostics/v1/validate.py` | 0；`contract.txt`：3 schemas、53 fixtures、9 example lines、242 vectors。producer 头/peer/Aito 映射向量仅算冻结 oracle，不冒称 reader 实现这些 producer 接入。 |
-| `python internal/diagnosticanalyzer/testdata/verify_artifacts.py` | 0；`artifacts.txt`：73 冻结 Git/index/worktree 文件、嵌入 schema、373 producer 记录。五份样例另逐字节与各准确依赖 SHA 的 `git show SHA:path` 比对通过。 |
+| `python internal/diagnosticanalyzer/testdata/verify_artifacts.py` | 0；`artifacts.txt`：73 冻结 Git/index/worktree 文件、嵌入 schema、373 producer 记录的本地摘要。跨仓库 `git show SHA:path` 校验是独立检查，协调方补做的5/5原始证据见 [producer-source-evidence.json](DIAG-06-R1-validation/producer-source-evidence.json)，不是此脚本的功能。 |
 | `python internal/diagnosticanalyzer/testdata/validate_producers.py` | 0；`producer-schema.txt`：373 条记录同时通过原冻结 Python schema 和 semantic oracle。 |
 | `C:/Users/lywx2/AppData/Local/Temp/diag06-validation-20260925-ac87/diag-analyze.exe -input pair=contracts/diagnostics/v1/examples/bilateral-basic.jsonl -trust pair -format text` | 0；`cli-tree.txt`：2 requests / 1 call / 1 attempt，双边 verified 树及出处。 |
 | `C:/Users/lywx2/AppData/Local/Temp/diag06-validation-20260925-ac87/diag-analyze.exe -input gcli=internal/diagnosticanalyzer/testdata/gcli-zero.jsonl -input aito=internal/diagnosticanalyzer/testdata/aito-r1.jsonl -input cpa=internal/diagnosticanalyzer/testdata/cpa-r2-read.jsonl -trust gcli -trust aito -trust cpa -format json` | 0；`cli-producer-summary.json`：29 requests / 32 calls / 32 attempts，0 quarantine，未受限。完整 JSON 在上述临时目录 `producer-report.json`，摘要没有代替单元测试的完整 evidence。 |

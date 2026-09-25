@@ -736,3 +736,66 @@ func TestLimitCannotVerifyIncompleteImport(t *testing.T) {
 		t.Fatal("bounded import pretends unique")
 	}
 }
+
+func TestOtherSourceGapBlocksVerification(t *testing.T) {
+	o, c, s := bilateral(t)
+	unrelated := basic(t, "server", "4444444444444444", "4444444444444444")
+	unrelated["traceId"] = strings.Repeat("4", 32)
+	for _, tc := range []struct {
+		name, finding, sourceReason string
+		prefix                      string
+		readError, sizeChanged      bool
+		knownLoss                   bool
+	}{
+		{name: "empty-read-error", finding: "source_scan_incomplete", sourceReason: "read_error", readError: true},
+		{name: "later-read-error", finding: "source_scan_incomplete", sourceReason: "read_error", prefix: lines(unrelated), readError: true},
+		{name: "empty-size-changed", finding: "source_scan_incomplete", sourceReason: "size_changed", sizeChanged: true},
+		{name: "later-size-changed", finding: "source_scan_incomplete", sourceReason: "size_changed", prefix: lines(unrelated), sizeChanged: true},
+		{name: "empty-known-loss", finding: "export_known_loss", sourceReason: "export_known_loss", knownLoss: true},
+		{name: "later-known-loss", finding: "export_known_loss", sourceReason: "export_known_loss", prefix: lines(unrelated), knownLoss: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var reader io.Reader = strings.NewReader(tc.prefix)
+			if tc.readError {
+				reader = io.MultiReader(reader, failingReader{})
+			}
+			b := Input{Alias: "other", Reader: reader, Trusted: true, KnownLoss: tc.knownLoss}
+			if tc.sizeChanged {
+				size := int64(len(tc.prefix) + 1)
+				b.Size = &size
+			}
+			r, err := Analyze([]Input{{Alias: "pair", Reader: strings.NewReader(lines(o, c, s)), Trusted: true}, b}, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verified(r) != 0 || !contains(findings(r), tc.finding) {
+				t.Errorf("other source gap still permits verification: verified=%d findings=%v", verified(r), findings(r))
+			}
+			if r.Limited || contains(findings(r), "analysis_limited") || !contains(r.Sources[1].Findings, tc.sourceReason) {
+				t.Error("source evidence gap must retain its cause, not become a quota limit")
+			}
+			if r.Sources[1].CompleteScan != tc.knownLoss {
+				t.Error("source scan status changed")
+			}
+			wantEvents := 3
+			if tc.prefix != "" {
+				wantEvents++
+				if r.Nodes[3].Coverage.DebugCoverage != "partial" {
+					t.Error("read evidence lost partial coverage")
+				}
+			}
+			if len(r.Evidence) != wantEvents {
+				t.Error("read evidence discarded")
+			}
+			if tc.readError {
+				wantLine := 1
+				if tc.prefix != "" {
+					wantLine++
+				}
+				if len(r.Issues) != 1 || r.Issues[0].Line != wantLine || r.Issues[0].Bytes != 0 || r.Issues[0].LengthComplete {
+					t.Errorf("zero-byte failure must name next line: %+v", r.Issues)
+				}
+			}
+		})
+	}
+}

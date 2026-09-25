@@ -1,0 +1,51 @@
+{
+  "reviewHead": "189b53f71137241f3143a8f4678742cd84b93d98",
+  "checkedAt": "2026-09-25T08:58:49.023192+00:00",
+  "files": [
+    {
+      "file": "gcli-zero.jsonl",
+      "sourceProject": "gcli2api",
+      "sourceCommit": "0b3a07e003ead2ba7a9f7827426c09f8ff996813",
+      "sourcePath": "docs/diagnostics/sample-zero.jsonl",
+      "sha256": "1c05eca992ce28f0c6a06710a8168734f2c6510deb543315cba6e90fe7319c0d",
+      "bytes": 8417,
+      "gitByteEqual": true
+    },
+    {
+      "file": "gcli-incomplete.jsonl",
+      "sourceProject": "gcli2api",
+      "sourceCommit": "0b3a07e003ead2ba7a9f7827426c09f8ff996813",
+      "sourcePath": "docs/diagnostics/sample-incomplete.jsonl",
+      "sha256": "c144e7e3e3e1d69c8ea676aca1bbfedcf24e52b516d495480e0a2242e9760f7f",
+      "bytes": 8468,
+      "gitByteEqual": true
+    },
+    {
+      "file": "aito-r1.jsonl",
+      "sourceProject": "Aitoapi-custom",
+      "sourceCommit": "a2d51383bc91751f23bc0f8927c19ef736593cea",
+      "sourcePath": "docs/diagnostics/synthetic-r1-runtime.jsonl",
+      "sha256": "dba0e04670f76169fbf7feeebaa1fde722838de929ae398d7867a09b5e8fad47",
+      "bytes": 103677,
+      "gitByteEqual": true
+    },
+    {
+      "file": "cpa-r2-read.jsonl",
+      "sourceProject": "CLIProxyAPI",
+      "sourceCommit": "4996e7ae12b2af38f3bdc490eedf32e1887aeed6",
+      "sourcePath": "coordination/diagnostics/20260924/DIAG-05-R2-read-synthetic.jsonl",
+      "sha256": "df6bbd39a77a4574dcbe289a9ae0266916a375d9427d82183bc08aab8d867ef9",
+      "bytes": 92686,
+      "gitByteEqual": true
+    },
+    {
+      "file": "cpa-r2-limits.jsonl",
+      "sourceProject": "CLIProxyAPI",
+      "sourceCommit": "4996e7ae12b2af38f3bdc490eedf32e1887aeed6",
+      "sourcePath": "coordination/diagnostics/20260924/DIAG-05-R2-limits-synthetic.jsonl",
+      "sha256": "ce1c532bf92c615cfa5161ab51cdda4c3d3273b28f7d0c9cb2854f74a3475aeb",
+      "bytes": 317100,
+      "gitByteEqual": true
+    }
+  ]
+}

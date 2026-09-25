@@ -1,0 +1,84 @@
+{
+  "exit": 0,
+  "limited": false,
+  "sources": [
+    {
+      "id": 1,
+      "alias": "pair",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 4452,
+      "scannedBytes": 4452,
+      "lines": 4,
+      "accepted": 4,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "bd100af7d5e0bcb8fe4b11e725477f22005d427943e46bc430f99aa08c4a6941",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "edge",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "10000000-0000-4000-8000-000000000001"
+        },
+        {
+          "environment": "test",
+          "deploymentId": "gemini-pool",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "20000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 2,
+      "alias": "other",
+      "trusted": true,
+      "knownLoss": true,
+      "fileSize": 0,
+      "scannedBytes": 0,
+      "lines": 0,
+      "accepted": 0,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resources": [],
+      "findings": [
+        "export_known_loss"
+      ]
+    }
+  ],
+  "verifiedEdges": 0,
+  "edges": [
+    {
+      "kind": "local",
+      "senders": [
+        1
+      ],
+      "receivers": [
+        2
+      ],
+      "findings": [
+        "export_known_loss"
+      ],
+      "verified": false
+    },
+    {
+      "kind": "remote",
+      "senders": [
+        2
+      ],
+      "receivers": [
+        3
+      ],
+      "findings": [
+        "export_known_loss"
+      ],
+      "verified": false
+    }
+  ]
+}

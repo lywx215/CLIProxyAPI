@@ -348,7 +348,20 @@ func Analyze(inputs []Input, opts Options) (*Report, error) {
 			n.Coverage.DebugCoverage = "partial"
 		}
 	}
+	// Unread or explicitly lost records anywhere in the import may contain a
+	// competing candidate, even when no observed endpoint came from that source.
+	sourceScanIncomplete, exportKnownLoss := false, false
+	for _, source := range d.sources {
+		sourceScanIncomplete = sourceScanIncomplete || !source.CompleteScan
+		exportKnownLoss = exportKnownLoss || source.KnownLoss
+	}
 	for _, edge := range edges {
+		if sourceScanIncomplete {
+			add(&edge.Findings, "source_scan_incomplete")
+		}
+		if exportKnownLoss {
+			add(&edge.Findings, "export_known_loss")
+		}
 		if d.limited {
 			add(&edge.Findings, "analysis_limited")
 		}

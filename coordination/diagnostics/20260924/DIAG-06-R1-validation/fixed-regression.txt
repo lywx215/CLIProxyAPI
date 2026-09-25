@@ -1,0 +1,2 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnosticanalyzer	4.782s
+exit=0

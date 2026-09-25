@@ -104,12 +104,18 @@ func run(args []string, out, stderr io.Writer) int {
 	}()
 	sources := []diagnosticanalyzer.Input{}
 	for i, alias := range order {
+		// Reject ordinary nonregular paths before Open can block on a FIFO.
+		// Keep the post-open check too; this preflight does not eliminate TOCTOU.
+		st, err := os.Stat(paths[alias])
+		if err != nil || !st.Mode().IsRegular() {
+			return fail(fmt.Sprintf("input_%d: not_readable_regular_file", i+1))
+		}
 		f, err := os.Open(paths[alias])
 		if err != nil {
 			return fail(fmt.Sprintf("input_%d: open_error", i+1))
 		}
 		files = append(files, f)
-		st, err := f.Stat()
+		st, err = f.Stat()
 		if err != nil || !st.Mode().IsRegular() {
 			return fail(fmt.Sprintf("input_%d: not_readable_regular_file", i+1))
 		}
