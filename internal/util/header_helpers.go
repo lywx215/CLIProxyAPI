@@ -169,7 +169,7 @@ func extractCustomHeaders(attrs map[string]string, clientHeaders http.Header, ct
 			varName := strings.TrimSpace(strings.TrimPrefix(val, "$"))
 			// This branch copies an inbound field dynamically; literal configured
 			// provider headers below remain explicit business construction.
-			if diagnostics.IsPropagationHeader(varName) || diagnostics.IsPropagationHeader(name) {
+			if diagnostics.IsPropagationHeader(varName) || strings.HasPrefix(strings.ToLower(name), "x-diag-") {
 				continue
 			}
 			if varName == "" {

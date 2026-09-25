@@ -108,7 +108,7 @@
 
 ## 已知限制／后续交接
 
-1. 现有 logger 没有终身开关变更通知、collector 丢弃确认，所以 `accessCapture=unknown`、`sinkDroppedTotal=null`，不冒充 full。本模块内部已知写失败另计数。
+1. 现有 logger 没有终身开关变更通知、collector 丢弃确认，所以 `accessCapture=unknown`、`sinkDroppedTotal=null`，不冒充 full。Engine 只计序列化／超限失败和自定义 sink 明确返回的错误；生产 logrus sink 恒返回 nil，实际 writer／队列／collector 写失败不可见。
 2. DIAG-05 的四类 DEBUG 语义尚未实现；本任务 `debugCapture=none`，只有 HTTP 能力。DIAG-05 添加事件时需扩展共享 span 序号，保持终局 sealing 和 expectedLastLogSeq 规则。
 3. 现有认证主体可能是 API Key，未输出／hash；callerAlias=null、scope=unknown；没有安装新的可信入站 peer adapter。
 4. Gin status-only 的最终隐式提交发生在中间件返回后；本任务准备本地 ID 但不强制提交，wireStatus/delivery 明确未知。Hijack 原始升级不推断 200/101，也不改 WS 协议。
@@ -117,3 +117,11 @@
 7. 未做 Linux／race 回归；环境限制如上。Windows 完整回归以最后验证结果为准，不抹去较早被拦截的执行记录。
 
 没有创建子任务、跨项目写入、部署、合并、推送、生产账户变更或自行 Claude 审核。只做本地提交，等待协调窗口检查及 Claude 精确 HEAD 审核；修订继续在本任务。
+
+
+## R1 退回修订
+
+原审核目标为 `baf745a579667828afa21fd53a4573a23a374cce`，0 P1／3 P2，结论 request_changes。
+修订逐项结论、新增证据、日志消费方的实际兼容修复及 P3 取舍见
+[DIAG-04-R1-disposition.zh-CN.md](DIAG-04-R1-disposition.zh-CN.md)；最终新完整 SHA 由本任务交付消息提供。
+本节之前的“最后一次”指初次提交验证；修订轮的最终结果以 R1 disposition 和 R1 validation 为准，早期应用控制拦截记录保留。

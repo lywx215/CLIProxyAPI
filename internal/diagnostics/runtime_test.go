@@ -250,14 +250,16 @@ func TestGinCommitErrorStreamingAndNoEarly200(t *testing.T) {
 				case "panic":
 					panic("synthetic panic")
 				case "cancel":
-					ctx, cancel := context.WithCancel(c.Request.Context())
-					cancel()
-					c.Request = c.Request.WithContext(ctx)
 					c.String(499, "cancelled")
 				}
 			})
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/v1/private-parameter", nil)
+			if mode == "cancel" {
+				ctx, cancel := context.WithCancel(req.Context())
+				cancel()
+				req = req.WithContext(ctx)
+			}
 			r.ServeHTTP(w, req)
 			h := w.Result().Header
 			if len(HeaderValues(h, "x-diag-request-id")) != 1 || h.Get("X-Diag-Request-Id") != "local-1" || !nonzeroHex(h.Get("X-Diag-Trace-Id"), 32) || h.Get("X-Diag-Unknown") != "" {
@@ -278,11 +280,15 @@ func TestGinCommitErrorStreamingAndNoEarly200(t *testing.T) {
 			if data["routeTemplate"] != "/v1/:id" {
 				t.Fatal("raw path or missing template")
 			}
-			if mode == "empty" {
-				if data["wireStatus"] != nil || data["headersCommitted"] != false {
-					t.Fatal("status-only commit was invented")
-				}
+			end, delivery, committed := "finished", "local_finished", true
+			var wire any = float64(want)
+			if mode == "cancel" {
+				end, delivery = "client_cancel", "cancelled"
 			}
+			if mode == "empty" {
+				delivery, committed, wire = "unknown", false, nil
+			}
+			assertServerTerminal(t, data, end, delivery, committed, wire)
 		})
 	}
 }
@@ -355,9 +361,14 @@ func TestReloadDisablesInvalidPeerSnapshot(t *testing.T) {
 	sink := &recordSink{}
 	e := localEngine(sink, peerJSON("https://peer.test"))
 	req := httptest.NewRequest("GET", "https://peer.test/v1", nil)
+	e.ReloadPeers(peerJSON("https://peer.test"))
+	if len(sink.records(t, "diag.process")) != 1 || e.revision != 1 {
+		t.Fatal("unchanged environment produced a config event")
+	}
 	if e.peers.Load().Match(req.URL) == nil {
 		t.Fatal("initial peer")
 	}
+	e.ReloadPeers(`[invalid`)
 	e.ReloadPeers(`[invalid`)
 	if e.peers.Load().Match(req.URL) != nil {
 		t.Fatal("invalid reload kept old authorization")
@@ -602,7 +613,69 @@ func TestHijackPreservesUpgradeAndDoesNotInventWireStatus(t *testing.T) {
 		<-sink.ready
 	}
 	data := sink.records(t, "diag.server")[0].Data.(map[string]any)
-	if data["headersCommitted"] != false || data["wireStatus"] != nil || data["deliveryState"] != "unknown" {
-		t.Fatal("invented raw-upgrade delivery")
+	assertServerTerminal(t, data, "unknown", "unknown", false, nil)
+}
+
+func assertServerTerminal(t *testing.T, data map[string]any, end, delivery string, committed bool, wire any) {
+	t.Helper()
+	if data["endReason"] != end || data["deliveryState"] != delivery || data["headersCommitted"] != committed || data["wireStatus"] != wire {
+		t.Fatalf("terminal = %v; want %s/%s/%v/%v", data, end, delivery, committed, wire)
 	}
+}
+
+type failedResponseWriter struct{ *httptest.ResponseRecorder }
+
+func (w failedResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("synthetic write failure")
+}
+
+func TestGinWriteFailureTerminal(t *testing.T) {
+	sink := &recordSink{}
+	r := gin.New()
+	r.Use(localEngine(sink, "").GinMiddleware(func(*gin.Context) string { return "local-1" }))
+	r.GET("/failure", func(c *gin.Context) {
+		c.Status(202)
+		if _, err := c.Writer.Write([]byte("body")); err == nil {
+			t.Error("write failure swallowed")
+		}
+	})
+	r.ServeHTTP(failedResponseWriter{httptest.NewRecorder()}, httptest.NewRequest("GET", "/failure", nil))
+	records := sink.records(t, "diag.server")
+	if len(records) != 1 {
+		t.Fatalf("terminals = %d", len(records))
+	}
+	assertServerTerminal(t, records[0].Data.(map[string]any), "error", "failed", true, float64(202))
+}
+
+func TestServerFinishDoesNotHoldSpanLockDuringSinkIO(t *testing.T) {
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	e := NewEngine(ResourceConfig{}, "", nil, nil, func(line []byte) error {
+		if bytes.Contains(line, []byte(`"event":"diag.server"`)) {
+			close(entered)
+			<-release
+		}
+		return nil
+	})
+	ctx, span := e.StartServer(context.Background(), nil, "local-1")
+	go func() { span.Finish(ServerData{}); close(finished) }()
+	<-entered
+	defer func() { close(release); <-finished }()
+	if !span.mu.TryLock() {
+		t.Fatal("sink holds the span lock")
+	}
+	sealed := span.sealed
+	span.mu.Unlock()
+	if !sealed {
+		t.Fatal("span not sealed before I/O")
+	}
+	// A late call delegates without allocating another call or waiting on the sink.
+	client := FinalizeClient(ctx, &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: http.NoBody}, nil
+	})})
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://fixture.test", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 }

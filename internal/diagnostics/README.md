@@ -25,10 +25,13 @@ replicas. Restarts/workers remain distinct by boot ID.
 
 `DIAG_PEERS` is the exact JSON array defined in the contract. The current process
 environment is re-read at the existing server configuration reload boundary.
-Reload publishes a complete immutable snapshot; invalid JSON, duplicate keys,
+An unchanged raw value does not increment the revision or emit a config event.
+A changed value publishes a complete immutable snapshot; invalid JSON, duplicate keys,
 overlaps, unknown fields, and invalid entries disable the entire peer set.
 This does not reload a shell environment from a file or alter business routing.
-Resource labels stay fixed until process restart. IPv6 comparison uses parsed
+Changing the parent shell/deployment environment normally requires a process
+restart; only an embedding process that updates its own environment can expose
+a changed value at this reload boundary. Resource labels stay fixed until restart. IPv6 comparison uses parsed
 `netip` addresses; mapped IPv6 remains distinct from an IPv4 authority.
 
 ## Runtime boundaries
@@ -72,7 +75,9 @@ contains that exact request pointer and is never written into the input request,
 `ireq.Header`. Thus an initial explicit business trace can reappear on a nonpeer
 redirect; it must remain unmarked and must not be deleted. Clients actually
 carrying injected headers have separate owned-cleanup vector tests. No redirect
-policy is replaced to imitate another language's client.
+policy is replaced to imitate another language's client. This is Go rebuilding
+a new unowned hop from the untouched business input, not this module restoring
+a value it overwrote. DIAG-00 R3/coordinator explicitly confirmed this distinction.
 
 ## Logging and completeness
 
@@ -98,8 +103,11 @@ four semantic observations, and preserve sealing and terminal invariants.
 
 The shared logger has no lifetime switch notification or downstream collector
 loss acknowledgement. Access capture is therefore conservatively `unknown` and
-sink-wide dropped total is null. Module-local failed writes are counted in
-memory, without claiming they are a complete collector counter. Do not interpret
+sink-wide dropped total is null. The engine counts serialization/size failures
+and errors explicitly returned by a supplied sink. The production logrus adapter
+always returns nil: logrus reports writer errors to stderr, not back to this
+engine. Its in-memory counter therefore does not observe actual logrus writer,
+Home/TUI queue, rotation, or collector losses. Do not interpret
 these terminals as `full` debug coverage. Source-scope and coverage helpers apply
 the shared vectors; they neither merge events nor establish remote edges.
 
@@ -149,7 +157,7 @@ semantic observation is added by this task.
 | Actual source and consumers | Proven provenance | Change/final order/redirect behavior |
 | --- | --- | --- |
 | `sdk/api/handlers/gemini/gemini-cli_handlers.go`, `CLIHandler` auxiliary branch | Entire `c.Request.Header` automatically copied to fixed cloudcode HTTP target | `CopyInboundHeaders` excludes standard trace and every X-Diag field before copy; final client then applies peer policy on every hop |
-| `internal/util/header_helpers.go`, `extractCustomHeaders`, `$Header` branch, invoked by executor `PrepareRequest`/provider header builders | Dynamic lookup in actual incoming/Gin headers, selected by configured attribute | Filter source and destination propagation names only in this dynamic branch; legacy IDs and other dynamic headers remain; final configured peer injection occurs afterwards |
+| `internal/util/header_helpers.go`, `extractCustomHeaders`, `$Header` branch, invoked by executor `PrepareRequest`/provider header builders | Dynamic lookup in actual incoming/Gin headers, selected by configured attribute | Filter actual inbound traceparent/tracestate/X-Diag source names; reserve only X-Diag destination names. Explicit business-source mappings to traceparent/tracestate remain; legacy IDs and other dynamic headers remain; final configured peer injection occurs afterwards |
 | Same utility, literal `header:*` attributes | Explicit configured business header values | Retained, including provider standard trace headers; final peer replacement/nonpeer X-Diag cleanup still applies on covered clients |
 | `claude_executor_cloaking.go/resolveIncomingClaudeHeaders`, `claude_executor_request.go/copyClaudeCallerFingerprintHeaders`, `applyClaudeHeadersWithNativeProfile` | Incoming headers used for detection and explicit named fingerprint/session/beta fields | No blanket copy to upstream; allowlists contain no diagnostic/standard trace fields; literals go through the utility above; no extra filtering of detection input |
 | `codex_executor_request.go/applyCodexHeadersFromSources`, `applyCodexDirectImageHeaders` | Incoming named Codex/session/agent fields, then configured attrs | No standard trace automatic copy; preserve provider IDs; final uTLS/proxy client applies diagnostics |
@@ -188,3 +196,46 @@ internals remain unverified. Use separate per-process files/collection identitie
 or validate the deployment collector in DIAG-07; a 4096-byte bound is not a
 cross-platform atomic-write guarantee. The delivery report records exact test
 results and Windows application-control restrictions.
+
+## R1 audit evidence and retained limits
+
+The [R1 disposition and source evidence](../../coordination/diagnostics/20260924/DIAG-04-R1-disposition.zh-CN.md)
+records the complete builder/transport inventory, production middleware order,
+log consumers, representative real executor tests, and terminal truth table.
+The source-excerpt companion contains unchanged code needed for independent review.
+
+The real Execute tests run Codex, Claude (the uTLS builder's loopback fallback),
+Gemini and Kimi, each with/without an actual ServerSpan for HTTP 200 and 503.
+They check response bytes/error status, request method/path/body fields, HTTP/1.1,
+usage tracking, peer injection and a single model call terminal. They do not
+claim a fresh native TLS fingerprint/HTTP2 handshake test against protected hosts.
+The existing transport tests still cover the configured concrete transport branches.
+
+Successful health probes suppress the old text access line but retain one basic
+server terminal while INFO is enabled. This deliberately preserves server-span
+completeness across all ingress; DEBUG remains unrelated. Management/Home HTTP
+requests also emit terminals. No request sampling or path-level exemption was
+introduced. Operators should account for this volume; the INFO switch remains
+the shared gate. SkipGinRequestLogging has no production callers in this baseline.
+
+Production Home and TUI hooks both install LogFormatter, preserving the raw
+line (TUI trims its newline). TUI ALL/INFO show the new INFO records without old
+prefix coloring; WARN/ERROR exclude them. Management cursor reads preserve raw
+lines, and its legacy after-timestamp reader now recognizes this schema's UTC ts
+so diagnostics cannot inherit a previous text line's cutoff. External embedders
+installing arbitrary logrus formatters/hooks are outside this verification.
+The existing usage statistics consume typed usage events, not these text lines.
+
+The existing broad call endReason=cancelled means its outgoing context ended,
+including a context deadline or http.Client.Timeout; it does not distinguish
+caller cancellation from a client timer. A transport error with a live context
+remains transport_error. No timeout was added and no timeout classification was
+changed in R1. Consumers must not infer the cancellation initiator from this field.
+Server client_cancel similarly reports an ended inbound context, not provenance.
+
+Server Finish seals and snapshots under the span mutex, then emits outside it;
+a blocked sink cannot block a late call's sealed-span check. Existing response
+write ownership remains unchanged: SSE select loops serialize writes, and the
+nonstream keepalive stop function waits for its goroutine before the final write.
+No new asynchronous writer or backpressure mechanism was introduced. Linux/race
+validation remains unavailable in this Windows environment.

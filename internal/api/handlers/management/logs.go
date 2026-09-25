@@ -1230,6 +1230,22 @@ func parseLimit(raw string) (int, error) {
 }
 
 func parseTimestamp(line string) int64 {
+	if strings.HasPrefix(line, "@diag ") {
+		// Diagnostic records have their own timestamp; treating them as a
+		// continuation of the previous text entry can hide new records at cutoff.
+		var envelope struct {
+			Schema string `json:"diagnosticSchema"`
+			TS     string `json:"ts"`
+		}
+		if json.Unmarshal([]byte(strings.TrimPrefix(line, "@diag ")), &envelope) != nil || envelope.Schema != "ai-proxy-diagnostics/1" {
+			return 0
+		}
+		ts, err := time.Parse(time.RFC3339Nano, envelope.TS)
+		if err != nil {
+			return 0
+		}
+		return ts.Unix()
+	}
 	if strings.HasPrefix(line, "[") {
 		line = line[1:]
 	}

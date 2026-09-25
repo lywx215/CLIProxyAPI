@@ -24,4 +24,15 @@ func TestDiagnosticAutomaticHeaderReferencesVersusLiterals(t *testing.T) {
 	if len(got) != 3 || got["traceparent"] != "provider-explicit" {
 		t.Fatal("explicit business headers removed")
 	}
+	attrs = map[string]string{
+		"header:traceparent":   "$X-Business",
+		"header:tracestate":    "$X-Business",
+		"header:x-DiAg-Custom": "$X-Business",
+		"header:X-Trace-Alias": "$tRaCePaReNt",
+		"header:X-State-Alias": "$tRaCeStAtE",
+	}
+	got = extractCustomHeaders(attrs, incoming, context.Background())
+	if len(got) != 2 || got["traceparent"] != "business" || got["tracestate"] != "business" {
+		t.Fatalf("explicit mapping lost or reserved/source propagation leaked: %v", got)
+	}
 }

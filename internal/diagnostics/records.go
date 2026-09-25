@@ -169,11 +169,12 @@ type Engine struct {
 	processMu       sync.Mutex
 	processSeq      uint64
 	revision        uint64
+	peerRaw         string
 }
 
 func NewEngine(c ResourceConfig, peers string, access, debug func() bool, sink func([]byte) error) *Engine {
 	r, invalid := NewResource(c, "")
-	e := &Engine{resource: r, invalidResource: invalid, access: access, debug: debug, sink: sink, revision: 1}
+	e := &Engine{resource: r, invalidResource: invalid, access: access, debug: debug, sink: sink, revision: 1, peerRaw: peers}
 	e.peers.Store(ParsePeers(peers))
 	e.process("startup")
 	return e
@@ -183,6 +184,10 @@ func NewEngine(c ResourceConfig, peers string, access, debug func() bool, sink f
 func (e *Engine) ReloadPeers(raw string) {
 	e.processMu.Lock()
 	defer e.processMu.Unlock()
+	if raw == e.peerRaw {
+		return
+	}
+	e.peerRaw = raw
 	e.peers.Store(ParsePeers(raw))
 	e.revision++
 	e.processLocked("config_changed")
@@ -318,12 +323,13 @@ func (s *ServerSpan) Finish(data ServerData) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.sealed {
+		s.mu.Unlock()
 		return
 	}
 	s.sealed = true
 	if !s.engine.enabled() {
+		s.mu.Unlock()
 		return
 	}
 	data.CallCount, data.TotalMS, data.Coverage = s.calls, elapsed(s.started), s.coverage()
@@ -333,6 +339,7 @@ func (s *ServerSpan) Finish(data ServerData) {
 	r := s.record("server", "diag.server", s.id, s.incoming.ParentSpanID)
 	r.LogSeq = 1
 	r.Data = data
+	s.mu.Unlock()
 	s.engine.emit(r)
 }
 
