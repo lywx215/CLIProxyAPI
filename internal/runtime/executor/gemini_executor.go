@@ -422,6 +422,11 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		if errScan := scanner.Err(); errScan != nil {
 			helps.RecordAPIResponseError(ctx, e.cfg, errScan)
 			reporter.PublishFailure(ctx, errScan)
+			// Settle live upstream failures before Err lets the handler seal the
+			// span. Cancellation retains the existing interrupted cleanup path.
+			if ctx.Err() == nil {
+				diag.Finish(errScan)
+			}
 			select {
 			case out <- cliproxyexecutor.StreamChunk{Err: errScan}:
 			case <-ctx.Done():

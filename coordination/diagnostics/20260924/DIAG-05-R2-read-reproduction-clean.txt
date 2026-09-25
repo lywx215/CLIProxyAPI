@@ -1,0 +1,89 @@
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+--- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup (0.02s)
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/bootstrap (0.02s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/partial (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:200]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error=data: {"candidates":[{"content":{"parts":[{"text":"fixture output"}]}}]}
+
+            event: error
+            data: {"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/bootstrap (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/chat/completions totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/partial (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/chat/completions totalMs:0 wireStatus:200]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error=data: {"id":"","object":"chat.completion.chunk","created":0,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","content":"fixture output","reasoning_content":null,"tool_calls":null},"finish_reason":null,"native_finish_reason":null}]}
+
+            data: {"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/bootstrap (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/responses totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/partial (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/responses totalMs:0 wireStatus:200]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error=event: response.created
+            data: {"type":"response.created","sequence_number":1,"response":{"id":"resp_d234ccf52430000_1","object":"response","created_at":946684800,"status":"in_progress","background":false,"error":null,"output":[],"model":"gemini-2.5-flash"}}
+
+            event: response.in_progress
+            data: {"type":"response.in_progress","sequence_number":2,"response":{"id":"resp_d234ccf52430000_1","object":"response","created_at":946684800,"status":"in_progress","output":[],"model":"gemini-2.5-flash"}}
+
+            event: response.output_item.added
+            data: {"type":"response.output_item.added","sequence_number":3,"output_index":0,"item":{"id":"msg_resp_d234ccf52430000_1_0","type":"message","status":"in_progress","content":[],"role":"assistant"}}
+
+            event: response.content_part.added
+            data: {"type":"response.content_part.added","sequence_number":4,"item_id":"msg_resp_d234ccf52430000_1_0","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""}}
+
+            event: response.output_text.delta
+            data: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_resp_d234ccf52430000_1_0","output_index":0,"content_index":0,"delta":"fixture output","logprobs":[]}
+
+            event: response.output_text.done
+            data: {"type":"response.output_text.done","sequence_number":6,"item_id":"msg_resp_d234ccf52430000_1_0","output_index":0,"content_index":0,"text":"fixture output","logprobs":[]}
+
+            event: response.content_part.done
+            data: {"type":"response.content_part.done","sequence_number":7,"item_id":"msg_resp_d234ccf52430000_1_0","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"fixture output"}}
+
+            event: response.output_item.done
+            data: {"type":"response.output_item.done","sequence_number":8,"output_index":0,"item":{"id":"msg_resp_d234ccf52430000_1_0","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"fixture output"}],"role":"assistant"}}
+
+            event: response.completed
+            data: {"type":"response.completed","sequence_number":9,"response":{"id":"resp_d234ccf52430000_1","object":"response","created_at":946684800,"status":"completed","background":false,"error":null,"model":"gemini-2.5-flash","output":[{"id":"msg_resp_d234ccf52430000_1_0","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"fixture output"}],"role":"assistant"}]}}
+
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/bootstrap (0.00s)
+        diagnostics_read_error_test.go:132: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:139: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+panic: deadlock: main bubble goroutine has exited but blocked goroutines remain [recovered, repanicked]
+
+goroutine 52 [running]:
+testing.tRunner.func1.2({0x7ff60c8ea5c0, 0x33376bad0e28})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1974 +0x239
+testing.tRunner.func1()
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1977 +0x349
+panic({0x7ff60c8ea5c0?, 0x33376bad0e28?})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/panic.go:860 +0x13a
+internal/synctest.Run(0x33376bf00160)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/synctest.go:251 +0x2f4
+testing/synctest.Test(0x33376c1c8000, 0x33376c198600)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/synctest/synctest.go:290 +0x90
+github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor.TestDIAG05GinReadErrorBeforeExchangeCleanup.func1(0x33376c1c8000)
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/runtime/executor/diagnostics_read_error_test.go:59 +0xc7
+testing.tRunner(0x33376c1c8000, 0x33376c1985a0)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2036 +0xc3
+created by testing.(*T).Run in goroutine 41
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2101 +0x4a9
+
+goroutine 57 [chan receive (durable), synctest bubble 7]:
+github.com/router-for-me/CLIProxyAPI/v7/internal/cache.startCacheCleanup.func1()
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/cache/signature_cache.go:85 +0x89
+created by github.com/router-for-me/CLIProxyAPI/v7/internal/cache.startCacheCleanup in goroutine 55
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/cache/signature_cache.go:82 +0x1a
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	6.225s
+FAIL

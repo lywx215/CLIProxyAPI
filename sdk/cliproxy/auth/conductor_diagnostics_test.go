@@ -73,7 +73,7 @@ func TestDIAG05ConductorOwnsAttemptIdentity(t *testing.T) {
 			t.Fatalf("owner retry changed: %d records, %d invocations", len(records), ex.invocations)
 		}
 		for i, r := range records {
-			if r.AttemptNo == nil || *r.AttemptNo != uint64(i+1) || r.AttemptID == nil || r.RetryScope == nil || *r.RetryScope != "conductor_executor" {
+			if r.AttemptNo == nil || *r.AttemptNo != uint64(i+1) || r.AttemptID == nil || r.RetryScope == nil || *r.RetryScope != "conductor_gemini_family" {
 				t.Fatalf("unowned attempt %+v", r)
 			}
 		}

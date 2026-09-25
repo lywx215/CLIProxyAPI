@@ -1,0 +1,18 @@
+{
+  "frozen_files_byte_identical": 73,
+  "manifest_sha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+  "source_evidence_files": 21,
+  "source_evidence_bytes": 490278,
+  "artifacts": {
+    "DIAG-05-R2-read-synthetic.jsonl": {
+      "lines": 70,
+      "max_bytes": 1885,
+      "sha256": "df6bbd39a77a4574dcbe289a9ae0266916a375d9427d82183bc08aab8d867ef9"
+    },
+    "DIAG-05-R2-limits-synthetic.jsonl": {
+      "lines": 224,
+      "max_bytes": 1827,
+      "sha256": "ce1c532bf92c615cfa5161ab51cdda4c3d3273b28f7d0c9cb2854f74a3475aeb"
+    }
+  }
+}

@@ -138,3 +138,15 @@ go test -timeout 120s ./sdk/cliproxy/auth -run TestDIAG05ConductorOwnsAttemptIde
 协调窗口发现 server 提前封存与辅助 call attempt 继承的边界缺口，本轮已按 Go 实际生命周期核验并修订。
 此前正文的“最终”测试记录属于初始交付；当前修订与完整验证以
 [DIAG-05-R1-disposition.zh-CN.md](DIAG-05-R1-disposition.zh-CN.md) 为准，新的准确提交 SHA 由任务交付消息给出。
+
+
+## R2 independent-review follow-up
+
+Claude Opus 5.5 reviewed exact R1 HEAD `bb410f92433ada96614caee23d5fb385510e43c5`
+and requested changes (0 P1 / 2 P2). The R2 disposition supersedes the original
+scope/coverage statements above: retryScope is now `conductor_gemini_family`, and
+Antigravity compaction's recursive summary Execute is observed under the outer
+attempt identity while its capsule wrapper is not separately observed.
+See [R2 disposition](DIAG-05-R2-disposition.zh-CN.md) and the complete source
+companion for the revisions and verification. A fresh independent review is
+still required; no push or deployment is included.

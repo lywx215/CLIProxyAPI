@@ -29,7 +29,7 @@ func ExecutorAttempt(ctx context.Context, provider string) context.Context {
 		return ctx
 	}
 	s.attempts++
-	return context.WithValue(ctx, attemptKey{}, attemptIdentity{randomHex(8), "conductor_executor", s.attempts, time.Now()})
+	return context.WithValue(ctx, attemptKey{}, attemptIdentity{randomHex(8), "conductor_gemini_family", s.attempts, time.Now()})
 }
 
 func applyAttempt(ctx context.Context, r *Record) {

@@ -58,7 +58,7 @@ usage tracking stays outside diagnostics and remains the sole caller of
 `MarkUpstreamAttempt` at that boundary. It supplies the `model` call-kind label;
 unclassified synchronous helper calls use `other`. The conductor labels each actual Gemini/Antigravity executor dispatch with a
 locally generated attempt ID and a server-local sequence under
-`conductor_executor`. Explicit re-execution creates a new identity. Only sends explicitly marked `model` by the existing usage wrapper inherit it.
+`conductor_gemini_family`. Explicit re-execution creates a new identity. Only sends explicitly marked `model` by the existing usage wrapper inherit it.
 Authentication, metadata and grounding calls do not acquire a model attempt just
 by sharing the executor context. Redirects retain the source send's model-owner
 label; an auxiliary redirect does not become model-owned. No new business labels
@@ -284,13 +284,14 @@ validation remains unavailable in this Windows environment.
 | Antigravity internal stream-to-nonstream path (including Gemini 3 Pro) | Yes; original frames and actual collected result, deliveryMode=collected | Same Gemini nonstream handler |
 | Gemini-family output to OpenAI chat | Delivered numeric usage, text/thought counts; incomplete tool fragments remain unknown | OpenAI handlers not instrumented in DIAG-05 |
 | Gemini-family output to OpenAI Responses or Claude | Delivered numeric usage only; detailed output counts/result unknown | Those handlers not instrumented in DIAG-05 |
-| Native Gemini Interactions, count-token, Antigravity compaction, auxiliary passthrough | Not covered by these semantic hooks | No claim |
+| Native Gemini Interactions, count-token, auxiliary passthrough | Not covered by these semantic hooks | No claim |
+| Antigravity compaction | Recursive summary `e.Execute` is observed as an ordinary exchange under the outer attempt identity; the compaction wrapper/capsule is not separately observed | No dedicated compaction throttle |
 | Other executors, custom plugins, browser/WS paths, new-api | HTTP matrix above only where applicable | No new dedicated logic |
 
 `protocol.go` retains only bounded numeric summaries, never complete response
 bodies, arguments, signatures, hashes, names or raw errors. Inspection operates
 on bytes already read by the executor. JSON observations are bounded to 4 MiB
-and depth 64; an exceeded bound produces incomplete/unknown observation without
+and depth 64; an exceeded bound produces unknown observation without
 changing the business parser. No frame buffering, additional read, request,
 flush, timeout, retry or response channel is introduced. Upstream frames are
 observed before the existing SSE usage filter, and converted chunks only after
@@ -299,8 +300,9 @@ business/logging responsibility and cannot replace the recorded generation resul
 
 Request before/after counts and the last four message structures distinguish
 caller-supplied empty turns from resulting added empty turns. The frozen contract
-has no `insert_empty` operation or phase label. Unclassified payload changes use the
-allowlisted `other` operation/reason; this does not claim a removed user, a
+has no `insert_empty` operation or phase label. Only differing `contents` positions (up to 16) use the allowlisted `other`
+operation/reason. Envelope/model/config-only changes add no transformation;
+position comparisons do not reconstruct edits or claim a removed user, a
 particular cleanup rationale or any gcli2api normalization. Model aliases and
 credential references remain null; no supposedly-safe model/account string is
 accepted from business data. Other input protocols have unknown request structure.
@@ -373,3 +375,41 @@ inferred for these paths.
 See `coordination/diagnostics/20260924/DIAG-05-R1-disposition.zh-CN.md` for the
 reproductions, exact test outcomes, environmental restrictions and revised HEAD
 handoff. This is a coordinator-requested revision, not a Claude approval.
+
+
+## DIAG-05 R2 review follow-up
+
+Live scanner read errors settle the exchange before the existing Err send in
+Gemini and Antigravity. Gemini retains its preceding DONE conversion and sends;
+Antigravity retains its clean-only tail branch. Native Gemini and OpenAI chat
+converters produce no DONE payload here. Gemini's Responses converter may produce
+`response.completed`; the real Responses forwarder still consumes Err but its
+existing framer suppresses an additional wire error after that terminal. Tests
+preserve this business behavior while requiring the diagnostic read failure
+before server sealing. No new wait, drain, close, retry, EOF or business frame is
+introduced. Cancellation still uses deferred cleanup and the pending/interrupted
+mechanism. An external client cancelling during tail delivery can still interrupt
+capture; this revision does not guarantee late delivery snapshots after sealing.
+
+Size/depth/candidate limits are local observation limits: result/origin/stage/error
+are unknown unless stronger failure/cancellation/block evidence exists,
+parserFinishOk and terminalSeen are null, and both upstream and delivered output
+aggregates are null. Already observed explicit usage snapshots are retained as
+observed evidence, not a claim that the final provider usage was seen. Actual
+malformed JSON/non-object payloads retain parse_error; unsupported string finish
+reasons retain terminal evidence and verified output counts with an unknown
+result. Neither case becomes success. The closed schema is unchanged.
+
+The retry scope is `conductor_gemini_family`: attemptNo counts only those actual
+conductor dispatches, not all providers in a mixed pool or inner HTTP retries.
+Recursive compaction summary exchanges reuse that outer identity; consumers must
+not infer another conductor attempt from another exchange record.
+
+DIAG-06 handoff: process capabilities advertise implemented event families, not
+per-route semantic coverage. Non-Gemini routes can have enabled_throughout DEBUG
+capture with no semantic events; use the matrix above rather than capabilities
+alone to determine applicability. Tests that change the process-wide DEBUG epoch
+or logger configuration must remain serial (no t.Parallel); this is not a
+per-test epoch. Empty conversion results remain conservatively unknown because
+the observer does not prove downstream protocol completion merely from a zero
+output count. Upstream empty classification remains independently available.

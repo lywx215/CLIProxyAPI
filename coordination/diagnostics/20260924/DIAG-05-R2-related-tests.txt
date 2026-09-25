@@ -1,0 +1,8 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	6.035s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	8.737s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth	5.887s
+fork/exec C:\Users\lywx2\AppData\Local\Temp\go-build1049650364\b469\handlers.test.exe: An Application Control policy has blocked this file.
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers	3.245s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini	4.898s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/openai	14.838s
+FAIL

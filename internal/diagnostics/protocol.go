@@ -20,8 +20,14 @@ func ptr[T any](v T) *T { return &v }
 // boundedJSON avoids recursion on hostile input before invoking the JSON parser.
 // Limits affect observation only; payloads are never rewritten or retained.
 func boundedJSON(b []byte) bool {
+	valid, _ := inspectJSON(b)
+	return valid
+}
+
+// A local observation limit is not evidence that upstream JSON is malformed.
+func inspectJSON(b []byte) (valid, limited bool) {
 	if len(b) > maxObservationBytes {
-		return false
+		return false, true
 	}
 	depth, quoted, escape := 0, false, false
 	for _, c := range b {
@@ -41,13 +47,13 @@ func boundedJSON(b []byte) bool {
 		case '[', '{':
 			depth++
 			if depth > 64 {
-				return false
+				return false, true
 			}
 		case ']', '}':
 			depth--
 		}
 	}
-	return gjson.ValidBytes(b)
+	return gjson.ValidBytes(b), false
 }
 
 func protocol(p string) string {
@@ -244,16 +250,28 @@ func summarizeStructure(b []byte) structure {
 	return s
 }
 
-// ObserveNormalized compares already-computed structures. The generic 'other'
-// operation deliberately does not invent a cleanup reason from byte inequality.
+// ObserveNormalized compares bounded message structures and contents only.
+// Positional differences do not identify a cleanup operation or its reason.
 func ObserveNormalized(ctx context.Context, before, after []byte) {
 	Guard(func() {
 		if !DebugActive(ctx) {
 			return
 		}
 		d := normalizedData{Before: summarizeStructure(before), After: summarizeStructure(after), Changes: []transformation{}}
-		if d.Before.Complete && d.After.Complete && !bytes.Equal(before, after) {
-			d.Changes = append(d.Changes, transformation{"other", 0, "other"})
+		if d.Before.Complete && d.After.Complete {
+			contents := func(b []byte) []gjson.Result {
+				r := gjson.ParseBytes(b)
+				if r.Get("request").IsObject() {
+					r = r.Get("request")
+				}
+				return r.Get("contents").Array()
+			}
+			left, right := contents(before), contents(after)
+			for i := 0; i < max(len(left), len(right)) && len(d.Changes) < 16; i++ {
+				if i >= len(left) || i >= len(right) || left[i].Raw != right[i].Raw {
+					d.Changes = append(d.Changes, transformation{"other", i, "other"})
+				}
+			}
 		}
 		semantic(ctx, "request.normalized", d)
 	})
@@ -274,14 +292,14 @@ type Exchange struct {
 	timing               Timing
 }
 type responseObservation struct {
-	usage                                   Usage
-	output                                  Output
-	parsed, terminal, failed, blocked, seen bool
-	candidates                              map[int64]bool
+	usage                                                            Usage
+	output                                                           Output
+	malformed, limited, unsupported, terminal, failed, blocked, seen bool
+	candidates                                                       map[int64]bool
 }
 
 func newObservation(p string) responseObservation {
-	return responseObservation{candidates: make(map[int64]bool), usage: unknownUsage(p), parsed: true, output: Output{ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0))}}
+	return responseObservation{candidates: make(map[int64]bool), usage: unknownUsage(p), output: Output{ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0)), ptr(int64(0))}}
 }
 func NewExchange(ctx context.Context, outputProtocol string, upstreamStream, clientStream bool) (exchange *Exchange) {
 	defer func() {
@@ -379,13 +397,15 @@ func (o *responseObservation) observePayload(b []byte, source string, stream boo
 	if bytes.Equal(b, []byte("[DONE]")) {
 		return
 	}
-	if !boundedJSON(b) {
-		o.parsed = false
+	valid, limited := inspectJSON(b)
+	if !valid {
+		o.limited = o.limited || limited
+		o.malformed = o.malformed || !limited
 		return
 	}
 	r := gjson.ParseBytes(b)
 	if !r.IsObject() {
-		o.parsed = false
+		o.malformed = true
 		return
 	}
 	if r.Get("response").IsObject() {
@@ -420,12 +440,16 @@ func (o *responseObservation) observePayload(b []byte, source string, stream boo
 			}
 			if _, known := o.candidates[index]; !known {
 				if len(o.candidates) >= 64 {
-					o.parsed = false
+					o.limited = true
 					continue
 				}
 				o.candidates[index] = false
 			}
-			switch c.Get("finishReason").String() {
+			finish := c.Get("finishReason")
+			if finish.Exists() && finish.Type != gjson.String {
+				o.unsupported = true
+			}
+			switch finish.Str {
 			case "STOP", "MAX_TOKENS":
 				o.candidates[index] = true
 			case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY":
@@ -433,7 +457,10 @@ func (o *responseObservation) observePayload(b []byte, source string, stream boo
 				o.blocked = true
 			case "":
 			default:
-				o.parsed = false
+				// A provider string outside our vocabulary is terminal evidence,
+				// not invalid JSON and not proof of successful generation.
+				o.candidates[index] = true
+				o.unsupported = true
 			}
 			for _, part := range c.Get("content.parts").Array() {
 				if text := part.Get("text"); text.Type == gjson.String {
@@ -514,10 +541,12 @@ func (x *Exchange) finish(err error) {
 			result, origin, stage, class = "error", "upstream", "dispatch", "transport_error"
 		} else if err != nil || x.readErr || x.status >= 400 || x.up.failed {
 			result, origin, stage, class = "error", "upstream", "read", "other"
-		} else if !x.up.parsed {
+		} else if x.up.malformed {
 			result, origin, stage, class = "incomplete", "upstream", "parse", "parse_error"
 		} else if x.up.blocked {
 			result, origin, stage, class = "blocked", "upstream", "read", "blocked"
+		} else if x.up.limited || x.up.unsupported {
+			// Keep the default unknown classification; limits are local evidence.
 		} else if x.ended && x.up.seen {
 			if !x.up.terminal {
 				result, origin, stage, class = "incomplete", "upstream", "read", "incomplete"
@@ -527,12 +556,12 @@ func (x *Exchange) finish(err error) {
 				result, origin, stage, class = "empty", "upstream", "read", "empty"
 			}
 		}
-		parsed := x.up.parsed && x.up.seen && x.ended && !x.readErr
-		output := x.up.output
-		if !x.up.seen || !x.up.parsed {
-			output = Output{}
+		parsed := ptr(!x.up.malformed && x.up.seen && x.ended && !x.readErr)
+		terminal := ptr(x.up.terminal)
+		if x.up.limited {
+			parsed, terminal = nil, nil
 		}
-		semantic(x.ctx, "upstream.attempt_finished", attemptData{Result: result, Origin: origin, Stage: stage, Error: class, Usage: x.up.usage, Output: output, Terminal: ptr(x.up.terminal), EOF: ptr(x.ended && !x.readErr), Parsed: &parsed, Total: ptr(elapsed(x.started)), CredentialScope: "unknown", Timing: x.timing})
+		semantic(x.ctx, "upstream.attempt_finished", attemptData{Result: result, Origin: origin, Stage: stage, Error: class, Usage: x.up.usage, Output: x.up.observedOutput(), Terminal: terminal, EOF: ptr(x.ended && !x.readErr), Parsed: parsed, Total: ptr(elapsed(x.started)), CredentialScope: "unknown", Timing: x.timing})
 		if x.converted {
 			mode := "nonstream"
 			if x.clientStream {
@@ -541,10 +570,18 @@ func (x *Exchange) finish(err error) {
 				mode = "collected"
 			}
 			deliveredResult := result
-			if !x.down.parsed || !effective(x.down.output) {
+			if x.down.malformed || x.down.limited || x.down.unsupported || !effective(x.down.output) {
 				deliveredResult = "unknown"
 			}
-			semantic(x.ctx, "response.converted", convertedData{"gemini", x.down.usage.Protocol, x.clientStream, x.stream, mode, x.up.usage, x.down.usage, x.down.output, deliveredResult})
+			semantic(x.ctx, "response.converted", convertedData{"gemini", x.down.usage.Protocol, x.clientStream, x.stream, mode, x.up.usage, x.down.usage, x.down.observedOutput(), deliveredResult})
 		}
 	})
+}
+
+// Partial counts cannot be advertised as complete output aggregates.
+func (o *responseObservation) observedOutput() Output {
+	if !o.seen || o.malformed || o.limited {
+		return Output{}
+	}
+	return o.output
 }

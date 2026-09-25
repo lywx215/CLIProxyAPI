@@ -1,0 +1,56 @@
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+--- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup (0.02s)
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/bootstrap (0.01s)
+        diagnostics_read_error_test.go:127: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:134: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/partial (0.00s)
+        diagnostics_read_error_test.go:127: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:200]
+        diagnostics_read_error_test.go:134: attempt=0 server=1 business error=data: {"candidates":[{"content":{"parts":[{"text":"fixture output"}]}}]}
+
+            event: error
+            data: {"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/bootstrap (0.00s)
+        diagnostics_read_error_test.go:127: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/chat/completions totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:134: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/partial (0.00s)
+        diagnostics_read_error_test.go:127: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:2 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1/chat/completions totalMs:0 wireStatus:200]
+        diagnostics_read_error_test.go:134: attempt=0 server=1 business error=data: {"id":"","object":"chat.completion.chunk","created":0,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","content":"fixture output","reasoning_content":null,"tool_calls":null},"finish_reason":null,"native_finish_reason":null}]}
+
+            data: {"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+
+        diagnostics_read_error_test.go:139: existing Gemini DONE tail changed
+    --- FAIL: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/bootstrap (0.00s)
+        diagnostics_read_error_test.go:127: error delivery preceded settlement: map[callCount:1 coverage:map[accessCapture:unknown debugCapture:interrupted droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0] deliveryState:local_finished endReason:finished headersCommitted:true routeTemplate:/v1beta/models/*action totalMs:0 wireStatus:500]
+        diagnostics_read_error_test.go:134: attempt=0 server=1 business error={"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}
+panic: deadlock: main bubble goroutine has exited but blocked goroutines remain [recovered, repanicked]
+
+goroutine 82 [running]:
+testing.tRunner.func1.2({0x7ff6199ffa60, 0x379a2a3a7c38})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1974 +0x239
+testing.tRunner.func1()
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1977 +0x349
+panic({0x7ff6199ffa60?, 0x379a2a3a7c38?})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/panic.go:860 +0x13a
+internal/synctest.Run(0x379a2a7b8c60)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/synctest.go:251 +0x2f4
+testing/synctest.Test(0x379a2aa0f200, 0x379a2a997b30)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/synctest/synctest.go:290 +0x90
+github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor.TestDIAG05GinReadErrorBeforeExchangeCleanup.func1(0x379a2aa0f200)
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/runtime/executor/diagnostics_read_error_test.go:57 +0xc7
+testing.tRunner(0x379a2aa0f200, 0x379a2a997ad0)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2036 +0xc3
+created by testing.(*T).Run in goroutine 50
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2101 +0x4a9
+
+goroutine 87 [chan receive (durable), synctest bubble 5]:
+github.com/router-for-me/CLIProxyAPI/v7/internal/cache.startCacheCleanup.func1()
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/cache/signature_cache.go:85 +0x89
+created by github.com/router-for-me/CLIProxyAPI/v7/internal/cache.startCacheCleanup in goroutine 85
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/cache/signature_cache.go:82 +0x1a
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	8.020s
+FAIL

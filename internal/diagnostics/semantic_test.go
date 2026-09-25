@@ -153,12 +153,12 @@ func TestSemanticTimingUsesServerOriginAndNewExchange(t *testing.T) {
 func TestSemanticMalformedSSEIsNotRecursive(t *testing.T) {
 	o := newObservation("gemini")
 	o.observe([]byte(strings.Repeat("data:", 100000)+"{}"), "upstream", true)
-	if o.parsed {
+	if !o.malformed {
 		t.Fatal("nested SSE prefixes accepted")
 	}
 	scalar := newObservation("gemini")
 	scalar.observe([]byte("1"), "upstream", false)
-	if scalar.parsed {
+	if !scalar.malformed {
 		t.Fatal("scalar response accepted")
 	}
 }
