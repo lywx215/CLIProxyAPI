@@ -1,0 +1,7 @@
+{
+  "pythonExitCode": 1,
+  "outerShellExitCode": 0,
+  "subsequentNodeExitCode": 0,
+  "reason": "manual ast.parse reader used Windows default GBK for UTF-8 source; UnicodeDecodeError before parsing run.py",
+  "fix": "explicit UTF-8; separate Python and Node exit files"
+}

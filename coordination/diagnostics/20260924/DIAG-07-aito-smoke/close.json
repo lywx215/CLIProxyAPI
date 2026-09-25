@@ -1,0 +1,38 @@
+[
+  {
+    "label": "cpa2",
+    "pid": 50048,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "cpa1",
+    "pid": 65236,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "aito2",
+    "pid": 60976,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 4,
+      "bytes": 26392
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "aito1",
+    "pid": 57632,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 4,
+      "bytes": 26401
+    },
+    "exitCode": 0
+  }
+]

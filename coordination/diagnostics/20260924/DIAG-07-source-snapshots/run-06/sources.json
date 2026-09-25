@@ -1,0 +1,26 @@
+{
+  "cmd/diag-integration/main.go": {
+    "sha256": "393abcdcaab6af5b449d2777debd180dbee49a70bb4cb9caee878bc49e3842e0",
+    "snapshot": "DIAG-07-source-snapshots/run-06/main.go.txt"
+  },
+  "scripts/diag-integration/run.py": {
+    "sha256": "5554ddbe94f8088c6e7d3dc043ad877b93a8d54d1df76fc900d9551b057a0516",
+    "snapshot": "DIAG-07-source-snapshots/run-06/run.py.txt"
+  },
+  "scripts/diag-integration/gcli-wrapper.py": {
+    "sha256": "57c3c6d518fa954e59ad72ddd0595309def4fd0a5d303c57bfb0fd7ab9bb53e8",
+    "snapshot": "DIAG-07-source-snapshots/run-06/gcli-wrapper.py.txt"
+  },
+  "scripts/diag-integration/aito-wrapper.cjs": {
+    "sha256": "39a13adcbadd472fef9312a2bce8cf6984244111464ec3dc1e0685dff24e5e78",
+    "snapshot": "DIAG-07-source-snapshots/run-06/aito-wrapper.cjs.txt"
+  },
+  "scripts/diag-integration/check_evidence.py": {
+    "sha256": "64e107aad262e35eba338279f62b8c02b68cd7fd187b6f046ee22a70e6458d63",
+    "snapshot": "DIAG-07-source-snapshots/run-06/check_evidence.py.txt"
+  },
+  "scripts/diag-integration/check_offline.py": {
+    "sha256": "5a97b1ebb69a1125433aea5bcb641c18c3869bb840041402e7f7f38611ded042",
+    "snapshot": "DIAG-07-source-snapshots/run-06/check_offline.py.txt"
+  }
+}

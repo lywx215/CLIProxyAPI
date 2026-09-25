@@ -1,0 +1,29 @@
+{
+  "sixInstances": false,
+  "processes": [
+    {
+      "label": "gcli1",
+      "pid": 55792,
+      "port": 64158,
+      "alive": true
+    },
+    {
+      "label": "gcli2",
+      "pid": 8700,
+      "port": 64170,
+      "alive": true
+    },
+    {
+      "label": "aito1",
+      "pid": 65668,
+      "port": 64188,
+      "alive": true
+    },
+    {
+      "label": "aito2",
+      "pid": 56600,
+      "port": 64190,
+      "alive": true
+    }
+  ]
+}

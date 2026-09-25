@@ -1,0 +1,107 @@
+[
+  {
+    "alias": "cpa",
+    "bytes": 20134,
+    "sha256": "4f8b4615fa115e3fa7ea1236bce6482d1816b2a688dcf1e08e3610cf557a6f96",
+    "maxLineBytes": 1969,
+    "source": [
+      {
+        "id": 1,
+        "alias": "cpa",
+        "trusted": true,
+        "knownLoss": false,
+        "fileSize": 20134,
+        "scannedBytes": 20134,
+        "lines": 35,
+        "accepted": 12,
+        "quarantined": 1,
+        "legacyLines": 22,
+        "completeScan": true,
+        "sha256": "4f8b4615fa115e3fa7ea1236bce6482d1816b2a688dcf1e08e3610cf557a6f96",
+        "resources": [
+          {
+            "environment": "test",
+            "deploymentId": "diag07-local",
+            "service": "cliproxyapi",
+            "instanceId": "cpa1",
+            "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+          }
+        ],
+        "findings": [
+          "legacy_text_omitted",
+          "quarantined_lines"
+        ]
+      }
+    ],
+    "quarantined": [
+      {
+        "source": 1,
+        "line": 9,
+        "bytes": 66,
+        "lengthComplete": true,
+        "reason": "schema_invalid"
+      }
+    ],
+    "coverage": [
+      {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      }
+    ],
+    "command": "diag-analyze -input cpa=<LOCAL_RAW_STDOUT> -trust cpa -format json"
+  },
+  {
+    "alias": "gcli",
+    "bytes": 98559,
+    "sha256": "f14bdf43cb61c2ad07a46fc16e83420a1ab9c6e961b1f6722bc93a22426c93ee",
+    "maxLineBytes": 304,
+    "source": [
+      {
+        "id": 1,
+        "alias": "gcli",
+        "trusted": true,
+        "knownLoss": false,
+        "fileSize": 98559,
+        "scannedBytes": 98559,
+        "lines": 911,
+        "accepted": 0,
+        "quarantined": 1,
+        "legacyLines": 906,
+        "completeScan": true,
+        "sha256": "f14bdf43cb61c2ad07a46fc16e83420a1ab9c6e961b1f6722bc93a22426c93ee",
+        "resources": [],
+        "findings": [
+          "legacy_text_omitted",
+          "quarantined_lines"
+        ]
+      }
+    ],
+    "quarantined": [
+      {
+        "source": 1,
+        "line": 911,
+        "bytes": 32,
+        "lengthComplete": true,
+        "reason": "schema_invalid"
+      }
+    ],
+    "coverage": [],
+    "command": "diag-analyze -input gcli=<LOCAL_RAW_STDOUT> -trust gcli -format json"
+  }
+]

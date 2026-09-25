@@ -1,0 +1,834 @@
+{
+  "reportVersion": "diag-analyze/1",
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+  "query": {},
+  "candidateTraces": [
+    "46acaf688974d1106ba360554c530918",
+    "939e5815c2b554078aa696ee3499ff60",
+    "eef3888cf91ff99e8e9159513d3a56b1",
+    "fda20bbe60196920933457ca4a81afc0"
+  ],
+  "aliasCandidates": [],
+  "sources": [
+    {
+      "id": 1,
+      "alias": "aito2",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 951,
+      "scannedBytes": 951,
+      "lines": 1,
+      "accepted": 1,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "6161d775ad101ad80eb6bba7b51beb4b17384b33e42f2d18961677b4af3ec3a0",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "diag07-local",
+          "service": "aitoapi",
+          "instanceId": "aito2",
+          "bootId": "359ccc4e-4bd1-4c93-98c2-a1e76bd33c91"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 2,
+      "alias": "aito1",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 951,
+      "scannedBytes": 951,
+      "lines": 1,
+      "accepted": 1,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "c547afedd5814692be7a64c655e6a6e62d9b0bb469b7d18d7340bac3f6a002ce",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "diag07-local",
+          "service": "aitoapi",
+          "instanceId": "aito1",
+          "bootId": "4414727f-8aab-40bf-a672-9bf36e614b7e"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 3,
+      "alias": "gcli2",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 3219,
+      "scannedBytes": 3219,
+      "lines": 3,
+      "accepted": 3,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "762a2f7aadb0a293028aa456a62dc4a94313b82691ce9c3e0fa868a5819572cd",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "diag07-local",
+          "service": "gcli2api",
+          "instanceId": "gcli2",
+          "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f"
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 4,
+      "alias": "gcli1",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 3218,
+      "scannedBytes": 3218,
+      "lines": 3,
+      "accepted": 3,
+      "quarantined": 0,
+      "legacyLines": 0,
+      "completeScan": true,
+      "sha256": "28dd2e982dd620e3aaf98d0849f93b2cf68509ec3980296990d99527be842bc7",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "diag07-local",
+          "service": "gcli2api",
+          "instanceId": "gcli1",
+          "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9"
+        }
+      ],
+      "findings": []
+    }
+  ],
+  "quarantined": [],
+  "quarantineDetailsOmitted": 0,
+  "limited": false,
+  "limits": {
+    "bytes": 134217728,
+    "lines": 250000,
+    "records": 20000,
+    "issues": 1000
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli2",
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f"
+      },
+      "kind": "server",
+      "traceId": "939e5815c2b554078aa696ee3499ff60",
+      "spanId": "09d846a8ca55cd70",
+      "parentSpanId": "",
+      "serverSpanId": "09d846a8ca55cd70",
+      "requestId": "bef62080-b491-4547-bc4a-e69db2dfff98",
+      "events": [
+        4
+      ],
+      "trusted": true,
+      "findings": [
+        "root"
+      ],
+      "coverage": {
+        "debugCoverage": "full",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 0
+    },
+    {
+      "id": 2,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli2",
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f"
+      },
+      "kind": "server",
+      "traceId": "46acaf688974d1106ba360554c530918",
+      "spanId": "2f2c5f023c47df8c",
+      "parentSpanId": "",
+      "serverSpanId": "2f2c5f023c47df8c",
+      "requestId": "aaa8f781-12f4-47c8-baaa-ab263d4365c9",
+      "events": [
+        5
+      ],
+      "trusted": true,
+      "findings": [
+        "root"
+      ],
+      "coverage": {
+        "debugCoverage": "full",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 0
+    },
+    {
+      "id": 3,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli1",
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9"
+      },
+      "kind": "server",
+      "traceId": "fda20bbe60196920933457ca4a81afc0",
+      "spanId": "90829a596c3e1516",
+      "parentSpanId": "",
+      "serverSpanId": "90829a596c3e1516",
+      "requestId": "d95abef4-3136-451a-bd6b-fb90b5560fde",
+      "events": [
+        7
+      ],
+      "trusted": true,
+      "findings": [
+        "root"
+      ],
+      "coverage": {
+        "debugCoverage": "full",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 0
+    },
+    {
+      "id": 4,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli1",
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9"
+      },
+      "kind": "server",
+      "traceId": "eef3888cf91ff99e8e9159513d3a56b1",
+      "spanId": "6bd74c4b5acbe2be",
+      "parentSpanId": "",
+      "serverSpanId": "6bd74c4b5acbe2be",
+      "requestId": "fab58cbe-3aba-4be6-980a-5fbd58eb7194",
+      "events": [
+        8
+      ],
+      "trusted": true,
+      "findings": [
+        "root"
+      ],
+      "coverage": {
+        "debugCoverage": "full",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 0
+    }
+  ],
+  "edges": [],
+  "evidence": [
+    {
+      "id": 4,
+      "identity": "gcli2api|gcli2|d4545020-f420-4a29-bf24-43b3cefa906f|09d846a8ca55cd70|n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 0,
+          "coverage": {
+            "accessCapture": "enabled_throughout",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": 0,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": 0,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/__health",
+          "totalMs": 15.877,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "gcli2",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "bef62080-b491-4547-bc4a-e69db2dfff98",
+        "retryScope": null,
+        "serverSpanId": "09d846a8ca55cd70",
+        "service": "gcli2api",
+        "spanId": "09d846a8ca55cd70",
+        "spanKind": "server",
+        "traceId": "939e5815c2b554078aa696ee3499ff60",
+        "ts": "2026-09-25T09:25:16.502Z"
+      },
+      "provenance": [
+        {
+          "source": 3,
+          "line": 2,
+          "bytes": 1125
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 5,
+      "identity": "gcli2api|gcli2|d4545020-f420-4a29-bf24-43b3cefa906f|2f2c5f023c47df8c|n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 0,
+          "coverage": {
+            "accessCapture": "enabled_throughout",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": 0,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": 0,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/__shutdown",
+          "totalMs": 0.906,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "gcli2",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "aaa8f781-12f4-47c8-baaa-ab263d4365c9",
+        "retryScope": null,
+        "serverSpanId": "2f2c5f023c47df8c",
+        "service": "gcli2api",
+        "spanId": "2f2c5f023c47df8c",
+        "spanKind": "server",
+        "traceId": "46acaf688974d1106ba360554c530918",
+        "ts": "2026-09-25T09:25:23.000Z"
+      },
+      "provenance": [
+        {
+          "source": 3,
+          "line": 3,
+          "bytes": 1126
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 7,
+      "identity": "gcli2api|gcli1|b01a2bce-fea6-44f6-a5fc-a13d639175f9|90829a596c3e1516|n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 0,
+          "coverage": {
+            "accessCapture": "enabled_throughout",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": 0,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": 0,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/__health",
+          "totalMs": 17.381,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "gcli1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "d95abef4-3136-451a-bd6b-fb90b5560fde",
+        "retryScope": null,
+        "serverSpanId": "90829a596c3e1516",
+        "service": "gcli2api",
+        "spanId": "90829a596c3e1516",
+        "spanKind": "server",
+        "traceId": "fda20bbe60196920933457ca4a81afc0",
+        "ts": "2026-09-25T09:25:15.355Z"
+      },
+      "provenance": [
+        {
+          "source": 4,
+          "line": 2,
+          "bytes": 1125
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 8,
+      "identity": "gcli2api|gcli1|b01a2bce-fea6-44f6-a5fc-a13d639175f9|6bd74c4b5acbe2be|n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 0,
+          "coverage": {
+            "accessCapture": "enabled_throughout",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": 0,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": 0,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/__shutdown",
+          "totalMs": 0.69,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "gcli1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "fab58cbe-3aba-4be6-980a-5fbd58eb7194",
+        "retryScope": null,
+        "serverSpanId": "6bd74c4b5acbe2be",
+        "service": "gcli2api",
+        "spanId": "6bd74c4b5acbe2be",
+        "spanKind": "server",
+        "traceId": "eef3888cf91ff99e8e9159513d3a56b1",
+        "ts": "2026-09-25T09:25:23.192Z"
+      },
+      "provenance": [
+        {
+          "source": 4,
+          "line": 3,
+          "bytes": 1125
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    }
+  ],
+  "processEvidence": [
+    {
+      "id": 1,
+      "identity": "aitoapi|aito2|359ccc4e-4bd1-4c93-98c2-a1e76bd33c91||n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "359ccc4e-4bd1-4c93-98c2-a1e76bd33c91",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": null,
+        "data": {
+          "accessEnabled": true,
+          "capabilities": [
+            "http_inbound",
+            "browser_dispatch",
+            "attempt_result",
+            "conversion"
+          ],
+          "configRevision": "1",
+          "configStatus": "valid",
+          "contractVersion": "1.0.0-rc.1",
+          "debugEnabled": true,
+          "pid": 64232,
+          "reason": "startup",
+          "sinkDroppedTotal": 0
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.process",
+        "instanceId": "aito2",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": null,
+        "retryScope": null,
+        "serverSpanId": null,
+        "service": "aitoapi",
+        "spanId": null,
+        "spanKind": "process",
+        "traceId": null,
+        "ts": "2026-09-25T09:25:17.714Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 1,
+          "bytes": 951
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 2,
+      "identity": "aitoapi|aito1|4414727f-8aab-40bf-a672-9bf36e614b7e||n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "4414727f-8aab-40bf-a672-9bf36e614b7e",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": null,
+        "data": {
+          "accessEnabled": true,
+          "capabilities": [
+            "http_inbound",
+            "browser_dispatch",
+            "attempt_result",
+            "conversion"
+          ],
+          "configRevision": "1",
+          "configStatus": "valid",
+          "contractVersion": "1.0.0-rc.1",
+          "debugEnabled": true,
+          "pid": 53856,
+          "reason": "startup",
+          "sinkDroppedTotal": 0
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.process",
+        "instanceId": "aito1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": null,
+        "retryScope": null,
+        "serverSpanId": null,
+        "service": "aitoapi",
+        "spanId": null,
+        "spanKind": "process",
+        "traceId": null,
+        "ts": "2026-09-25T09:25:17.067Z"
+      },
+      "provenance": [
+        {
+          "source": 2,
+          "line": 1,
+          "bytes": 951
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 3,
+      "identity": "gcli2api|gcli2|d4545020-f420-4a29-bf24-43b3cefa906f||n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": null,
+        "data": {
+          "accessEnabled": true,
+          "capabilities": [
+            "http_inbound",
+            "http_outbound",
+            "normalization",
+            "attempt_result",
+            "conversion"
+          ],
+          "configRevision": "1",
+          "configStatus": "defaults",
+          "contractVersion": "1.0.0-rc.1",
+          "debugEnabled": true,
+          "pid": 43972,
+          "reason": "startup",
+          "sinkDroppedTotal": 0
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.process",
+        "instanceId": "gcli2",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": null,
+        "retryScope": null,
+        "serverSpanId": null,
+        "service": "gcli2api",
+        "spanId": null,
+        "spanKind": "process",
+        "traceId": null,
+        "ts": "2026-09-25T09:25:15.983Z"
+      },
+      "provenance": [
+        {
+          "source": 3,
+          "line": 1,
+          "bytes": 968
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 6,
+      "identity": "gcli2api|gcli1|b01a2bce-fea6-44f6-a5fc-a13d639175f9||n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": null,
+        "data": {
+          "accessEnabled": true,
+          "capabilities": [
+            "http_inbound",
+            "http_outbound",
+            "normalization",
+            "attempt_result",
+            "conversion"
+          ],
+          "configRevision": "1",
+          "configStatus": "defaults",
+          "contractVersion": "1.0.0-rc.1",
+          "debugEnabled": true,
+          "pid": 27956,
+          "reason": "startup",
+          "sinkDroppedTotal": 0
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.process",
+        "instanceId": "gcli1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": null,
+        "retryScope": null,
+        "serverSpanId": null,
+        "service": "gcli2api",
+        "spanId": null,
+        "spanKind": "process",
+        "traceId": null,
+        "ts": "2026-09-25T09:25:14.877Z"
+      },
+      "provenance": [
+        {
+          "source": 4,
+          "line": 1,
+          "bytes": 968
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    }
+  ],
+  "counts": {
+    "requests": 4,
+    "observedServerOwners": 4,
+    "callCount": 0,
+    "knownAttemptCount": 0,
+    "unknownAttemptCallCount": 0,
+    "requestFailures": 0,
+    "callFailures": 0,
+    "attemptFailures": 0,
+    "conflicted": false
+  },
+  "byResource": [
+    {
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli1",
+        "bootId": "b01a2bce-fea6-44f6-a5fc-a13d639175f9"
+      },
+      "counts": {
+        "requests": 2,
+        "observedServerOwners": 2,
+        "callCount": 0,
+        "knownAttemptCount": 0,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      }
+    },
+    {
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "gcli2api",
+        "instanceId": "gcli2",
+        "bootId": "d4545020-f420-4a29-bf24-43b3cefa906f"
+      },
+      "counts": {
+        "requests": 2,
+        "observedServerOwners": 2,
+        "callCount": 0,
+        "knownAttemptCount": 0,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      }
+    }
+  ],
+  "notes": [
+    "Trace IDs and caller aliases select candidates; they do not prove a relationship.",
+    "Verified means unique bilateral evidence from operator-controlled sources, not cryptographic proof.",
+    "Coverage is relative to observed exports and instrumented paths; process capabilities do not prove route coverage or a complete export tail.",
+    "Usage snapshots are last-observed, not proven final. Upstream and delivered observations remain separate; no token totals are recomputed, and 87 is not an error class.",
+    "Missing DEBUG events do not prove that a business stage did not execute. Wall clocks never establish edges or ordering across spans.",
+    "Counts describe observed identities, not inferred retries or resolved business totals. Conflicts remain explicit; request/call/attempt failures are separate observed counts."
+  ]
+}

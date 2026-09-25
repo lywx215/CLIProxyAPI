@@ -1,0 +1,20 @@
+{
+  "cpa": {
+    "head": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+    "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+    "contractFiles": 73,
+    "trackedProductionClean": true
+  },
+  "gcli": {
+    "head": "0b3a07e003ead2ba7a9f7827426c09f8ff996813",
+    "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+    "contractFiles": 73,
+    "trackedProductionClean": true
+  },
+  "aito": {
+    "head": "a2d51383bc91751f23bc0f8927c19ef736593cea",
+    "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+    "contractFiles": 73,
+    "trackedProductionClean": true
+  }
+}

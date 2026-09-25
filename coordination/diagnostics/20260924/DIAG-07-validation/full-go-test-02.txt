@@ -1,0 +1,134 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/diag-analyze	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/cmd/diag-integration	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_antigravity_models	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_codex_models	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/cmd/fetch_devin_models	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/cmd/server	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/cmd/validate_codex_models	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/coordination/diagnostics/20260924/DIAG-07-source-snapshots/run-06	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/custom-provider	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/http-request	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/examples/translator	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/access	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/access/config_access	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/api	6.353s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/api/handlers/management	5.648s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/api/middleware	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/antigravity	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/devin	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/empty	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/kimi	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/meta	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/vertex	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/browser	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/buildinfo	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/cache	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/claude/models	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/live	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/models	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/optimize-multi-agent-v2	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/client/grokbuild	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/cmd	4.409s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/config	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/constant	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/credentialweight	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnosticanalyzer	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	5.325s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/discovery	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/home	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/homeplugins	4.116s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/htmlsanitize	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/httpfetch	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/httpwire	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/logging	4.230s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/managementasset	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/misc	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/modelconfig	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/pluginstore	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/redisqueue	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/registry	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	7.832s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/geminicli	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/safemode	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/signature	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/store	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/antigravity	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/claude	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/codex	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/gemini	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/interactions	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/kimi	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/openai	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/thinking/provider/xai	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator	(cached) [no tests to run]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/interactions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/openai/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/antigravity/openai/responses	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/interactions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/openai/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/claude/openai/responses	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/interactions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/openai/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/codex/openai/responses	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/common	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/claude	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/common	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/interactions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/openai/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/gemini/openai/responses	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/interactions	1.047s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/interactions/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/interactions/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/interactions/responses	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/openai/chat-completions	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/openai/openai/responses	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/translator/translator	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/tui	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/internal/usage	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/util	2.238s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/diff	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/synthesizer	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/wsrelay	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/scratch	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/access	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/api	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/claude	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/openai	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/auth	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executionregistry	2.653s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/pipeline	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/session	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/config	[no test files]
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/logging	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginhost	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginstore	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil	(cached)
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/translator	(cached)
+?   	github.com/router-for-me/CLIProxyAPI/v7/sdk/translator/builtin	[no test files]
+ok  	github.com/router-for-me/CLIProxyAPI/v7/test	(cached)

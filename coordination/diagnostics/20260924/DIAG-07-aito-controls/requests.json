@@ -1,0 +1,24 @@
+[
+  {
+    "id": "fake-stream-reasoning",
+    "status": 200,
+    "headers": {
+      "x-diag-request-id": "req_1790329633240_s8rsrcjmh",
+      "x-diag-trace-id": "eb0b1ea3864f30a6a4febc6560a5b37e"
+    },
+    "body": "data: {\"choices\":[{\"delta\":{\"content\":\"synthetic response\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1790329633,\"id\":\"chatcmpl-1790329633249_tnday1pewk\",\"model\":\"diag-reasoning\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1790329633,\"id\":\"chatcmpl-1790329633249_tnday1pewk\",\"model\":\"diag-reasoning\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":100,\"completion_tokens_details\":{\"image_tokens\":0,\"output_text_tokens\":87,\"reasoning_tokens\":13},\"prompt_tokens\":3,\"prompt_tokens_details\":{\"text_tokens\":3,\"tool_tokens\":0},\"total_tokens\":103}}\n\ndata: [DONE]\n\n",
+    "headersMs": 16.00000000325963,
+    "completeMs": 16.00000000325963,
+    "cancelledAfterByte": false,
+    "readError": null
+  },
+  {
+    "id": "inflight-debug-disabled",
+    "status": 200,
+    "headers": {
+      "x-diag-request-id": "req_1790329633256_ixplo7a5p",
+      "x-diag-trace-id": "cb880bf5c8c5f3af0287d6cb92f55c8f"
+    },
+    "body": "data: {\"choices\":[{\"delta\":{\"content\":\"synthetic response\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1790329633,\"id\":\"chatcmpl-1790329633359_is1widsl5v\",\"model\":\"diag-slow\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1790329633,\"id\":\"chatcmpl-1790329633359_is1widsl5v\",\"model\":\"diag-slow\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":87,\"completion_tokens_details\":{\"image_tokens\":0,\"output_text_tokens\":87,\"reasoning_tokens\":0},\"prompt_tokens\":3,\"prompt_tokens_details\":{\"text_tokens\":3,\"tool_tokens\":0},\"total_tokens\":90}}\n\ndata: [DONE]\n\n"
+  }
+]

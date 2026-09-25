@@ -1,0 +1,4 @@
+{
+  "command": "diag-analyze -input <each exported file> -trust <each controlled source> -format json",
+  "exitCode": 0
+}

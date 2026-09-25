@@ -1,0 +1,76 @@
+[
+  {
+    "label": "aito2",
+    "pid": 56600,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 4,
+      "bytes": 26321
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "gcli2",
+    "pid": 8700,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "aito4",
+    "pid": 59824,
+    "hardKill": true,
+    "exitCode": 1
+  },
+  {
+    "label": "gcli5",
+    "pid": 44780,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "gcli4",
+    "pid": 35460,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "aito3",
+    "pid": 59256,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 1,
+      "bytes": 7303
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "gcli3",
+    "pid": 50920,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "aito1",
+    "pid": 65668,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 32,
+      "bytes": 175854
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "gcli1",
+    "pid": 55792,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "sourceRelative": "DIAG-07-coordinator-acceptance.zh-CN.md",
+    "file": "DIAG-07-coordinator-acceptance.zh-CN.md",
+    "originalSha256": "c8dda3321843fe69fb726acc8762f3e7d3a8395aeb1743609371955b3cb614a5",
+    "redactedSha256": "2ae98ffc04cfdc7c821e760ef8145c622eda050ab9b2fe74b14f8dcf97ff617d",
+    "transformation": "replace profile and saved-project roots only"
+  },
+  {
+    "sourceRelative": "DIAG-06-07-coordinator-handoff.zh-CN.md",
+    "file": "DIAG-06-07-coordinator-handoff.zh-CN.md",
+    "originalSha256": "b99c326a90271905213c9c6cd827b6762041da8436944dcfbc44f4b31c0ab064",
+    "redactedSha256": "b99c326a90271905213c9c6cd827b6762041da8436944dcfbc44f4b31c0ab064",
+    "transformation": "replace profile and saved-project roots only"
+  },
+  {
+    "sourceRelative": "DELIVERY_STATUS_CN.md",
+    "file": "DELIVERY_STATUS_CN.md",
+    "originalSha256": "16cd83b601f6d619138ccefb91d184e160601817791c897be65b7bfa52f3831d",
+    "redactedSha256": "16cd83b601f6d619138ccefb91d184e160601817791c897be65b7bfa52f3831d",
+    "transformation": "replace profile and saved-project roots only"
+  },
+  {
+    "sourceRelative": "manifest.json",
+    "file": "manifest.json",
+    "originalSha256": "859b61c1348b4ebdbc2a325ca190825b85bae664883289e57927c9ecae613f9c",
+    "redactedSha256": "f45196cf8aa09df9a1a0e9a187c07f1a21e773a4a98374391e95d684557b3eb7",
+    "transformation": "replace profile and saved-project roots only"
+  },
+  {
+    "sourceRelative": "reviews/DIAG-06-R2/disposition.md",
+    "file": "DIAG-06-R2-disposition.md",
+    "originalSha256": "fd2b8903b540a7a4d46311305e0753d96a00c0cbf75b9c784a4f4151b922f620",
+    "redactedSha256": "fd2b8903b540a7a4d46311305e0753d96a00c0cbf75b9c784a4f4151b922f620",
+    "transformation": "replace profile and saved-project roots only"
+  }
+]

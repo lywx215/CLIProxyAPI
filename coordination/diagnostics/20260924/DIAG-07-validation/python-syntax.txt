@@ -1,0 +1,4 @@
+syntax check_evidence.py OK
+syntax check_offline.py OK
+syntax gcli-wrapper.py OK
+syntax run.py OK

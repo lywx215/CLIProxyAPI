@@ -1,0 +1,224 @@
+=== RUN   TestCallTerminalLifecycle
+=== RUN   TestCallTerminalLifecycle/eof
+=== RUN   TestCallTerminalLifecycle/close
+=== RUN   TestCallTerminalLifecycle/read_error
+=== RUN   TestCallTerminalLifecycle/cancel
+=== RUN   TestCallTerminalLifecycle/transport_error
+=== RUN   TestCallTerminalLifecycle/close_error
+--- PASS: TestCallTerminalLifecycle (0.00s)
+    --- PASS: TestCallTerminalLifecycle/eof (0.00s)
+    --- PASS: TestCallTerminalLifecycle/close (0.00s)
+    --- PASS: TestCallTerminalLifecycle/read_error (0.00s)
+    --- PASS: TestCallTerminalLifecycle/cancel (0.00s)
+    --- PASS: TestCallTerminalLifecycle/transport_error (0.00s)
+    --- PASS: TestCallTerminalLifecycle/close_error (0.00s)
+=== RUN   TestGoRedirectsPreservePristineBusinessHeaders
+=== RUN   TestGoRedirectsPreservePristineBusinessHeaders/same_origin_private
+=== RUN   TestGoRedirectsPreservePristineBusinessHeaders/other_origin
+=== RUN   TestGoRedirectsPreservePristineBusinessHeaders/peer
+--- PASS: TestGoRedirectsPreservePristineBusinessHeaders (0.00s)
+    --- PASS: TestGoRedirectsPreservePristineBusinessHeaders/same_origin_private (0.00s)
+    --- PASS: TestGoRedirectsPreservePristineBusinessHeaders/other_origin (0.00s)
+    --- PASS: TestGoRedirectsPreservePristineBusinessHeaders/peer (0.00s)
+=== RUN   TestBodyInterfacesAndFinalizerIdempotence
+--- PASS: TestBodyInterfacesAndFinalizerIdempotence (0.00s)
+=== RUN   TestBasicAccessGateIsIndependentOfDebug
+=== RUN   TestBasicAccessGateIsIndependentOfDebug/access=false/debug=false
+=== RUN   TestBasicAccessGateIsIndependentOfDebug/access=false/debug=true
+=== RUN   TestBasicAccessGateIsIndependentOfDebug/access=true/debug=false
+=== RUN   TestBasicAccessGateIsIndependentOfDebug/access=true/debug=true
+--- PASS: TestBasicAccessGateIsIndependentOfDebug (0.00s)
+    --- PASS: TestBasicAccessGateIsIndependentOfDebug/access=false/debug=false (0.00s)
+    --- PASS: TestBasicAccessGateIsIndependentOfDebug/access=false/debug=true (0.00s)
+    --- PASS: TestBasicAccessGateIsIndependentOfDebug/access=true/debug=false (0.00s)
+    --- PASS: TestBasicAccessGateIsIndependentOfDebug/access=true/debug=true (0.00s)
+=== RUN   TestSemanticBoundedParsingAndCumulativeUsage
+--- PASS: TestSemanticBoundedParsingAndCumulativeUsage (0.00s)
+PASS
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	2.293s
+=== RUN   TestDIAG05GinCancellationBeforeExchangeCleanup
+=== RUN   TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-upstream
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: synthetic delayed cleanup failure"
+=== RUN   TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-throttle
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: synthetic delayed cleanup failure"
+--- PASS: TestDIAG05GinCancellationBeforeExchangeCleanup (0.01s)
+    --- PASS: TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-upstream (0.01s)
+    --- PASS: TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-throttle (0.00s)
+=== RUN   TestDiagnosticRealExecutorEquivalence
+=== RUN   TestDiagnosticRealExecutorEquivalence/codex/200
+=== RUN   TestDiagnosticRealExecutorEquivalence/codex/503
+=== RUN   TestDiagnosticRealExecutorEquivalence/claude-utls/200
+=== RUN   TestDiagnosticRealExecutorEquivalence/claude-utls/503
+=== RUN   TestDiagnosticRealExecutorEquivalence/gemini/200
+=== RUN   TestDiagnosticRealExecutorEquivalence/gemini/503
+=== RUN   TestDiagnosticRealExecutorEquivalence/kimi/200
+=== RUN   TestDiagnosticRealExecutorEquivalence/kimi/503
+--- PASS: TestDiagnosticRealExecutorEquivalence (0.01s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/codex/200 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/codex/503 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/claude-utls/200 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/claude-utls/503 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/gemini/200 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/gemini/503 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/kimi/200 (0.00s)
+    --- PASS: TestDiagnosticRealExecutorEquivalence/kimi/503 (0.00s)
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=gemini model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/openai/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/openai/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/responses/bootstrap
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+=== RUN   TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/responses/partial
+time="2000-01-01T08:00:00+08:00" level=warning msg="upstream execution failed: provider=antigravity model=gemini-2.5-flash auth=api_key=fixt...-key duration=0s err=synthetic stream read failure"
+--- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup (0.01s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/gemini/partial (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/openai/partial (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/gemini/responses/partial (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/gemini/partial (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/openai/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/openai/partial (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/responses/bootstrap (0.00s)
+    --- PASS: TestDIAG05GinReadErrorBeforeExchangeCleanup/antigravity/responses/partial (0.00s)
+=== RUN   TestDIAG05RealSemanticBoundaries
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/normal
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/empty-user
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/zero
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/missing-terminal
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/tool-media
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/error-frame
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/http-error
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/false/malformed
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/normal
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/empty-user
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/zero
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/missing-terminal
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/tool-media
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/error-frame
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/http-error
+=== RUN   TestDIAG05RealSemanticBoundaries/gemini/true/malformed
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/normal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/empty-user
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/zero
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/missing-terminal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/tool-media
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/error-frame
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/http-error
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/false/malformed
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/normal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/empty-user
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/zero
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/missing-terminal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/tool-media
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/error-frame
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/http-error
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity/true/malformed
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/normal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/empty-user
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/zero
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/missing-terminal
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/tool-media
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/error-frame
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/http-error
+=== RUN   TestDIAG05RealSemanticBoundaries/antigravity-collected/false/malformed
+--- PASS: TestDIAG05RealSemanticBoundaries (0.05s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/normal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/empty-user (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/zero (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/missing-terminal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/tool-media (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/error-frame (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/http-error (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/false/malformed (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/normal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/empty-user (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/zero (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/missing-terminal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/tool-media (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/error-frame (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/http-error (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/gemini/true/malformed (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/normal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/empty-user (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/zero (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/missing-terminal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/tool-media (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/error-frame (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/http-error (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/false/malformed (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/normal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/empty-user (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/zero (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/missing-terminal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/tool-media (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/error-frame (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/http-error (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity/true/malformed (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/normal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/empty-user (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/zero (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/missing-terminal (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/tool-media (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/error-frame (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/http-error (0.00s)
+    --- PASS: TestDIAG05RealSemanticBoundaries/antigravity-collected/false/malformed (0.00s)
+=== RUN   TestDIAG05FinalProtocolUsage
+=== RUN   TestDIAG05FinalProtocolUsage/openai/false
+=== RUN   TestDIAG05FinalProtocolUsage/openai/true
+=== RUN   TestDIAG05FinalProtocolUsage/openai-response/false
+=== RUN   TestDIAG05FinalProtocolUsage/openai-response/true
+=== RUN   TestDIAG05FinalProtocolUsage/claude/false
+=== RUN   TestDIAG05FinalProtocolUsage/claude/true
+--- PASS: TestDIAG05FinalProtocolUsage (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/openai/false (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/openai/true (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/openai-response/false (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/openai-response/true (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/claude/false (0.00s)
+    --- PASS: TestDIAG05FinalProtocolUsage/claude/true (0.00s)
+=== RUN   TestDIAG05StreamBackpressureCancellationAndTailUsage
+=== RUN   TestDIAG05StreamBackpressureCancellationAndTailUsage/tail
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+=== RUN   TestDIAG05StreamBackpressureCancellationAndTailUsage/read-error
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+=== RUN   TestDIAG05StreamBackpressureCancellationAndTailUsage/cancelled
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: private cleanup failure"
+--- PASS: TestDIAG05StreamBackpressureCancellationAndTailUsage (0.00s)
+    --- PASS: TestDIAG05StreamBackpressureCancellationAndTailUsage/tail (0.00s)
+    --- PASS: TestDIAG05StreamBackpressureCancellationAndTailUsage/read-error (0.00s)
+    --- PASS: TestDIAG05StreamBackpressureCancellationAndTailUsage/cancelled (0.00s)
+PASS
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	3.567s
+=== RUN   TestDIAG05ThrottleStreamWaits
+=== RUN   TestDIAG05ThrottleStreamWaits/complete
+=== RUN   TestDIAG05ThrottleStreamWaits/cancelled
+--- PASS: TestDIAG05ThrottleStreamWaits (0.00s)
+    --- PASS: TestDIAG05ThrottleStreamWaits/complete (0.00s)
+    --- PASS: TestDIAG05ThrottleStreamWaits/cancelled (0.00s)
+=== RUN   TestDIAG05ThrottleTokenProvenance
+--- PASS: TestDIAG05ThrottleTokenProvenance (0.00s)
+PASS
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers	2.403s

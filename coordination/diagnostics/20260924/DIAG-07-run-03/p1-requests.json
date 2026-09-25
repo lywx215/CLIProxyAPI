@@ -1,0 +1,916 @@
+[
+  {
+    "scenario": "success",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328403823/4fc917d4-afef-4b89-9e0f-878f06a40627/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328403882/4fc917d4-afef-4b89-9e0f-878f06a40627/2",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "2",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328403914/4fc917d4-afef-4b89-9e0f-878f06a40627/3",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "3",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 4,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328403950/4fc917d4-afef-4b89-9e0f-878f06a40627/4",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "4",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 5,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404202/4fc917d4-afef-4b89-9e0f-878f06a40627/5",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "5",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 6,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404234/4fc917d4-afef-4b89-9e0f-878f06a40627/6",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "6",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 7,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404267/4fc917d4-afef-4b89-9e0f-878f06a40627/7",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "7",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 8,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404298/4fc917d4-afef-4b89-9e0f-878f06a40627/8",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "8",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 9,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404333/4fc917d4-afef-4b89-9e0f-878f06a40627/9",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "9",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 10,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404369/4fc917d4-afef-4b89-9e0f-878f06a40627/10",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "10",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 11,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d5da9aac-2e4a-492e-a043-36678141fdd8/1790328404402/4fc917d4-afef-4b89-9e0f-878f06a40627/11",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "11",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4fc917d4-afef-4b89-9e0f-878f06a40627",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "thought13",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/8842dd42-d7ce-4855-98e4-535b765f1fc5/1790328404541/db8c4bb1-dafd-45d3-92e2-923f5ff7c97c/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-thought13"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-5064844480574436515",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "db8c4bb1-dafd-45d3-92e2-923f5ff7c97c",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "zero",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/816d6df6-bce7-415d-9db1-8e798642723f/1790328404575/8561d2ca-3315-4048-a6de-c12aabb16d7f/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-zero"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-521495727164643245",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "8561d2ca-3315-4048-a6de-c12aabb16d7f",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "missing",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/e71f3002-c26b-4538-9a16-4700cea22fef/1790328404607/e715d331-9ce9-40d9-a9d2-1b0a1b22b904/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-missing"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-4334644292362962232",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "e715d331-9ce9-40d9-a9d2-1b0a1b22b904",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "tool",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/52ef8eac-de05-4680-8d32-4d95d195036c/1790328404636/48982a1c-0f87-4152-918b-4ba924c774b6/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-tool"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-1278349250199974828",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "48982a1c-0f87-4152-918b-4ba924c774b6",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "media",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/7ef12c8a-5d8d-4963-a76e-80598316d8f8/1790328404667/0c311eb1-e29e-489f-aa47-9891cb697ec8/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-media"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2561278900217103034",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "0c311eb1-e29e-489f-aa47-9891cb697ec8",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "empty",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/633738c7-e87d-4688-99f5-17e16dcaba59/1790328404697/a724e58c-ae1e-48ab-a8d6-0b5767b075b8/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-empty"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-5641609799154444610",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "a724e58c-ae1e-48ab-a8d6-0b5767b075b8",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "blocked",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/08730622-50e1-4f6e-aba6-6b75ecea5b34/1790328404732/80a4c928-b3b6-4ba8-9d29-b553d2db2436/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-blocked"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6851242151373000554",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "80a4c928-b3b6-4ba8-9d29-b553d2db2436",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "incomplete",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/1a33fc81-586a-40c7-af9a-d05005725dd2/1790328404767/2f0db43e-d6d7-429b-b43f-8b783cb83c05/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-incomplete"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8507582052168932879",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "2f0db43e-d6d7-429b-b43f-8b783cb83c05",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "errorframe",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/52b8d3e3-ca18-4120-9f6d-edf5aee8eb52/1790328404807/9f9bcf92-6c79-4143-b078-2b26d1036e4c/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-errorframe"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2883076256912555458",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "9f9bcf92-6c79-4143-b078-2b26d1036e4c",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "readerror",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/0f1cc13f-0a7d-473b-a75d-75d1de264ce2/1790328404837/e6480ef0-125b-4fc4-8ecf-dffbef36ca43/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-readerror"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8429962674380260380",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "e6480ef0-125b-4fc4-8ecf-dffbef36ca43",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  }
+]

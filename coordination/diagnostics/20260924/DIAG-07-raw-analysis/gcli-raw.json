@@ -1,0 +1,70 @@
+{
+  "reportVersion": "diag-analyze/1",
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+  "query": {},
+  "candidateTraces": [],
+  "aliasCandidates": [],
+  "sources": [
+    {
+      "id": 1,
+      "alias": "gcli",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 98559,
+      "scannedBytes": 98559,
+      "lines": 911,
+      "accepted": 0,
+      "quarantined": 1,
+      "legacyLines": 906,
+      "completeScan": true,
+      "sha256": "f14bdf43cb61c2ad07a46fc16e83420a1ab9c6e961b1f6722bc93a22426c93ee",
+      "resources": [],
+      "findings": [
+        "legacy_text_omitted",
+        "quarantined_lines"
+      ]
+    }
+  ],
+  "quarantined": [
+    {
+      "source": 1,
+      "line": 911,
+      "bytes": 32,
+      "lengthComplete": true,
+      "reason": "schema_invalid"
+    }
+  ],
+  "quarantineDetailsOmitted": 0,
+  "limited": false,
+  "limits": {
+    "bytes": 134217728,
+    "lines": 250000,
+    "records": 20000,
+    "issues": 1000
+  },
+  "nodes": [],
+  "edges": [],
+  "evidence": [],
+  "processEvidence": [],
+  "counts": {
+    "requests": 0,
+    "observedServerOwners": 0,
+    "callCount": 0,
+    "knownAttemptCount": 0,
+    "unknownAttemptCallCount": 0,
+    "requestFailures": 0,
+    "callFailures": 0,
+    "attemptFailures": 0,
+    "conflicted": false
+  },
+  "byResource": [],
+  "notes": [
+    "Trace IDs and caller aliases select candidates; they do not prove a relationship.",
+    "Verified means unique bilateral evidence from operator-controlled sources, not cryptographic proof.",
+    "Coverage is relative to observed exports and instrumented paths; process capabilities do not prove route coverage or a complete export tail.",
+    "Usage snapshots are last-observed, not proven final. Upstream and delivered observations remain separate; no token totals are recomputed, and 87 is not an error class.",
+    "Missing DEBUG events do not prove that a business stage did not execute. Wall clocks never establish edges or ordering across spans.",
+    "Counts describe observed identities, not inferred retries or resolved business totals. Conflicts remain explicit; request/call/attempt failures are separate observed counts."
+  ]
+}

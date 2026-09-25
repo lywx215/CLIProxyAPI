@@ -1,0 +1,26 @@
+[
+  {
+    "file": "aito2.jsonl",
+    "bytes": 26324,
+    "sha256": "8351b9e080c499d5ad33c934125b65e5047127b66f1953e6ca50a794f018a3e9",
+    "lines": 17
+  },
+  {
+    "file": "aito1.jsonl",
+    "bytes": 71297,
+    "sha256": "fc24f1cf125aac7100f84b2add195f248b02c876c5a1ec00240b65b6fca2f5b9",
+    "lines": 45
+  },
+  {
+    "file": "gcli2.jsonl",
+    "bytes": 32864,
+    "sha256": "d18b4df546ed5c86a4a99bda8cdcb9d81a3d42944ceb4b879d73772bfe9e7254",
+    "lines": 23
+  },
+  {
+    "file": "gcli1.jsonl",
+    "bytes": 158823,
+    "sha256": "82ed10595c29f73ab0f2745b64c1f4896c93512390e3128e0fd23ed41f860fe8",
+    "lines": 108
+  }
+]

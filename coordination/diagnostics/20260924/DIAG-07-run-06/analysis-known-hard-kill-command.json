@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "knownLoss": "aito4",
+  "verified": 0,
+  "qualification": "active dispatch was externally observed before hard kill; its unflushed events are wholly absent; no fabricated terminal or EOF",
+  "command": "diag-analyze -input <all exports> -trust <all aliases> -known-loss aito4 -format json"
+}

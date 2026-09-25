@@ -1,0 +1,1842 @@
+[
+  {
+    "scenario": "success",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751252/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751302/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/2",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "2",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751337/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/3",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "3",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 4,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751371/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/4",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "4",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 5,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751654/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/5",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "5",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 6,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751677/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/6",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "6",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 7,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751712/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/7",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "7",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 8,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751734/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/8",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "8",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 9,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751778/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/9",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "9",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 10,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751815/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/10",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "10",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 11,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/22d9998c-734f-48b3-8677-d93c6fdf2242/1790328751849/bec6cc13-da01-44cc-8fa2-fec68daaeeaf/11",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "11",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "bec6cc13-da01-44cc-8fa2-fec68daaeeaf",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "thought13",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/a22c036a-8b08-4c93-b4e3-7e7a6346515e/1790328751987/c3416a7a-d3e9-43c8-8abb-8a0732bfae8e/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-thought13"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-5064844480574436515",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "c3416a7a-d3e9-43c8-8abb-8a0732bfae8e",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "tail13",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/363fce2e-1f04-44e8-a925-8315f2fba810/1790328751997/2102a52e-228f-421d-b7f6-50e971387fe1/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-tail13"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6723249845237405090",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "2102a52e-228f-421d-b7f6-50e971387fe1",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "zero",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/afd5c31d-00eb-450c-bea8-8284f5469b85/1790328752022/d7715f23-ef36-442b-b5df-255ac60e2e8c/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-zero"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-521495727164643245",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "d7715f23-ef36-442b-b5df-255ac60e2e8c",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "missing",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/07195539-fdcf-4351-ad08-f0529e79c813/1790328752053/7909ab53-ba5f-410c-ab77-480a747d2ec0/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-missing"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-4334644292362962232",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "7909ab53-ba5f-410c-ab77-480a747d2ec0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "tool",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/6cd40243-a1ee-47f3-bce3-88ffb65e0038/1790328752084/394acbab-3b51-4fc9-840b-a77d4e81e099/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-tool"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-1278349250199974828",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "394acbab-3b51-4fc9-840b-a77d4e81e099",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "media",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/c5fe3f54-6e4a-4a98-912b-61575e80a77e/1790328752115/4b0e8e89-3941-4e97-aac9-33820fa2a77a/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-media"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2561278900217103034",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "4b0e8e89-3941-4e97-aac9-33820fa2a77a",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "empty",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/076861e3-8ce6-41e3-a52a-a3db11aaf4a7/1790328752147/11e64bb9-d82d-4e1f-9a5d-749d9f85daf3/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-empty"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-5641609799154444610",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "11e64bb9-d82d-4e1f-9a5d-749d9f85daf3",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "blocked",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/ad21d9fa-9e91-4f5e-9883-2a9c7c228063/1790328752184/abd854c2-e877-4f70-adbc-6cc346717ef0/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-blocked"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6851242151373000554",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "abd854c2-e877-4f70-adbc-6cc346717ef0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "incomplete",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/d36b434a-d0e9-4e6c-92c2-32224ecc9fe4/1790328752215/915578fe-0250-44a1-82cd-a81aa01bfd2f/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-incomplete"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8507582052168932879",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "915578fe-0250-44a1-82cd-a81aa01bfd2f",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "errorframe",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/37b59aad-a380-4ecb-93c6-db8a79dad609/1790328752247/07b12668-d0bc-4dc8-8a34-503dc2ea7b12/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-errorframe"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2883076256912555458",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "07b12668-d0bc-4dc8-8a34-503dc2ea7b12",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "readerror",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/849dbf9b-c2e1-4c35-93d9-df4ac6c02841/1790328752283/c5d9dc35-9814-4b13-8a68-440c634f72fd/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-readerror"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8429962674380260380",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "c5d9dc35-9814-4b13-8a68-440c634f72fd",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "retry",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/234e1754-9a4d-450a-9485-84c0264446db/1790328752333/6df78218-eb20-4a37-aa25-aabab0db2ccc/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-retry"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2274680398968844428",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "6df78218-eb20-4a37-aa25-aabab0db2ccc",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "retry",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/234e1754-9a4d-450a-9485-84c0264446db/1790328752333/6df78218-eb20-4a37-aa25-aabab0db2ccc/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-retry"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2274680398968844428",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "6df78218-eb20-4a37-aa25-aabab0db2ccc",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "retry",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/234e1754-9a4d-450a-9485-84c0264446db/1790328752333/6df78218-eb20-4a37-aa25-aabab0db2ccc/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-retry"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2274680398968844428",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "6df78218-eb20-4a37-aa25-aabab0db2ccc",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "nested",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/5c7253f3-1534-4df9-b806-c9e261a489ce/1790328752415/a06dc3ed-d399-4ba2-bcef-db6b806f9f25/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-nested"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6853026933967565739",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "a06dc3ed-d399-4ba2-bcef-db6b806f9f25",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "nested",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/5c7253f3-1534-4df9-b806-c9e261a489ce/1790328752415/a06dc3ed-d399-4ba2-bcef-db6b806f9f25/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-nested"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6853026933967565739",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "a06dc3ed-d399-4ba2-bcef-db6b806f9f25",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "nested",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/5c7253f3-1534-4df9-b806-c9e261a489ce/1790328752415/a06dc3ed-d399-4ba2-bcef-db6b806f9f25/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-nested"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-6853026933967565739",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "a06dc3ed-d399-4ba2-bcef-db6b806f9f25",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "anti_nested",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/f61be65f-7d8c-429c-957d-cd813a2b7d66/1790328752784/95101d55-6935-4493-a994-f77153caa6e0/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-anti_nested"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "严格执行以下输出结束规则：\n\n1. 当你完成完整回答时，必须在输出的最后单独一行输出：[done]\n2. [done] 标记表示你的回答已经完全结束，这是必需的结束标记\n3. 只有输出了 [done] 标记，系统才认为你的回答是完整的\n4. 如果你的回答被截断，系统会要求你继续输出剩余内容\n5. 无论回答长短，都必须以 [done] 标记结束\n\n示例格式：\n```\n你的回答内容...\n更多回答内容...\n[done]\n```\n\n注意：[done] 必须单独占一行，前面不要有任何其他字符。\n\n这个规则对于确保输出完整性极其重要，请严格遵守。"
+            }
+          ]
+        },
+        "sessionId": "-2544093430399262263",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "95101d55-6935-4493-a994-f77153caa6e0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "anti_nested",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/f61be65f-7d8c-429c-957d-cd813a2b7d66/1790328752784/95101d55-6935-4493-a994-f77153caa6e0/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-anti_nested"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "严格执行以下输出结束规则：\n\n1. 当你完成完整回答时，必须在输出的最后单独一行输出：[done]\n2. [done] 标记表示你的回答已经完全结束，这是必需的结束标记\n3. 只有输出了 [done] 标记，系统才认为你的回答是完整的\n4. 如果你的回答被截断，系统会要求你继续输出剩余内容\n5. 无论回答长短，都必须以 [done] 标记结束\n\n示例格式：\n```\n你的回答内容...\n更多回答内容...\n[done]\n```\n\n注意：[done] 必须单独占一行，前面不要有任何其他字符。\n\n这个规则对于确保输出完整性极其重要，请严格遵守。"
+            }
+          ]
+        },
+        "sessionId": "-2544093430399262263",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "95101d55-6935-4493-a994-f77153caa6e0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "anti_nested",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/f61be65f-7d8c-429c-957d-cd813a2b7d66/1790328752833/95101d55-6935-4493-a994-f77153caa6e0/2",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-anti_nested"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "synthetic answer"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "严格执行以下输出结束规则：\n\n1. 当你完成完整回答时，必须在输出的最后单独一行输出：[done]\n2. [done] 标记表示你的回答已经完全结束，这是必需的结束标记\n3. 只有输出了 [done] 标记，系统才认为你的回答是完整的\n4. 如果你的回答被截断，系统会要求你继续输出剩余内容\n5. 无论回答长短，都必须以 [done] 标记结束\n\n示例格式：\n```\n你的回答内容...\n更多回答内容...\n[done]\n```\n\n注意：[done] 必须单独占一行，前面不要有任何其他字符。\n\n这个规则对于确保输出完整性极其重要，请严格遵守。"
+            }
+          ]
+        },
+        "sessionId": "-2544093430399262263",
+        "labels": {
+          "last_step_index": "2",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "95101d55-6935-4493-a994-f77153caa6e0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "anti_nested",
+    "ordinal": 4,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/f61be65f-7d8c-429c-957d-cd813a2b7d66/1790328752833/95101d55-6935-4493-a994-f77153caa6e0/2",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-anti_nested"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "synthetic answer"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "严格执行以下输出结束规则：\n\n1. 当你完成完整回答时，必须在输出的最后单独一行输出：[done]\n2. [done] 标记表示你的回答已经完全结束，这是必需的结束标记\n3. 只有输出了 [done] 标记，系统才认为你的回答是完整的\n4. 如果你的回答被截断，系统会要求你继续输出剩余内容\n5. 无论回答长短，都必须以 [done] 标记结束\n\n示例格式：\n```\n你的回答内容...\n更多回答内容...\n[done]\n```\n\n注意：[done] 必须单独占一行，前面不要有任何其他字符。\n\n这个规则对于确保输出完整性极其重要，请严格遵守。"
+            }
+          ]
+        },
+        "sessionId": "-2544093430399262263",
+        "labels": {
+          "last_step_index": "2",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "95101d55-6935-4493-a994-f77153caa6e0",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "clean400",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/e17e0145-e4d3-4b4f-81c6-7d7383a24db1/1790328752891/7d734fca-c282-4697-bed7-09ea782e7942/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "case-clean400"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8458829919411731439",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "7d734fca-c282-4697-bed7-09ea782e7942",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "clean400",
+    "ordinal": 2,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/e17e0145-e4d3-4b4f-81c6-7d7383a24db1/1790328752924/7d734fca-c282-4697-bed7-09ea782e7942/2",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "case-clean400"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8458829919411731439",
+        "labels": {
+          "last_step_index": "2",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "7d734fca-c282-4697-bed7-09ea782e7942",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "clean400",
+    "ordinal": 3,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/e17e0145-e4d3-4b4f-81c6-7d7383a24db1/1790328752964/7d734fca-c282-4697-bed7-09ea782e7942/3",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "case-clean400"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8458829919411731439",
+        "labels": {
+          "last_step_index": "3",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "7d734fca-c282-4697-bed7-09ea782e7942",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "clean400",
+    "ordinal": 4,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/e17e0145-e4d3-4b4f-81c6-7d7383a24db1/1790328753000/7d734fca-c282-4697-bed7-09ea782e7942/4",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "case-clean400"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "name": "synthetic_tool",
+                  "args": {}
+                },
+                "thoughtSignature": "skip_thought_signature_validator"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "name": "synthetic_tool",
+                  "response": {
+                    "value": 1
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-8458829919411731439",
+        "labels": {
+          "last_step_index": "4",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "7d734fca-c282-4697-bed7-09ea782e7942",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 12,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/fc99769b-a785-4412-a32c-829abb2e31a2/1790328753033/0af88f52-df6a-4041-9fb9-5b0151b8c1ae/1",
+      "request": {
+        "contents": [],
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-3795164319017257488",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-3.7-flash-medium",
+          "trajectory_id": "0af88f52-df6a-4041-9fb9-5b0151b8c1ae",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-3.7-flash-medium",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "hold",
+    "ordinal": 1,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/885349bd-5932-45fa-8352-7fe9c3854cc9/1790328753092/c621aa5c-150e-4526-9486-7a64a83f987f/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-hold"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-581031522119108018",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "c621aa5c-150e-4526-9486-7a64a83f987f",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 13,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/075a47eb-79a8-4489-b8e0-b42c9deabe6c/1790328754397/a4ee355e-5918-47b0-ac94-3d35625f703f/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "a4ee355e-5918-47b0-ac94-3d35625f703f",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  },
+  {
+    "scenario": "success",
+    "ordinal": 14,
+    "path": "/v1internal:streamGenerateContent?alt=sse",
+    "request": {
+      "project": "synthetic-project",
+      "requestId": "agent/4b49447c-2275-4b0b-b1a3-4ff849d1bb7d/1790328758293/74ef208e-d992-4e42-9889-35147f1a91c7/1",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "synthetic case-success"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "candidateCount": 1,
+          "maxOutputTokens": 64000,
+          "topK": 64
+        },
+        "sessionId": "-2382737943728937177",
+        "labels": {
+          "last_step_index": "1",
+          "model_enum": "gemini-2.5-flash",
+          "trajectory_id": "74ef208e-d992-4e42-9889-35147f1a91c7",
+          "used_claude": "false",
+          "used_claude_conservative": "false"
+        },
+        "toolConfig": {
+          "functionCallingConfig": {
+            "mode": "VALIDATED"
+          }
+        }
+      },
+      "model": "gemini-2.5-flash",
+      "userAgent": "antigravity",
+      "requestType": "agent"
+    },
+    "traceparent": null,
+    "provider": "p1"
+  }
+]

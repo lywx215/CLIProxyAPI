@@ -1,0 +1,1345 @@
+{
+  "reportVersion": "diag-analyze/1",
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "contractSha256": "ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4",
+  "query": {},
+  "candidateTraces": [
+    "10f9e6457edd643e170abf1c6c898099",
+    "736a3216c59daa45ad977fc29f68be92",
+    "91e01f3d986eea399f8f39b9c82dc74f"
+  ],
+  "aliasCandidates": [],
+  "sources": [
+    {
+      "id": 1,
+      "alias": "cpa",
+      "trusted": true,
+      "knownLoss": false,
+      "fileSize": 20134,
+      "scannedBytes": 20134,
+      "lines": 35,
+      "accepted": 12,
+      "quarantined": 1,
+      "legacyLines": 22,
+      "completeScan": true,
+      "sha256": "4f8b4615fa115e3fa7ea1236bce6482d1816b2a688dcf1e08e3610cf557a6f96",
+      "resources": [
+        {
+          "environment": "test",
+          "deploymentId": "diag07-local",
+          "service": "cliproxyapi",
+          "instanceId": "cpa1",
+          "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+        }
+      ],
+      "findings": [
+        "legacy_text_omitted",
+        "quarantined_lines"
+      ]
+    }
+  ],
+  "quarantined": [
+    {
+      "source": 1,
+      "line": 9,
+      "bytes": 66,
+      "lengthComplete": true,
+      "reason": "schema_invalid"
+    }
+  ],
+  "quarantineDetailsOmitted": 0,
+  "limited": false,
+  "limits": {
+    "bytes": 134217728,
+    "lines": 250000,
+    "records": 20000,
+    "issues": 1000
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "kind": "server",
+      "traceId": "736a3216c59daa45ad977fc29f68be92",
+      "spanId": "96aa93397f971b44",
+      "parentSpanId": "",
+      "serverSpanId": "96aa93397f971b44",
+      "requestId": "3185e8d8",
+      "events": [
+        2,
+        4,
+        5,
+        6
+      ],
+      "trusted": true,
+      "findings": [
+        "root",
+        "source_evidence_gap"
+      ],
+      "coverage": {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 1
+    },
+    {
+      "id": 2,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "kind": "call",
+      "traceId": "736a3216c59daa45ad977fc29f68be92",
+      "spanId": "4857e109c866db1d",
+      "parentSpanId": "96aa93397f971b44",
+      "serverSpanId": "96aa93397f971b44",
+      "requestId": "3185e8d8",
+      "events": [
+        3
+      ],
+      "trusted": true,
+      "findings": [
+        "source_evidence_gap"
+      ],
+      "coverage": {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": null
+    },
+    {
+      "id": 3,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "kind": "server",
+      "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+      "spanId": "82512069e3a2c3ca",
+      "parentSpanId": "",
+      "serverSpanId": "82512069e3a2c3ca",
+      "requestId": "f3cc83b1",
+      "events": [
+        7,
+        9,
+        10,
+        11
+      ],
+      "trusted": true,
+      "findings": [
+        "root",
+        "source_evidence_gap"
+      ],
+      "coverage": {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 1
+    },
+    {
+      "id": 4,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "kind": "call",
+      "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+      "spanId": "e77c7ccd825b5eeb",
+      "parentSpanId": "82512069e3a2c3ca",
+      "serverSpanId": "82512069e3a2c3ca",
+      "requestId": "f3cc83b1",
+      "events": [
+        8
+      ],
+      "trusted": true,
+      "findings": [
+        "source_evidence_gap"
+      ],
+      "coverage": {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": null
+    },
+    {
+      "id": 5,
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "kind": "server",
+      "traceId": "10f9e6457edd643e170abf1c6c898099",
+      "spanId": "e597c4798d0ab965",
+      "parentSpanId": "",
+      "serverSpanId": "e597c4798d0ab965",
+      "requestId": "fce00b2a",
+      "events": [
+        12
+      ],
+      "trusted": true,
+      "findings": [
+        "root",
+        "source_evidence_gap"
+      ],
+      "coverage": {
+        "debugCoverage": "partial",
+        "terminalMissing": false
+      },
+      "terminalCount": 1,
+      "terminalStubCount": 0,
+      "usageQualification": "last_observed_not_proven_final",
+      "contextOnly": false,
+      "observedLocalCalls": 0
+    }
+  ],
+  "edges": [
+    {
+      "kind": "local",
+      "senders": [
+        1
+      ],
+      "receivers": [
+        2
+      ],
+      "findings": [
+        "source_evidence_gap"
+      ],
+      "verified": false
+    },
+    {
+      "kind": "local",
+      "senders": [
+        3
+      ],
+      "receivers": [
+        4
+      ],
+      "findings": [
+        "source_evidence_gap"
+      ],
+      "verified": false
+    },
+    {
+      "kind": "remote",
+      "senders": [
+        2
+      ],
+      "receivers": [],
+      "findings": [
+        "missing_peer",
+        "source_evidence_gap"
+      ],
+      "verified": false
+    },
+    {
+      "kind": "remote",
+      "senders": [
+        4
+      ],
+      "receivers": [],
+      "findings": [
+        "missing_peer",
+        "source_evidence_gap"
+      ],
+      "verified": false
+    }
+  ],
+  "evidence": [
+    {
+      "id": 2,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|96aa93397f971b44|n1;",
+      "record": {
+        "attemptId": "4c40825e91d2c68d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "after": {
+            "complete": true,
+            "emptyMessageCount": 0,
+            "messageCount": 1,
+            "tail": [
+              {
+                "index": 0,
+                "partKinds": [
+                  "text"
+                ],
+                "role": "user",
+                "textUtf8Bytes": 9
+              }
+            ],
+            "toolCallCount": 0,
+            "toolResponseCount": 0
+          },
+          "before": {
+            "complete": false,
+            "emptyMessageCount": null,
+            "messageCount": null,
+            "tail": [],
+            "toolCallCount": null,
+            "toolResponseCount": null
+          },
+          "effectiveModelAlias": null,
+          "requestedModelAlias": null,
+          "transformations": []
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "request.normalized",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "3185e8d8",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "96aa93397f971b44",
+        "service": "cliproxyapi",
+        "spanId": "96aa93397f971b44",
+        "spanKind": "server",
+        "traceId": "736a3216c59daa45ad977fc29f68be92",
+        "ts": "2026-09-25T09:24:15.992Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 12,
+          "bytes": 1204
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 3,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|4857e109c866db1d|n1;",
+      "record": {
+        "attemptId": "4c40825e91d2c68d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": 1,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328255995_0mkc3el3y",
+          "peerService": "aitoapi",
+          "peerTraceId": "736a3216c59daa45ad977fc29f68be92",
+          "providerRequestId": null,
+          "targetAlias": "aito1",
+          "totalMs": 22.9279,
+          "upstreamStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.call",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": "96aa93397f971b44",
+        "recordKind": "basic",
+        "requestId": "3185e8d8",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "96aa93397f971b44",
+        "service": "cliproxyapi",
+        "spanId": "4857e109c866db1d",
+        "spanKind": "call",
+        "traceId": "736a3216c59daa45ad977fc29f68be92",
+        "ts": "2026-09-25T09:24:16.015Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 13,
+          "bytes": 1292
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 4,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|96aa93397f971b44|n2;",
+      "record": {
+        "attemptId": "4c40825e91d2c68d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "credentialRef": null,
+          "credentialRefScope": "unknown",
+          "eofSeen": true,
+          "errorClass": "none",
+          "failureOrigin": "none",
+          "failureStage": "none",
+          "output": {
+            "candidateCount": 1,
+            "mediaParts": 0,
+            "ordinaryTextNonWhitespaceChars": 17,
+            "ordinaryTextUtf8Bytes": 18,
+            "thoughtUtf8Bytes": 0,
+            "validToolCalls": 0
+          },
+          "parserFinishOk": true,
+          "resultClass": "success",
+          "terminalSeen": true,
+          "timing": {
+            "firstDownstreamEffectiveOutputMs": null,
+            "firstEffectiveOutputMs": 23.4326,
+            "firstUpstreamByteMs": null,
+            "responseCommitMs": null,
+            "timingSource": "server_monotonic"
+          },
+          "totalMs": 22.9279,
+          "usage": {
+            "basis": "provider_cumulative",
+            "candidate": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "input": {
+              "present": true,
+              "source": "upstream",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "protocol": "gemini",
+            "raw": {
+              "candidatesTokenCount": 87,
+              "promptTokenCount": 3,
+              "thoughtsTokenCount": 0,
+              "totalTokenCount": 90
+            },
+            "reasoning": {
+              "present": true,
+              "source": "upstream",
+              "value": 0
+            },
+            "reasoningIncludedInOutput": true
+          }
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "upstream.attempt_finished",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 2,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "3185e8d8",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "96aa93397f971b44",
+        "service": "cliproxyapi",
+        "spanId": "96aa93397f971b44",
+        "spanKind": "server",
+        "traceId": "736a3216c59daa45ad977fc29f68be92",
+        "ts": "2026-09-25T09:24:16.015Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 15,
+          "bytes": 1789
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 5,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|96aa93397f971b44|n3;",
+      "record": {
+        "attemptId": "4c40825e91d2c68d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "clientStreaming": false,
+          "deliveredUsage": {
+            "basis": "converted",
+            "candidate": {
+              "present": false,
+              "source": "unknown",
+              "value": null
+            },
+            "input": {
+              "present": true,
+              "source": "converted",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "converted",
+              "value": 87
+            },
+            "protocol": "openai_chat",
+            "raw": {
+              "completion_tokens": 87,
+              "prompt_tokens": 3,
+              "total_tokens": 90
+            },
+            "reasoning": {
+              "present": false,
+              "source": "unknown",
+              "value": null
+            },
+            "reasoningIncludedInOutput": true
+          },
+          "deliveryMode": "nonstream",
+          "inputProtocol": "gemini",
+          "output": {
+            "candidateCount": 1,
+            "mediaParts": 0,
+            "ordinaryTextNonWhitespaceChars": 17,
+            "ordinaryTextUtf8Bytes": 18,
+            "thoughtUtf8Bytes": 0,
+            "validToolCalls": 0
+          },
+          "outputProtocol": "openai_chat",
+          "resultClass": "success",
+          "upstreamStreaming": false,
+          "upstreamUsage": {
+            "basis": "provider_cumulative",
+            "candidate": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "input": {
+              "present": true,
+              "source": "upstream",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "protocol": "gemini",
+            "raw": {
+              "candidatesTokenCount": 87,
+              "promptTokenCount": 3,
+              "thoughtsTokenCount": 0,
+              "totalTokenCount": 90
+            },
+            "reasoning": {
+              "present": true,
+              "source": "upstream",
+              "value": 0
+            },
+            "reasoningIncludedInOutput": true
+          }
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "response.converted",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 3,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "3185e8d8",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "96aa93397f971b44",
+        "service": "cliproxyapi",
+        "spanId": "96aa93397f971b44",
+        "spanKind": "server",
+        "traceId": "736a3216c59daa45ad977fc29f68be92",
+        "ts": "2026-09-25T09:24:16.015Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 16,
+          "bytes": 1969
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 6,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|96aa93397f971b44|n4;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 1,
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 4,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/v1/chat/completions",
+          "totalMs": 23.9367,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 4,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "3185e8d8",
+        "retryScope": null,
+        "serverSpanId": "96aa93397f971b44",
+        "service": "cliproxyapi",
+        "spanId": "96aa93397f971b44",
+        "spanKind": "server",
+        "traceId": "736a3216c59daa45ad977fc29f68be92",
+        "ts": "2026-09-25T09:24:16.016Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 17,
+          "bytes": 1113
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 7,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|82512069e3a2c3ca|n1;",
+      "record": {
+        "attemptId": "6206cb06c58ac48d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "after": {
+            "complete": true,
+            "emptyMessageCount": 0,
+            "messageCount": 1,
+            "tail": [
+              {
+                "index": 0,
+                "partKinds": [
+                  "text"
+                ],
+                "role": "user",
+                "textUtf8Bytes": 9
+              }
+            ],
+            "toolCallCount": 0,
+            "toolResponseCount": 0
+          },
+          "before": {
+            "complete": false,
+            "emptyMessageCount": null,
+            "messageCount": null,
+            "tail": [],
+            "toolCallCount": null,
+            "toolResponseCount": null
+          },
+          "effectiveModelAlias": null,
+          "requestedModelAlias": null,
+          "transformations": []
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "request.normalized",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "f3cc83b1",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "82512069e3a2c3ca",
+        "service": "cliproxyapi",
+        "spanId": "82512069e3a2c3ca",
+        "spanKind": "server",
+        "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+        "ts": "2026-09-25T09:24:16.017Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 21,
+          "bytes": 1204
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 8,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|e77c7ccd825b5eeb|n1;",
+      "record": {
+        "attemptId": "6206cb06c58ac48d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": 1,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callKind": "model",
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "none",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "endReason": "eof",
+          "peerConfigured": true,
+          "peerDeploymentId": "diag07-local",
+          "peerIdRejected": "none",
+          "peerRequestId": "req_1790328256020_9880a0bih",
+          "peerService": "aitoapi",
+          "peerTraceId": "91e01f3d986eea399f8f39b9c82dc74f",
+          "providerRequestId": null,
+          "targetAlias": "aito2",
+          "totalMs": 13.6184,
+          "upstreamStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.call",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": "82512069e3a2c3ca",
+        "recordKind": "basic",
+        "requestId": "f3cc83b1",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "82512069e3a2c3ca",
+        "service": "cliproxyapi",
+        "spanId": "e77c7ccd825b5eeb",
+        "spanKind": "call",
+        "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+        "ts": "2026-09-25T09:24:16.031Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 22,
+          "bytes": 1292
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 9,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|82512069e3a2c3ca|n2;",
+      "record": {
+        "attemptId": "6206cb06c58ac48d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "credentialRef": null,
+          "credentialRefScope": "unknown",
+          "eofSeen": true,
+          "errorClass": "none",
+          "failureOrigin": "none",
+          "failureStage": "none",
+          "output": {
+            "candidateCount": 1,
+            "mediaParts": 0,
+            "ordinaryTextNonWhitespaceChars": 17,
+            "ordinaryTextUtf8Bytes": 18,
+            "thoughtUtf8Bytes": 0,
+            "validToolCalls": 0
+          },
+          "parserFinishOk": true,
+          "resultClass": "success",
+          "terminalSeen": true,
+          "timing": {
+            "firstDownstreamEffectiveOutputMs": null,
+            "firstEffectiveOutputMs": 14.6216,
+            "firstUpstreamByteMs": null,
+            "responseCommitMs": null,
+            "timingSource": "server_monotonic"
+          },
+          "totalMs": 14.6216,
+          "usage": {
+            "basis": "provider_cumulative",
+            "candidate": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "input": {
+              "present": true,
+              "source": "upstream",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "protocol": "gemini",
+            "raw": {
+              "candidatesTokenCount": 87,
+              "promptTokenCount": 3,
+              "thoughtsTokenCount": 0,
+              "totalTokenCount": 90
+            },
+            "reasoning": {
+              "present": true,
+              "source": "upstream",
+              "value": 0
+            },
+            "reasoningIncludedInOutput": true
+          }
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "upstream.attempt_finished",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 2,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "f3cc83b1",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "82512069e3a2c3ca",
+        "service": "cliproxyapi",
+        "spanId": "82512069e3a2c3ca",
+        "spanKind": "server",
+        "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+        "ts": "2026-09-25T09:24:16.031Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 23,
+          "bytes": 1789
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 10,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|82512069e3a2c3ca|n3;",
+      "record": {
+        "attemptId": "6206cb06c58ac48d",
+        "attemptNo": 1,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "clientStreaming": true,
+          "deliveredUsage": {
+            "basis": "converted",
+            "candidate": {
+              "present": false,
+              "source": "unknown",
+              "value": null
+            },
+            "input": {
+              "present": true,
+              "source": "converted",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "converted",
+              "value": 87
+            },
+            "protocol": "openai_chat",
+            "raw": {
+              "completion_tokens": 87,
+              "prompt_tokens": 3,
+              "total_tokens": 90
+            },
+            "reasoning": {
+              "present": false,
+              "source": "unknown",
+              "value": null
+            },
+            "reasoningIncludedInOutput": true
+          },
+          "deliveryMode": "stream",
+          "inputProtocol": "gemini",
+          "output": {
+            "candidateCount": 1,
+            "mediaParts": 0,
+            "ordinaryTextNonWhitespaceChars": 17,
+            "ordinaryTextUtf8Bytes": 18,
+            "thoughtUtf8Bytes": 0,
+            "validToolCalls": null
+          },
+          "outputProtocol": "openai_chat",
+          "resultClass": "success",
+          "upstreamStreaming": true,
+          "upstreamUsage": {
+            "basis": "provider_cumulative",
+            "candidate": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "input": {
+              "present": true,
+              "source": "upstream",
+              "value": 3
+            },
+            "outputTotal": {
+              "present": true,
+              "source": "upstream",
+              "value": 87
+            },
+            "protocol": "gemini",
+            "raw": {
+              "candidatesTokenCount": 87,
+              "promptTokenCount": 3,
+              "thoughtsTokenCount": 0,
+              "totalTokenCount": 90
+            },
+            "reasoning": {
+              "present": true,
+              "source": "upstream",
+              "value": 0
+            },
+            "reasoningIncludedInOutput": true
+          }
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "response.converted",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "DEBUG",
+        "logSeq": 3,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "debug",
+        "requestId": "f3cc83b1",
+        "retryScope": "conductor_gemini_family",
+        "serverSpanId": "82512069e3a2c3ca",
+        "service": "cliproxyapi",
+        "spanId": "82512069e3a2c3ca",
+        "spanKind": "server",
+        "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+        "ts": "2026-09-25T09:24:16.031Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 24,
+          "bytes": 1967
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 11,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|82512069e3a2c3ca|n4;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 1,
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 4,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/v1/chat/completions",
+          "totalMs": 15.4151,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 4,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "f3cc83b1",
+        "retryScope": null,
+        "serverSpanId": "82512069e3a2c3ca",
+        "service": "cliproxyapi",
+        "spanId": "82512069e3a2c3ca",
+        "spanKind": "server",
+        "traceId": "91e01f3d986eea399f8f39b9c82dc74f",
+        "ts": "2026-09-25T09:24:16.031Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 25,
+          "bytes": 1113
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    },
+    {
+      "id": 12,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856|e597c4798d0ab965|n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": "generated",
+        "data": {
+          "callCount": 0,
+          "coverage": {
+            "accessCapture": "unknown",
+            "debugCapture": "enabled_throughout",
+            "droppedForSpan": null,
+            "expectedLastLogSeq": 1,
+            "sinkDroppedTotal": null,
+            "truncatedEvents": 0
+          },
+          "deliveryState": "local_finished",
+          "endReason": "finished",
+          "headersCommitted": true,
+          "routeTemplate": "/__shutdown",
+          "totalMs": 0,
+          "wireStatus": 200
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.server",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": "fce00b2a",
+        "retryScope": null,
+        "serverSpanId": "e597c4798d0ab965",
+        "service": "cliproxyapi",
+        "spanId": "e597c4798d0ab965",
+        "spanKind": "server",
+        "traceId": "10f9e6457edd643e170abf1c6c898099",
+        "ts": "2026-09-25T09:24:16.069Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 27,
+          "bytes": 1098
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    }
+  ],
+  "processEvidence": [
+    {
+      "id": 1,
+      "identity": "cliproxyapi|cpa1|d3762f4e-60e9-45cd-95f3-43064c582856||n1;",
+      "record": {
+        "attemptId": null,
+        "attemptNo": null,
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856",
+        "buildCommit": null,
+        "callNo": null,
+        "callerAlias": null,
+        "callerAliasScope": "unknown",
+        "callerIdSource": {
+          "header": null,
+          "rejected": "none",
+          "trust": "none"
+        },
+        "callerRequestId": null,
+        "contextSource": null,
+        "data": {
+          "accessEnabled": true,
+          "capabilities": [
+            "http_inbound",
+            "http_outbound",
+            "normalization",
+            "attempt_result",
+            "conversion",
+            "throttle"
+          ],
+          "configRevision": "1",
+          "configStatus": "valid",
+          "contractVersion": "1.0.0-rc.1",
+          "debugEnabled": true,
+          "pid": 65236,
+          "reason": "startup",
+          "sinkDroppedTotal": null
+        },
+        "deploymentId": "diag07-local",
+        "diagnosticSchema": "ai-proxy-diagnostics/1",
+        "environment": "test",
+        "event": "diag.process",
+        "instanceId": "cpa1",
+        "instanceIdentitySource": "configured",
+        "level": "INFO",
+        "logSeq": 1,
+        "nodeLabel": null,
+        "parentSpanId": null,
+        "recordKind": "basic",
+        "requestId": null,
+        "retryScope": null,
+        "serverSpanId": null,
+        "service": "cliproxyapi",
+        "spanId": null,
+        "spanKind": "process",
+        "traceId": null,
+        "ts": "2026-09-25T09:24:15.844Z"
+      },
+      "provenance": [
+        {
+          "source": 1,
+          "line": 8,
+          "bytes": 988
+        }
+      ],
+      "trusted": true,
+      "conflict": false
+    }
+  ],
+  "counts": {
+    "requests": 3,
+    "observedServerOwners": 3,
+    "callCount": 2,
+    "knownAttemptCount": 2,
+    "unknownAttemptCallCount": 0,
+    "requestFailures": 0,
+    "callFailures": 0,
+    "attemptFailures": 0,
+    "conflicted": false
+  },
+  "byResource": [
+    {
+      "resource": {
+        "environment": "test",
+        "deploymentId": "diag07-local",
+        "service": "cliproxyapi",
+        "instanceId": "cpa1",
+        "bootId": "d3762f4e-60e9-45cd-95f3-43064c582856"
+      },
+      "counts": {
+        "requests": 3,
+        "observedServerOwners": 3,
+        "callCount": 2,
+        "knownAttemptCount": 2,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      }
+    }
+  ],
+  "notes": [
+    "Trace IDs and caller aliases select candidates; they do not prove a relationship.",
+    "Verified means unique bilateral evidence from operator-controlled sources, not cryptographic proof.",
+    "Coverage is relative to observed exports and instrumented paths; process capabilities do not prove route coverage or a complete export tail.",
+    "Usage snapshots are last-observed, not proven final. Upstream and delivered observations remain separate; no token totals are recomputed, and 87 is not an error class.",
+    "Missing DEBUG events do not prove that a business stage did not execute. Wall clocks never establish edges or ordering across spans.",
+    "Counts describe observed identities, not inferred retries or resolved business totals. Conflicts remain explicit; request/call/attempt failures are separate observed counts."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "exitCode": 2,
+  "acceptanceComplete": false,
+  "liveAssertions": 39,
+  "failedAssertions": [],
+  "requiredGaps": [
+    "POSIX fork and container multiworker",
+    "CGO race",
+    "actual historical service rolling version",
+    "full deterministic end-to-end backpressure/proxy equivalence",
+    "see matrix report for remaining component-only and unexecuted items"
+  ]
+}

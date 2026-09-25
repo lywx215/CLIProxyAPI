@@ -1,0 +1,38 @@
+[
+  {
+    "label": "aito2",
+    "pid": 64232,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 0,
+      "bytes": 951
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "aito1",
+    "pid": 53856,
+    "hardKill": false,
+    "ack": {
+      "closed": true,
+      "dispatches": 0,
+      "bytes": 951
+    },
+    "exitCode": 0
+  },
+  {
+    "label": "gcli2",
+    "pid": 21568,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  },
+  {
+    "label": "gcli1",
+    "pid": 59080,
+    "hardKill": false,
+    "response": 200,
+    "exitCode": 0
+  }
+]

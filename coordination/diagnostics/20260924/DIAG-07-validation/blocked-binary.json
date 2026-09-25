@@ -1,0 +1,15 @@
+{
+  "binaryPath": "<USERPROFILE>\\AppData\\Local\\Temp\\diag07-driver.exe",
+  "binarySha256": "da12f45f2719a4e199eb160036caa6dc94eda4bc0cc3fdf40cf1fa5c4fb7c71f",
+  "sourceHead": "9422a853a222aef0dbf67815888c53ef6f1ede77",
+  "sourceFiles": {
+    "cmd/diag-integration/main.go": "393abcdcaab6af5b449d2777debd180dbee49a70bb4cb9caee878bc49e3842e0",
+    "scripts/diag-integration/run.py": "a99fa215ba05e537307a7201b297389a0d476c17d62ba985f8b8269703e29e57",
+    "scripts/diag-integration/aito-wrapper.cjs": "39a13adcbadd472fef9312a2bce8cf6984244111464ec3dc1e0685dff24e5e78",
+    "scripts/diag-integration/gcli-wrapper.py": "57c3c6d518fa954e59ad72ddd0595309def4fd0a5d303c57bfb0fd7ab9bb53e8"
+  },
+  "sourceProductionDiff": "",
+  "winerror": 4551,
+  "failureEvidence": "DIAG-07-run-02/failure.json",
+  "note": "main.go unchanged since refused build; Python runner subsequently fixed expected incomplete-read capture; binary retained in original location"
+}

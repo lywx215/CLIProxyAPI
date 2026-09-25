@@ -1,0 +1,292 @@
+{
+  "checks": [
+    {
+      "id": "controlled-pair",
+      "level": "live",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "controlled-pair.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 4,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "duplicate-import",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "duplicate-import.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 4,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "untrusted-pair",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "untrusted-pair.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 0,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "known-loss",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "known-loss.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 0,
+      "quarantined": 0,
+      "sourceFindings": [
+        [
+          "export_known_loss"
+        ],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "anonymous-alias",
+      "level": "live",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "anonymous-alias.json",
+      "counts": {
+        "requests": 7,
+        "observedServerOwners": 7,
+        "callCount": 7,
+        "knownAttemptCount": 7,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 4,
+        "conflicted": false
+      },
+      "verified": 0,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "clock-skew",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "clock-skew.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 4,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "duplicate-parent",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": false,
+      "evidence": "duplicate-parent.json",
+      "counts": {
+        "requests": 15,
+        "observedServerOwners": 15,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 4,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "mixed-framing",
+      "level": "synthetic-log",
+      "exitCode": 1,
+      "pass": true,
+      "evidence": "mixed-framing.json",
+      "counts": {
+        "requests": 14,
+        "observedServerOwners": 14,
+        "callCount": 12,
+        "knownAttemptCount": 12,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 2,
+      "quarantined": 4,
+      "sourceFindings": [
+        [
+          "legacy_text_omitted",
+          "quarantined_lines"
+        ],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "id": "historical-log",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "historical-log.json",
+      "counts": {
+        "requests": 83,
+        "observedServerOwners": 83,
+        "callCount": 85,
+        "knownAttemptCount": 85,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 9,
+        "callFailures": 14,
+        "attemptFailures": 51,
+        "conflicted": false
+      },
+      "verified": 0,
+      "quarantined": 0,
+      "sourceFindings": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "qualification": "actual approved historical export mixed with current exports; no historical process executed"
+    },
+    {
+      "id": "near-capacity",
+      "level": "synthetic-log",
+      "exitCode": 0,
+      "pass": true,
+      "evidence": "near-capacity.json",
+      "counts": {
+        "requests": 0,
+        "observedServerOwners": 0,
+        "callCount": 0,
+        "knownAttemptCount": 0,
+        "unknownAttemptCallCount": 0,
+        "requestFailures": 0,
+        "callFailures": 0,
+        "attemptFailures": 0,
+        "conflicted": false
+      },
+      "verified": 0,
+      "quarantined": 0,
+      "sourceFindings": [
+        [
+          "suspected_tail_gap_near_producer_limit",
+          "legacy_text_omitted"
+        ]
+      ],
+      "inputSha256": "47173589a5b8a363ff6290782eebeb8bed97bfb823cbbf4c0e7b6ea3f2e093f6",
+      "inputBytes": 16773576,
+      "qualification": "synthetic size clue only; not proof of actual producer stoppage or complete export"
+    }
+  ],
+  "failed": [
+    "duplicate-parent"
+  ]
+}

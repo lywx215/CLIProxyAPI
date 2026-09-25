@@ -1,0 +1,2 @@
+PASS: 3 schemas, 53 fixtures, 9 example lines, 242 vectors
+Contract SHA-256: ddb202238cfdaabef1af11575dbfcac788fdbc5a457aea5e72b913afc5b478d4
