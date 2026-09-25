@@ -1,0 +1,52 @@
+{
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "ts": "2026-09-24T12:00:00.000Z",
+  "level": "INFO",
+  "recordKind": "basic",
+  "event": "diag.server",
+  "environment": "test",
+  "deploymentId": "gemini-pool",
+  "service": "gcli2api",
+  "nodeLabel": null,
+  "instanceId": "gcli-1",
+  "instanceIdentitySource": "configured",
+  "bootId": "20000000-0000-4000-8000-000000000001",
+  "buildCommit": null,
+  "spanKind": "server",
+  "traceId": "11111111111111111111111111111111",
+  "spanId": "3333333333333333",
+  "parentSpanId": "2222222222222222",
+  "serverSpanId": "3333333333333333",
+  "requestId": "gcli-1",
+  "contextSource": "accepted",
+  "callerRequestId": "local-1",
+  "callerAlias": "cpa",
+  "callerAliasScope": "deployment",
+  "callerIdSource": {
+    "header": "x-diag-request-id",
+    "trust": "configured_peer",
+    "rejected": "none"
+  },
+  "attemptId": null,
+  "attemptNo": null,
+  "retryScope": null,
+  "callNo": null,
+  "logSeq": 1,
+  "data": {
+    "routeTemplate": "/v1/chat/completions",
+    "headersCommitted": true,
+    "wireStatus": 200,
+    "endReason": "finished",
+    "deliveryState": "local_finished",
+    "totalMs": 12,
+    "callCount": 0,
+    "coverage": {
+      "expectedLastLogSeq": 1,
+      "droppedForSpan": 0,
+      "sinkDroppedTotal": 0,
+      "truncatedEvents": 0,
+      "debugCapture": "none",
+      "accessCapture": "enabled_throughout"
+    }
+  }
+}

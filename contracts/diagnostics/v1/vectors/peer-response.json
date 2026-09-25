@@ -1,0 +1,157 @@
+[
+  {
+    "id": "missing",
+    "input": {
+      "headers": []
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "none"
+    }
+  },
+  {
+    "id": "valid",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "local-1"
+        ],
+        [
+          "X-Diag-Trace-Id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": "local-1",
+      "peerTraceId": "11111111111111111111111111111111",
+      "peerIdRejected": "none"
+    }
+  },
+  {
+    "id": "duplicate-request",
+    "input": {
+      "headers": [
+        [
+          "x-diag-request-id",
+          "one"
+        ],
+        [
+          "X-Diag-Request-Id",
+          "one"
+        ],
+        [
+          "x-diag-trace-id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": "11111111111111111111111111111111",
+      "peerIdRejected": "duplicate"
+    }
+  },
+  {
+    "id": "trace-zero",
+    "input": {
+      "headers": [
+        [
+          "x-diag-trace-id",
+          "00000000000000000000000000000000"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "invalid"
+    }
+  },
+  {
+    "id": "trace-uppercase",
+    "input": {
+      "headers": [
+        [
+          "x-diag-trace-id",
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "invalid"
+    }
+  },
+  {
+    "id": "trace-short",
+    "input": {
+      "headers": [
+        [
+          "x-diag-trace-id",
+          "1234"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "invalid"
+    }
+  },
+  {
+    "id": "trace-duplicate",
+    "input": {
+      "headers": [
+        [
+          "x-diag-trace-id",
+          "11111111111111111111111111111111"
+        ],
+        [
+          "X-Diag-Trace-Id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "duplicate"
+    }
+  },
+  {
+    "id": "trace-not-read-from-legacy",
+    "input": {
+      "headers": [
+        [
+          "x-trace-id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "none"
+    }
+  },
+  {
+    "id": "request-control",
+    "input": {
+      "headers": [
+        [
+          "x-diag-request-id",
+          "local-1\n"
+        ]
+      ]
+    },
+    "expected": {
+      "peerRequestId": null,
+      "peerTraceId": null,
+      "peerIdRejected": "invalid"
+    }
+  }
+]

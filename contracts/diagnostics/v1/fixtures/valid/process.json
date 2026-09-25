@@ -1,0 +1,49 @@
+{
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "ts": "2026-09-24T12:00:00.000Z",
+  "level": "INFO",
+  "recordKind": "basic",
+  "event": "diag.process",
+  "environment": "test",
+  "deploymentId": "edge",
+  "service": "cliproxyapi",
+  "nodeLabel": null,
+  "instanceId": "cpa-1",
+  "instanceIdentitySource": "configured",
+  "bootId": "10000000-0000-4000-8000-000000000001",
+  "buildCommit": null,
+  "spanKind": "process",
+  "traceId": null,
+  "spanId": null,
+  "parentSpanId": null,
+  "serverSpanId": null,
+  "requestId": null,
+  "contextSource": null,
+  "callerRequestId": null,
+  "callerAlias": null,
+  "callerAliasScope": "unknown",
+  "callerIdSource": {
+    "header": null,
+    "trust": "none",
+    "rejected": "none"
+  },
+  "attemptId": null,
+  "attemptNo": null,
+  "retryScope": null,
+  "callNo": null,
+  "logSeq": 1,
+  "data": {
+    "pid": 100,
+    "reason": "startup",
+    "accessEnabled": true,
+    "debugEnabled": false,
+    "configRevision": "config-1",
+    "contractVersion": "1.0.0-rc.1",
+    "capabilities": [
+      "http_inbound",
+      "http_outbound"
+    ],
+    "sinkDroppedTotal": 0,
+    "configStatus": "valid"
+  }
+}

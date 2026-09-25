@@ -1,0 +1,374 @@
+[
+  {
+    "id": "same-alias-still-not-edge",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": true,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "different-principal",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-2",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "different-deployment",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "other",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "different-service",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "gcli2api",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "different-environment",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "production",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "boot-local-same",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": true,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "boot-local-restart",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-b",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "boot-local-other-worker",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "boot",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-2",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "unknown-caller",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "unknown",
+        "callerAlias": null,
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": true
+    }
+  },
+  {
+    "id": "unassigned-deployment",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "unassigned",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "unassigned",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      }
+    },
+    "expected": {
+      "sameLookupScope": false,
+      "candidateAliasMatch": true,
+      "merge": false,
+      "scopeUnknown": true
+    }
+  },
+  {
+    "id": "different-request-alias",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-1"
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": "caller-2"
+      }
+    },
+    "expected": {
+      "sameLookupScope": true,
+      "candidateAliasMatch": false,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  },
+  {
+    "id": "missing-alias-is-not-a-candidate",
+    "input": {
+      "left": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": null
+      },
+      "right": {
+        "environment": "test",
+        "deploymentId": "edge",
+        "service": "cliproxyapi",
+        "callerAliasScope": "deployment",
+        "callerAlias": "principal-1",
+        "instanceId": "cpa-1",
+        "bootId": "boot-a",
+        "callerRequestId": null
+      }
+    },
+    "expected": {
+      "sameLookupScope": true,
+      "candidateAliasMatch": false,
+      "merge": false,
+      "scopeUnknown": false
+    }
+  }
+]

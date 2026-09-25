@@ -1,0 +1,52 @@
+{
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "ts": "2026-09-24T12:00:00.000Z",
+  "level": "INFO",
+  "recordKind": "basic",
+  "event": "diag.server",
+  "environment": "test",
+  "deploymentId": "edge",
+  "service": "cliproxyapi",
+  "nodeLabel": null,
+  "instanceId": "cpa-1",
+  "instanceIdentitySource": "configured",
+  "bootId": "10000000-0000-4000-8000-000000000001",
+  "buildCommit": null,
+  "spanKind": "server",
+  "traceId": "00000000000000000000000000000000",
+  "spanId": "1111111111111111",
+  "parentSpanId": null,
+  "serverSpanId": "1111111111111111",
+  "requestId": "local-1",
+  "contextSource": "generated",
+  "callerRequestId": "caller-1",
+  "callerAlias": "principal-1",
+  "callerAliasScope": "deployment",
+  "callerIdSource": {
+    "header": "x-request-id",
+    "trust": "authenticated",
+    "rejected": "none"
+  },
+  "attemptId": null,
+  "attemptNo": null,
+  "retryScope": null,
+  "callNo": null,
+  "logSeq": 1,
+  "data": {
+    "routeTemplate": "/v1/chat/completions",
+    "headersCommitted": true,
+    "wireStatus": 200,
+    "endReason": "finished",
+    "deliveryState": "local_finished",
+    "totalMs": 12,
+    "callCount": 1,
+    "coverage": {
+      "expectedLastLogSeq": 1,
+      "droppedForSpan": 0,
+      "sinkDroppedTotal": 0,
+      "truncatedEvents": 0,
+      "debugCapture": "none",
+      "accessCapture": "enabled_throughout"
+    }
+  }
+}

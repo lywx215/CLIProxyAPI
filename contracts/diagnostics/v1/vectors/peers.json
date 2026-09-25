@@ -1,0 +1,1836 @@
+[
+  {
+    "id": "exact",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "descendant-query-ignored",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1/chat?key=SYNTHETIC"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "default-port-host-case",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://GCLI.EXAMPLE.TEST:443/v1/chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "trailing-target-slash",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1/"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "different-port",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test:444/v1/chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "different-scheme",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "http://gcli.example.test/v1/chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "host-suffix",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test.attacker.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "path-boundary",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v10"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "path-case",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/V1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "encoded-path",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1/%63hat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "dot-segment",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1/../private"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "empty-segment",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1//chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "fragment",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1#private"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "userinfo",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://user@gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "trailing-dot-host",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test./v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "backslash",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1\\chat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "control",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1\nchat"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "unicode-host",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://\u4e2d.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "root-prefix-explicit",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/anything"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "config-origin-slash",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test/",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "config-explicit-default-port",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test:443",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "localhost-http",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://127.0.0.1:8080",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "http://127.0.0.1:8080/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "ipv6",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://[0:0:0:0:0:0:0:1]:8080",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "http://[::1]:8080/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "gcli-pool"
+    }
+  },
+  {
+    "id": "empty-config",
+    "input": {
+      "config": [],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "empty-env",
+    "input": {
+      "config": "",
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": null
+    }
+  },
+  {
+    "id": "malformed-json",
+    "input": {
+      "config": "[",
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "not-array",
+    "input": {
+      "config": {},
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "unknown-property",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool",
+          "secret": "SYNTHETIC"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "missing-service",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "wildcard",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://*.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-userinfo",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://user@gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-query",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test?x=1",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-path",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test/v1",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-dot-path",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1/..",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-encoded-path",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1/%63hat",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-trailing-prefix-slash",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1/",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-zero-port",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test:0",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "config-over-port",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test:65536",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "ipv4-leading-zero",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://127.000.0.1",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "ipv4-integer",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://2130706433",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "ipv4-hex-label",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://0x7f.0.0.1",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "ipv6-zone",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "http://[fe80::1%25eth0]",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "duplicate-alias",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "gcli-pool",
+          "origin": "https://other.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "same-route",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "second",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "overlap",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "second",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1/chat",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "all-disabled-if-one-invalid",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "second",
+          "origin": "ftp://other.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "65-peers",
+    "input": {
+      "config": [
+        {
+          "alias": "peer-0",
+          "origin": "https://p0.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-1",
+          "origin": "https://p1.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-2",
+          "origin": "https://p2.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-3",
+          "origin": "https://p3.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-4",
+          "origin": "https://p4.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-5",
+          "origin": "https://p5.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-6",
+          "origin": "https://p6.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-7",
+          "origin": "https://p7.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-8",
+          "origin": "https://p8.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-9",
+          "origin": "https://p9.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-10",
+          "origin": "https://p10.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-11",
+          "origin": "https://p11.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-12",
+          "origin": "https://p12.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-13",
+          "origin": "https://p13.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-14",
+          "origin": "https://p14.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-15",
+          "origin": "https://p15.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-16",
+          "origin": "https://p16.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-17",
+          "origin": "https://p17.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-18",
+          "origin": "https://p18.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-19",
+          "origin": "https://p19.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-20",
+          "origin": "https://p20.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-21",
+          "origin": "https://p21.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-22",
+          "origin": "https://p22.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-23",
+          "origin": "https://p23.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-24",
+          "origin": "https://p24.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-25",
+          "origin": "https://p25.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-26",
+          "origin": "https://p26.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-27",
+          "origin": "https://p27.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-28",
+          "origin": "https://p28.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-29",
+          "origin": "https://p29.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-30",
+          "origin": "https://p30.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-31",
+          "origin": "https://p31.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-32",
+          "origin": "https://p32.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-33",
+          "origin": "https://p33.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-34",
+          "origin": "https://p34.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-35",
+          "origin": "https://p35.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-36",
+          "origin": "https://p36.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-37",
+          "origin": "https://p37.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-38",
+          "origin": "https://p38.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-39",
+          "origin": "https://p39.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-40",
+          "origin": "https://p40.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-41",
+          "origin": "https://p41.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-42",
+          "origin": "https://p42.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-43",
+          "origin": "https://p43.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-44",
+          "origin": "https://p44.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-45",
+          "origin": "https://p45.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-46",
+          "origin": "https://p46.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-47",
+          "origin": "https://p47.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-48",
+          "origin": "https://p48.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-49",
+          "origin": "https://p49.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-50",
+          "origin": "https://p50.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-51",
+          "origin": "https://p51.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-52",
+          "origin": "https://p52.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-53",
+          "origin": "https://p53.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-54",
+          "origin": "https://p54.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-55",
+          "origin": "https://p55.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-56",
+          "origin": "https://p56.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-57",
+          "origin": "https://p57.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-58",
+          "origin": "https://p58.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-59",
+          "origin": "https://p59.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-60",
+          "origin": "https://p60.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-61",
+          "origin": "https://p61.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-62",
+          "origin": "https://p62.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-63",
+          "origin": "https://p63.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-64",
+          "origin": "https://p64.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  },
+  {
+    "id": "disjoint-prefixes",
+    "input": {
+      "config": [
+        {
+          "alias": "gcli-pool",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "second",
+          "origin": "https://gcli.example.test",
+          "pathPrefix": "/v10",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://gcli.example.test/v10"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "second"
+    }
+  },
+  {
+    "id": "64-peers",
+    "input": {
+      "config": [
+        {
+          "alias": "peer-0",
+          "origin": "https://p0.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-1",
+          "origin": "https://p1.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-2",
+          "origin": "https://p2.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-3",
+          "origin": "https://p3.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-4",
+          "origin": "https://p4.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-5",
+          "origin": "https://p5.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-6",
+          "origin": "https://p6.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-7",
+          "origin": "https://p7.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-8",
+          "origin": "https://p8.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-9",
+          "origin": "https://p9.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-10",
+          "origin": "https://p10.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-11",
+          "origin": "https://p11.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-12",
+          "origin": "https://p12.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-13",
+          "origin": "https://p13.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-14",
+          "origin": "https://p14.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-15",
+          "origin": "https://p15.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-16",
+          "origin": "https://p16.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-17",
+          "origin": "https://p17.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-18",
+          "origin": "https://p18.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-19",
+          "origin": "https://p19.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-20",
+          "origin": "https://p20.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-21",
+          "origin": "https://p21.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-22",
+          "origin": "https://p22.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-23",
+          "origin": "https://p23.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-24",
+          "origin": "https://p24.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-25",
+          "origin": "https://p25.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-26",
+          "origin": "https://p26.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-27",
+          "origin": "https://p27.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-28",
+          "origin": "https://p28.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-29",
+          "origin": "https://p29.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-30",
+          "origin": "https://p30.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-31",
+          "origin": "https://p31.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-32",
+          "origin": "https://p32.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-33",
+          "origin": "https://p33.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-34",
+          "origin": "https://p34.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-35",
+          "origin": "https://p35.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-36",
+          "origin": "https://p36.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-37",
+          "origin": "https://p37.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-38",
+          "origin": "https://p38.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-39",
+          "origin": "https://p39.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-40",
+          "origin": "https://p40.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-41",
+          "origin": "https://p41.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-42",
+          "origin": "https://p42.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-43",
+          "origin": "https://p43.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-44",
+          "origin": "https://p44.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-45",
+          "origin": "https://p45.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-46",
+          "origin": "https://p46.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-47",
+          "origin": "https://p47.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-48",
+          "origin": "https://p48.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-49",
+          "origin": "https://p49.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-50",
+          "origin": "https://p50.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-51",
+          "origin": "https://p51.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-52",
+          "origin": "https://p52.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-53",
+          "origin": "https://p53.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-54",
+          "origin": "https://p54.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-55",
+          "origin": "https://p55.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-56",
+          "origin": "https://p56.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-57",
+          "origin": "https://p57.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-58",
+          "origin": "https://p58.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-59",
+          "origin": "https://p59.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-60",
+          "origin": "https://p60.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-61",
+          "origin": "https://p61.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-62",
+          "origin": "https://p62.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        },
+        {
+          "alias": "peer-63",
+          "origin": "https://p63.example.test",
+          "pathPrefix": "/v1",
+          "service": "gcli2api",
+          "deploymentId": "gemini-pool"
+        }
+      ],
+      "target": "https://p63.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "valid",
+      "match": "peer-63"
+    }
+  },
+  {
+    "id": "duplicate-object-key",
+    "input": {
+      "config": "[{\"alias\":\"one\",\"alias\":\"two\",\"origin\":\"https://gcli.example.test\",\"pathPrefix\":\"/v1\",\"service\":\"gcli2api\",\"deploymentId\":null}]",
+      "target": "https://gcli.example.test/v1"
+    },
+    "expected": {
+      "configStatus": "config_invalid",
+      "match": null
+    }
+  }
+]

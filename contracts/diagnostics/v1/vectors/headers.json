@@ -1,0 +1,1339 @@
+[
+  {
+    "id": "missing",
+    "input": {
+      "headers": []
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "valid-sampled",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "case-insensitive-name",
+    "input": {
+      "headers": [
+        [
+          "TraceParent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "outer-http-ows",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          " \t00-11111111111111111111111111111111-1111111111111111-01\t "
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "unsampled",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-00"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "reserved-flags-masked",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-fe"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-version",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-opaque"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-version-no-extension",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "fe-11111111111111111111111111111111-1111111111111111-01"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-opaque-extension-space",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x y"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-opaque-exact-512-limit",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "empty",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          ""
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "trace-zero",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-00000000000000000000000000000000-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "parent-zero",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-00000000000000000000000000000000-0000000000000000-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "uppercase-hex",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "version-ff",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "ff-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "bad-version",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "gg-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "bad-flags",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-0g"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "too-short",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-0"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "v00-extra",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01-opaque"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-no-separator",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01opaque"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "wrong-delimiter",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00_11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "embedded-whitespace",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-1111111 1111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "control",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01\r\n"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "over-local-limit",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "future-opaque-tab-rejected-by-local-profile",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "01-11111111111111111111111111111111-1111111111111111-01-x\ty"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "raw-ows-over-local-limit",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "                                                                                                                                                                                                                                                                                                                                                                                                                                                                          00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "comma-joined",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01,00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "duplicate-identical",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "TraceParent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "invalid_replaced",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "state-without-parent",
+    "input": {
+      "headers": [
+        [
+          "tracestate",
+          "vendor=ok"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "state-multiple-fields",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=one"
+        ],
+        [
+          "TraceState",
+          "other=two"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": "vendor=one,other=two",
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "state-empty-members",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          " ,vendor=one, ,other=two,"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": "vendor=one,other=two",
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "duplicate-key",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=one,vendor=two"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "invalid-key",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "Vendor=one"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "equals-value",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=a=b"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "control-value",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=a\nb"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "state-over-limit",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "state-value-too-long",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "vendor=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "33-members",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "v0=x,v1=x,v2=x,v3=x,v4=x,v5=x,v6=x,v7=x,v8=x,v9=x,v10=x,v11=x,v12=x,v13=x,v14=x,v15=x,v16=x,v17=x,v18=x,v19=x,v20=x,v21=x,v22=x,v23=x,v24=x,v25=x,v26=x,v27=x,v28=x,v29=x,v30=x,v31=x,v32=x"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "32-members",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "v0=x,v1=x,v2=x,v3=x,v4=x,v5=x,v6=x,v7=x,v8=x,v9=x,v10=x,v11=x,v12=x,v13=x,v14=x,v15=x,v16=x,v17=x,v18=x,v19=x,v20=x,v21=x,v22=x,v23=x,v24=x,v25=x,v26=x,v27=x,v28=x,v29=x,v30=x,v31=x"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": "v0=x,v1=x,v2=x,v3=x,v4=x,v5=x,v6=x,v7=x,v8=x,v9=x,v10=x,v11=x,v12=x,v13=x,v14=x,v15=x,v16=x,v17=x,v18=x,v19=x,v20=x,v21=x,v22=x,v23=x,v24=x,v25=x,v26=x,v27=x,v28=x,v29=x,v30=x,v31=x",
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "tenant-state",
+    "input": {
+      "headers": [
+        [
+          "traceparent",
+          "00-11111111111111111111111111111111-1111111111111111-01"
+        ],
+        [
+          "tracestate",
+          "1tenant@vendor=opaque"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "accepted",
+      "traceId": "11111111111111111111111111111111",
+      "parentSpanId": "1111111111111111",
+      "outputFlags": "01",
+      "tracestate": "1tenant@vendor=opaque",
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "id-only",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "new-api.1:/-"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "new-api.1:/-",
+      "callerHeader": "x-request-id",
+      "callerTrust": "unverified",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "id-128",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "callerHeader": "x-request-id",
+      "callerTrust": "unverified",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "id-empty",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          ""
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "invalid"
+    }
+  },
+  {
+    "id": "id-129",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "too_long"
+    }
+  },
+  {
+    "id": "id-space",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          " a "
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "invalid"
+    }
+  },
+  {
+    "id": "id-unicode",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "\u4e2d"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "invalid"
+    }
+  },
+  {
+    "id": "id-control",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "a\r\nb"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "invalid"
+    }
+  },
+  {
+    "id": "id-comma",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "a,b"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "duplicate"
+    }
+  },
+  {
+    "id": "id-duplicate",
+    "input": {
+      "headers": [
+        [
+          "X-Request-Id",
+          "one"
+        ],
+        [
+          "x-request-id",
+          "one"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "duplicate"
+    }
+  },
+  {
+    "id": "untrusted-diag-ignored",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "internal"
+        ],
+        [
+          "X-Trace-Id",
+          "11111111111111111111111111111111"
+        ],
+        [
+          "X-Diag-Trace-Id",
+          "11111111111111111111111111111111"
+        ]
+      ]
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": null,
+      "callerHeader": null,
+      "callerTrust": "none",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "authenticated-standard",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "internal"
+        ],
+        [
+          "X-Request-Id",
+          "external"
+        ]
+      ],
+      "authenticated": true
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "external",
+      "callerHeader": "x-request-id",
+      "callerTrust": "authenticated",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "configured-but-not-authenticated",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "internal"
+        ],
+        [
+          "X-Request-Id",
+          "external"
+        ]
+      ],
+      "configuredInboundAdapter": true
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "external",
+      "callerHeader": "x-request-id",
+      "callerTrust": "unverified",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "authenticated-peer-prefers-diag",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "internal"
+        ],
+        [
+          "X-Request-Id",
+          "external"
+        ]
+      ],
+      "authenticated": true,
+      "configuredInboundAdapter": true
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "internal",
+      "callerHeader": "x-diag-request-id",
+      "callerTrust": "configured_peer",
+      "rejected": "none"
+    }
+  },
+  {
+    "id": "invalid-diag-falls-back",
+    "input": {
+      "headers": [
+        [
+          "X-Diag-Request-Id",
+          "bad value"
+        ],
+        [
+          "X-Request-Id",
+          "external"
+        ]
+      ],
+      "authenticated": true,
+      "configuredInboundAdapter": true
+    },
+    "expected": {
+      "contextSource": "generated",
+      "traceId": "<generated>",
+      "parentSpanId": null,
+      "outputFlags": "00",
+      "tracestate": null,
+      "callerRequestId": "external",
+      "callerHeader": "x-request-id",
+      "callerTrust": "authenticated",
+      "rejected": "invalid"
+    }
+  }
+]

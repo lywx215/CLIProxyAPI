@@ -1,0 +1,156 @@
+[
+  {
+    "id": "defaults",
+    "input": {
+      "config": {},
+      "localService": "cliproxyapi"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "<random-uuid>",
+      "instanceIdentitySource": "ephemeral",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "request-identity-ignored",
+    "input": {
+      "config": {},
+      "localService": "cliproxyapi",
+      "requestHeaders": {
+        "DIAG_INSTANCE_ID": "forged",
+        "bootId": "forged"
+      }
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "<random-uuid>",
+      "instanceIdentitySource": "ephemeral",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "platform-precedes-config",
+    "input": {
+      "config": {
+        "instanceId": "configured"
+      },
+      "platformId": "replica-1",
+      "localService": "cliproxyapi"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "replica-1",
+      "instanceIdentitySource": "platform",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "invalid-platform-falls-back",
+    "input": {
+      "config": {
+        "instanceId": "configured"
+      },
+      "platformId": "bad value",
+      "localService": "cliproxyapi"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "configured",
+      "instanceIdentitySource": "configured",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "invalid-labels-fall-back",
+    "input": {
+      "config": {
+        "environment": "bad value",
+        "deploymentId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "nodeLabel": "email@example.test",
+        "instanceId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "localService": "cliproxyapi"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "<random-uuid>",
+      "instanceIdentitySource": "ephemeral",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "max-labels",
+    "input": {
+      "config": {
+        "environment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "deploymentId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "nodeLabel": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "instanceId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "localService": "cliproxyapi"
+    },
+    "expected": {
+      "environment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "deploymentId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "nodeLabel": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instanceId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "instanceIdentitySource": "configured",
+      "service": "cliproxyapi",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "new-worker-after-fork",
+    "input": {
+      "config": {
+        "instanceId": "replica-1"
+      },
+      "localService": "gcli2api",
+      "previousBootId": "must-not-be-inherited"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "replica-1",
+      "instanceIdentitySource": "configured",
+      "service": "gcli2api",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  },
+  {
+    "id": "same-replica-after-restart",
+    "input": {
+      "config": {
+        "instanceId": "replica-1"
+      },
+      "localService": "gcli2api",
+      "previousBootId": "must-not-be-inherited"
+    },
+    "expected": {
+      "environment": "unassigned",
+      "deploymentId": "unassigned",
+      "nodeLabel": null,
+      "instanceId": "replica-1",
+      "instanceIdentitySource": "configured",
+      "service": "gcli2api",
+      "bootId": "<new-uuid-per-worker>"
+    }
+  }
+]

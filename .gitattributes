@@ -1,2 +1,7 @@
 # Preserve the exact bytes and digest of the published frontend asset on every OS.
 static/management.html -text
+
+# Contract digests use repository bytes with UTF-8 and LF on every platform.
+contracts/diagnostics/v1/** text eol=lf
+CROSS_SERVICE_DIAGNOSTICS*_CN.md text eol=lf
+coordination/diagnostics/20260924/** text eol=lf

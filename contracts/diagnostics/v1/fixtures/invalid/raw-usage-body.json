@@ -1,0 +1,91 @@
+{
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "ts": "2026-09-24T12:00:00.000Z",
+  "level": "DEBUG",
+  "recordKind": "debug",
+  "event": "upstream.attempt_finished",
+  "environment": "test",
+  "deploymentId": "edge",
+  "service": "cliproxyapi",
+  "nodeLabel": null,
+  "instanceId": "cpa-1",
+  "instanceIdentitySource": "configured",
+  "bootId": "10000000-0000-4000-8000-000000000001",
+  "buildCommit": null,
+  "spanKind": "server",
+  "traceId": "11111111111111111111111111111111",
+  "spanId": "1111111111111111",
+  "parentSpanId": null,
+  "serverSpanId": "1111111111111111",
+  "requestId": "local-1",
+  "contextSource": "generated",
+  "callerRequestId": "caller-1",
+  "callerAlias": "principal-1",
+  "callerAliasScope": "deployment",
+  "callerIdSource": {
+    "header": "x-request-id",
+    "trust": "authenticated",
+    "rejected": "none"
+  },
+  "attemptId": "attempt-1",
+  "attemptNo": 1,
+  "retryScope": "executor",
+  "callNo": null,
+  "logSeq": 2,
+  "data": {
+    "resultClass": "success",
+    "failureOrigin": "none",
+    "failureStage": "none",
+    "errorClass": "none",
+    "usage": {
+      "protocol": "gemini",
+      "input": {
+        "value": null,
+        "present": false,
+        "source": "unknown"
+      },
+      "candidate": {
+        "value": null,
+        "present": false,
+        "source": "unknown"
+      },
+      "reasoning": {
+        "value": null,
+        "present": false,
+        "source": "unknown"
+      },
+      "outputTotal": {
+        "value": 0,
+        "present": true,
+        "source": "upstream"
+      },
+      "basis": "provider_cumulative",
+      "reasoningIncludedInOutput": null,
+      "raw": {
+        "candidatesTokenCount": 0,
+        "body": "SYNTHETIC_FORBIDDEN"
+      }
+    },
+    "output": {
+      "candidateCount": 1,
+      "ordinaryTextUtf8Bytes": 12,
+      "thoughtUtf8Bytes": 0,
+      "validToolCalls": 0,
+      "mediaParts": 0,
+      "ordinaryTextNonWhitespaceChars": 12
+    },
+    "terminalSeen": true,
+    "eofSeen": true,
+    "parserFinishOk": true,
+    "totalMs": 10,
+    "credentialRef": "credential-1",
+    "credentialRefScope": "boot",
+    "timing": {
+      "firstUpstreamByteMs": 1,
+      "firstEffectiveOutputMs": 2,
+      "responseCommitMs": null,
+      "firstDownstreamEffectiveOutputMs": null,
+      "timingSource": "server_monotonic"
+    }
+  }
+}

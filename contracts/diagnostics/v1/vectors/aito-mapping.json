@@ -1,0 +1,266 @@
+[
+  {
+    "id": "local-success",
+    "input": {
+      "legacy": {
+        "requestId": "local-1",
+        "attemptId": "attempt-1",
+        "deliveryOutcome": "success"
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": true
+    },
+    "expected": {
+      "requestId": "local-1",
+      "attemptId": "attempt-1",
+      "deliveryState": "local_finished",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "requestId": "local-1",
+        "attemptId": "attempt-1",
+        "deliveryOutcome": "success"
+      }
+    }
+  },
+  {
+    "id": "success-without-finish-evidence",
+    "input": {
+      "legacy": {
+        "deliveryOutcome": "success"
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "deliveryOutcome": "success"
+      }
+    }
+  },
+  {
+    "id": "cancel-observed",
+    "input": {
+      "legacy": {
+        "deliveryOutcome": "aborted"
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false,
+      "localCancelObserved": true
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "cancelled",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "deliveryOutcome": "aborted"
+      }
+    }
+  },
+  {
+    "id": "error-observed",
+    "input": {
+      "legacy": {
+        "deliveryOutcome": "error"
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false,
+      "localFailureObserved": true
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "failed",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "deliveryOutcome": "error"
+      }
+    }
+  },
+  {
+    "id": "legacy-error-without-local-evidence",
+    "input": {
+      "legacy": {
+        "deliveryOutcome": "error"
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "deliveryOutcome": "error"
+      }
+    }
+  },
+  {
+    "id": "preserve-wire-identities-stream-seq",
+    "input": {
+      "legacy": {
+        "request_id": "local-1",
+        "request_attempt_id": "attempt-1",
+        "seq": 99,
+        "schemaVersion": 2
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": "local-1",
+      "attemptId": "attempt-1",
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "request_id": "local-1",
+        "request_attempt_id": "attempt-1",
+        "seq": 99,
+        "schemaVersion": 2
+      }
+    }
+  },
+  {
+    "id": "sink-drop-is-not-span-drop",
+    "input": {
+      "legacy": {
+        "logsDropped": 42
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": 42,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "logsDropped": 42
+      }
+    }
+  },
+  {
+    "id": "zero-sink-drop-is-observed-zero",
+    "input": {
+      "legacy": {
+        "logsDropped": 0
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": 0,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "logsDropped": 0
+      }
+    }
+  },
+  {
+    "id": "wall-duration-not-monotonic",
+    "input": {
+      "legacy": {
+        "firstEffectiveMs": 12
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "legacy_wall",
+      "legacyPreserved": {
+        "firstEffectiveMs": 12
+      }
+    }
+  },
+  {
+    "id": "browser-duration-source",
+    "input": {
+      "legacy": {
+        "browserDurationMs": 20
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "browser_reported",
+      "legacyPreserved": {
+        "browserDurationMs": 20
+      }
+    }
+  },
+  {
+    "id": "parser-complete-not-log-complete",
+    "input": {
+      "legacy": {
+        "observationComplete": true,
+        "recentEvents": [
+          {
+            "seq": 9
+          }
+        ]
+      },
+      "allocatedLogSeq": 7,
+      "localFinishObserved": false
+    },
+    "expected": {
+      "requestId": null,
+      "attemptId": null,
+      "deliveryState": "unknown",
+      "logSeq": 7,
+      "sinkDroppedTotal": null,
+      "droppedForSpan": null,
+      "timingSource": "unknown",
+      "legacyPreserved": {
+        "observationComplete": true,
+        "recentEvents": [
+          {
+            "seq": 9
+          }
+        ]
+      }
+    }
+  }
+]

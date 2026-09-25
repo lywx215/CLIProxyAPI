@@ -1,0 +1,12 @@
+{
+  "baselineSha": "fde3903689b8c9882d1f0233587fe33e2edfdf77",
+  "sourceWorkspace": "G:/code/gemini30/CLIProxyAPI",
+  "sourceReadOnly": true,
+  "importedInputSha256": {
+    "CROSS_SERVICE_DIAGNOSTICS_PLAN_CN.md": "a7bcbfd6497950838088b09106d1f92c8d8be5b902004607192a9009370cc9ac",
+    "CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md": "fce59e635cb999d534cccec610fe4da5072535539e47a1ef40c487b02c4eaad5",
+    "CROSS_SERVICE_DIAGNOSTICS_TASKS_CN.md": "3cd4a267476f45edb9bc558b39c056d61037bfa7f90bf8dbeb75248bca30c4ed"
+  },
+  "note": "Hashes captured when complete source documents were copied, before candidate edits; source coordinator files may subsequently change.",
+  "reviewStatus": "pending_coordinator_and_claude_review"
+}

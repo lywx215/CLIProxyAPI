@@ -1,0 +1,9 @@
+{
+  "diagnosticSchema": "ai-proxy-diagnostics/1",
+  "artifactVersion": "1.0.0-rc.1",
+  "status": "pending_coordinator_and_claude_review",
+  "traceContextProfile": "W3C-Level-1-2021",
+  "jsonSchemaDialect": "2020-12",
+  "manifestAlgorithm": "SHA-256",
+  "manifestFile": "SHA256SUMS"
+}

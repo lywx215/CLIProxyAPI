@@ -1,0 +1,258 @@
+[
+  {
+    "id": "bundle-shape-synthetic-digests",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "id": "absolute-source-path",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "C:/private/log.txt",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "id": "raw-source-lines",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true,
+          "rawLines": [
+            "SYNTHETIC_FORBIDDEN"
+          ]
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "id": "invalid-time",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-02-30T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "id": "unknown-bundle-field",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ],
+      "secret": "SYNTHETIC_FORBIDDEN"
+    },
+    "valid": false
+  },
+  {
+    "id": "negative-loss",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": -1,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "id": "invalid-digest",
+    "schema": "bundle.schema.json",
+    "input": {
+      "diagnosticSchema": "ai-proxy-diagnostics/1",
+      "artifactVersion": "1.0.0-rc.1",
+      "contractSha256": "not-a-digest",
+      "createdAt": "2026-09-24T12:00:00.000Z",
+      "files": [
+        {
+          "sourceAlias": "fixture-export",
+          "path": "fixture.jsonl",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resources": [
+            {
+              "environment": "test",
+              "deploymentId": "edge",
+              "service": "cliproxyapi",
+              "nodeLabel": null,
+              "instanceId": "cpa-1",
+              "instanceIdentitySource": "configured",
+              "bootId": "10000000-0000-4000-8000-000000000001",
+              "buildCommit": null
+            }
+          ],
+          "firstTs": "2026-09-24T12:00:00.000Z",
+          "lastTs": "2026-09-24T12:00:00.000Z",
+          "debugCapture": "none",
+          "sinkDroppedTotal": 0,
+          "malformedLines": 0,
+          "terminalTailKnown": true
+        }
+      ]
+    },
+    "valid": false
+  }
+]

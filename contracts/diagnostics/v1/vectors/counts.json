@@ -1,0 +1,374 @@
+[
+  {
+    "id": "one-call",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 1,
+      "knownAttemptCount": 1,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "two-calls-one-attempt",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-2",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 2,
+      "knownAttemptCount": 1,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "different-retry-owners",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-2",
+          "retryScope": "base_url",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 2,
+      "knownAttemptCount": 2,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "same-attempt-number-other-worker",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-b",
+          "serverSpanId": "server-a",
+          "spanId": "call-2",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 2,
+      "callCount": 2,
+      "knownAttemptCount": 2,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "same-attempt-number-other-server",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-b",
+          "spanId": "call-2",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 2,
+      "callCount": 2,
+      "knownAttemptCount": 2,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "unknown-attempt-cannot-infer",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": null,
+          "attemptNo": 1,
+          "attemptNoUnique": false
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 1,
+      "knownAttemptCount": 0,
+      "unknownAttemptCallCount": 1
+    }
+  },
+  {
+    "id": "known-number-fallback",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": null,
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 1,
+      "knownAttemptCount": 1,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "missing-scope-unknown",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": null,
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 1,
+      "knownAttemptCount": 0,
+      "unknownAttemptCallCount": 1
+    }
+  },
+  {
+    "id": "duplicate-event-not-new-call",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "call-1",
+          "retryScope": "executor",
+          "attemptId": "attempt-1",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 1,
+      "callCount": 1,
+      "knownAttemptCount": 1,
+      "unknownAttemptCallCount": 0
+    }
+  },
+  {
+    "id": "two-outer-six-inner-calls",
+    "input": {
+      "calls": [
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "cpa-call-0",
+          "retryScope": "executor",
+          "attemptId": "cpa-attempt-0",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-0",
+          "bootId": "gcli-boot-0",
+          "serverSpanId": "gcli-server-0",
+          "spanId": "gcli-call-0-0",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-0",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-0",
+          "bootId": "gcli-boot-0",
+          "serverSpanId": "gcli-server-0",
+          "spanId": "gcli-call-0-1",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-1",
+          "attemptNo": 2,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-0",
+          "bootId": "gcli-boot-0",
+          "serverSpanId": "gcli-server-0",
+          "spanId": "gcli-call-0-2",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-2",
+          "attemptNo": 3,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "serverSpanId": "server-a",
+          "spanId": "cpa-call-1",
+          "retryScope": "executor",
+          "attemptId": "cpa-attempt-1",
+          "attemptNo": 2,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "gcli-boot-1",
+          "serverSpanId": "gcli-server-1",
+          "spanId": "gcli-call-1-0",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-0",
+          "attemptNo": 1,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "gcli-boot-1",
+          "serverSpanId": "gcli-server-1",
+          "spanId": "gcli-call-1-1",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-1",
+          "attemptNo": 2,
+          "attemptNoUnique": true
+        },
+        {
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "gcli-boot-1",
+          "serverSpanId": "gcli-server-1",
+          "spanId": "gcli-call-1-2",
+          "retryScope": "executor",
+          "attemptId": "gcli-attempt-2",
+          "attemptNo": 3,
+          "attemptNoUnique": true
+        }
+      ]
+    },
+    "expected": {
+      "observedServerOwners": 3,
+      "callCount": 8,
+      "knownAttemptCount": 8,
+      "unknownAttemptCallCount": 0
+    }
+  }
+]

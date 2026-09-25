@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-proxy-diagnostics:v1:peers",
+  "title": "Parsed DIAG_PEERS shape; semantic validation also required",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "alias": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "not": {
+          "pattern": "[\\r\\n]"
+        }
+      },
+      "origin": {
+        "type": "string",
+        "minLength": 8,
+        "maxLength": 256,
+        "pattern": "^https?://[^/?#@\\s]+/?$",
+        "not": {
+          "pattern": "[\\r\\n]"
+        }
+      },
+      "pathPrefix": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$",
+        "not": {
+          "pattern": "[\\r\\n]"
+        }
+      },
+      "service": {
+        "enum": [
+          "cliproxyapi",
+          "gcli2api",
+          "aitoapi"
+        ]
+      },
+      "deploymentId": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "not": {
+              "pattern": "[\\r\\n]"
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "alias",
+      "origin",
+      "pathPrefix",
+      "service",
+      "deploymentId"
+    ],
+    "additionalProperties": false
+  },
+  "maxItems": 64
+}

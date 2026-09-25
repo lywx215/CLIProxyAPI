@@ -1,0 +1,996 @@
+[
+  {
+    "id": "bilateral",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "verified"
+      ],
+      "verifiedEdges": [
+        [
+          "2222222222222222",
+          "3333333333333333"
+        ]
+      ],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "duplicate-import",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "verified"
+      ],
+      "verifiedEdges": [
+        [
+          "2222222222222222",
+          "3333333333333333"
+        ]
+      ],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "receiver-only-no-parent-record",
+    "input": {
+      "records": [
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "external_parent_unverified"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 1
+    }
+  },
+  {
+    "id": "sender-only-no-receiver",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "missing_peer"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 1
+    }
+  },
+  {
+    "id": "independent-root",
+    "input": {
+      "records": [
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": null,
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "root"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 1
+    }
+  },
+  {
+    "id": "duplicate-parent-two-receivers",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "4444444444444444",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-2",
+          "bootId": "boot-c",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "ambiguous_parent"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 3
+    }
+  },
+  {
+    "id": "duplicate-parent-two-senders",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-2",
+          "bootId": "boot-d",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "ambiguous_parent",
+        "span_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 3
+    }
+  },
+  {
+    "id": "response-context-mismatch",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "22222222222222222222222222222222",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "context_mismatch"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "peer-service-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "aitoapi",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "peer_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "peer-deployment-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "other",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "peer_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "peer-request-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "other",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "peer_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "caller-id-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "other",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "peer_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "missing-response-id-not-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": null,
+          "peerTraceId": null,
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "verified"
+      ],
+      "verifiedEdges": [
+        [
+          "2222222222222222",
+          "3333333333333333"
+        ]
+      ],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "unknown-peer-deployment",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": null,
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "verified"
+      ],
+      "verifiedEdges": [
+        [
+          "2222222222222222",
+          "3333333333333333"
+        ]
+      ],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "untrusted-source",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": false
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "untrusted_source"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "duplicate-source-cannot-upgrade",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": false
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "untrusted_source"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "event-payload-conflict",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": true,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "other",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "event_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "nonparticipating-browser",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": false,
+          "peerService": null,
+          "peerDeploymentId": null,
+          "peerRequestId": null,
+          "peerTraceId": null,
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "not_participating"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 1
+    }
+  },
+  {
+    "id": "forged-parent-to-third-party",
+    "input": {
+      "records": [
+        {
+          "kind": "call",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "2222222222222222",
+          "parentSpanId": "1111111111111111",
+          "service": "cliproxyapi",
+          "instanceId": "cpa-1",
+          "bootId": "boot-a",
+          "logSeq": 1,
+          "deploymentId": "edge",
+          "requestId": "local-1",
+          "peerConfigured": false,
+          "peerService": "gcli2api",
+          "peerDeploymentId": "pool",
+          "peerRequestId": "remote-1",
+          "peerTraceId": "11111111111111111111111111111111",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": "2222222222222222",
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "not_participating",
+        "peer_conflict"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  },
+  {
+    "id": "same-request-id-new-root-not-merged",
+    "input": {
+      "records": [
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "3333333333333333",
+          "parentSpanId": null,
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-b",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        },
+        {
+          "kind": "server",
+          "traceId": "11111111111111111111111111111111",
+          "spanId": "4444444444444444",
+          "parentSpanId": null,
+          "service": "gcli2api",
+          "instanceId": "gcli-1",
+          "bootId": "boot-c",
+          "logSeq": 1,
+          "deploymentId": "pool",
+          "requestId": "remote-1",
+          "callerHeader": "x-diag-request-id",
+          "callerTrust": "configured_peer",
+          "callerRequestId": "local-1",
+          "sourceTrusted": true
+        }
+      ]
+    },
+    "expected": {
+      "findings": [
+        "root"
+      ],
+      "verifiedEdges": [],
+      "distinctEvents": 2
+    }
+  }
+]

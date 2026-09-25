@@ -1,0 +1,40 @@
+# DIAG-03：Aitoapi 追踪与既有诊断适配
+
+项目：Aitoapi-custom
+分支：`codex/diag-03-aito-diagnostics`
+依赖：DIAG-00
+基线规则：origin/main 的锁定 SHA；契约精确提交和摘要由协调窗口补齐。
+已核对远程主分支 SHA：`daeab836eb194d4ff402bc3d645baeba4ccdc96f`（仅无依赖主分支任务直接使用；依赖任务须等待协调窗口填写批准 HEAD）。
+
+## 共同约束
+
+你是本批任务的一个全新 Codex 开发窗口。本窗口为协调方新建，不得复用旧窗口、派发其他开发任务或在其他仓库修改代码。
+仅在创建时分配的新隔离 worktree 中开发；先确认 git 根目录、当前 HEAD、工作区干净状态和提示中给定基线。基线与提示不符时先报告协调窗口，不覆盖已有改动。创建给定 codex/diag-* 分支。读取你所在分支实际适用的 AGENTS.md/项目约束。
+本批范围是通用追踪＋当前 Gemini→Antigravity 和 Aitoapi 既有重点语义诊断。new-api 不修改；生产模型调用、真实凭证/数据库/Volume、部署、合并或推送 main/master 均禁止。gcli2api 不更新 panel-version.txt，不恢复已停止维护的 GeminiCLI 或管理项目。审批钩子提示面板更新时选择 n。
+优先独立模块、中间件、共享出站/日志边界和少量只读观察点；不重写路由、模型/账号选择、重试策略、协议转换或流式发送。共享契约修改必须先报告协调方，不自行分叉版本。
+完成实现、专项与项目回归后本地提交，等待本批协调窗口审核。不要自行调用 Claude 代替协调审核，不自行推送或宣称审核通过。协调窗口在审核准确 HEAD 后才放行推送。
+最终报告必须包含：任务 ID；项目/worktree/分支；基线与 HEAD 完整 SHA；契约来源 SHA/摘要（如适用）；变更文件和主体流程接入点及原因；每个测试命令/退出结果；脱敏样例位置；协议覆盖/缺口；已知风险；未执行动作。状态写“待审核”。
+退回修订继续在本任务新建窗口和原 worktree，完成后新提交并报告准确 HEAD，旧审核不自动有效。
+
+## 本任务职责
+
+在入口中间件、现有请求/attempt 生命周期和 LoggingService 适配冻结契约；保持 request_id/request_attempt_id、队列、取消、ACK、统计 schema 和管理 API 语义。首期不改浏览器脚本/WS 协议，通过服务端已有派发/回报形成 call 证据。保留原 seq/deliveryOutcome，公共 logSeq/deliveryState 独立映射；入队前快照，不能在 flush 时读取其他请求的上下文。提供真实服务端处理流程＋模拟浏览器回报的隔离测试入口，供 DIAG-07 启动两个实例。只在本仓库开发，不使用真实账号或远程部署。
+
+## 验证与交付
+
+契约向量、并发队列、迟到事件、重连、DEBUG 动态关闭、空/拦截/截断与本地交付分类；相关测试及 npm run test:generation、test:stream-integrity、test:routing 和受影响模块回归；变更文件 lint/格式检查。
+
+
+## v1 契约消费与审核门槛（DIAG-00 候选补充）
+
+契约候选：`contracts/diagnostics/v1`，`ai-proxy-diagnostics/1`，制品 `1.0.0-rc.1`。当前未获批准；除 DIAG-01 的独立业务修复外，依赖任务不可自行使用草稿开工。
+协调窗口批准后提供准确来源 Git SHA 与 SHA256SUMS 原始字节 SHA-256。其他仓库按字节纳入测试资源并记录来源；不运行时跨仓库导入。不改变已有 ID/seq/管理统计含义，不私自扩展公共 schema 或分叉版本。
+
+共同验收：合法/非法/重复头、未来版本、配置 origin/路径边界、调用方来源作用域、双边证据/冲突、缺父节点、实例/worker/重启、缺失/零值、DEBUG/基础日志独立门控、终局序号与完整性。runtime 测试须针对真实处理边界；DIAG-00 oracle 通过不代表运行时实现通过。
+报告每个命令及退出结果、完整 baseline/HEAD、契约来源/摘要、脱敏样例和覆盖缺口。协调窗口代码检查后再调用 Claude，准确 HEAD 通过才放行推送；任何修订重新提交/审核。无 P1/P2 才放行。保持最多三个开发任务并行，任务自身不得派发其他开发任务。
+
+公共 schema 是投影，不覆盖既有 schemaVersion/seq/deliveryOutcome。必须区分 sinkDroppedTotal 和单 span 丢弃；记录旧 wall-clock/browser 时钟来源。基础终局不放入 DEBUG 清空队列，禁止把公共 holder 塞入 proxyRequest 或添加浏览器 span。
+
+## 派发信息
+
+仍等待依赖审核，未创建新任务。projectId、真实 threadId、worktree 和依赖准确 SHA 由协调窗口实际派发时记录；不得把旧主分支 SHA 或本契约候选当批准基线。

@@ -1,0 +1,40 @@
+# DIAG-00：冻结诊断契约与任务规范
+
+项目：CLIProxyAPI
+分支：`codex/diag-00-contract`
+依赖：无，可启动
+基线规则：origin/main；派发前再次核对锁定 SHA。
+已核对远程主分支 SHA：`fde3903689b8c9882d1f0233587fe33e2edfdf77`（仅无依赖主分支任务直接使用；依赖任务须等待协调窗口填写批准 HEAD）。
+
+## 共同约束
+
+你是本批任务的一个全新 Codex 开发窗口。本窗口为协调方新建，不得复用旧窗口、派发其他开发任务或在其他仓库修改代码。
+仅在创建时分配的新隔离 worktree 中开发；先确认 git 根目录、当前 HEAD、工作区干净状态和提示中给定基线。基线与提示不符时先报告协调窗口，不覆盖已有改动。创建给定 codex/diag-* 分支。读取你所在分支实际适用的 AGENTS.md/项目约束。
+本批范围是通用追踪＋当前 Gemini→Antigravity 和 Aitoapi 既有重点语义诊断。new-api 不修改；生产模型调用、真实凭证/数据库/Volume、部署、合并或推送 main/master 均禁止。gcli2api 不更新 panel-version.txt，不恢复已停止维护的 GeminiCLI 或管理项目。审批钩子提示面板更新时选择 n。
+优先独立模块、中间件、共享出站/日志边界和少量只读观察点；不重写路由、模型/账号选择、重试策略、协议转换或流式发送。共享契约修改必须先报告协调方，不自行分叉版本。
+完成实现、专项与项目回归后本地提交，等待本批协调窗口审核。不要自行调用 Claude 代替协调审核，不自行推送或宣称审核通过。协调窗口在审核准确 HEAD 后才放行推送。
+最终报告必须包含：任务 ID；项目/worktree/分支；基线与 HEAD 完整 SHA；契约来源 SHA/摘要（如适用）；变更文件和主体流程接入点及原因；每个测试命令/退出结果；脱敏样例位置；协议覆盖/缺口；已知风险；未执行动作。状态写“待审核”。
+退回修订继续在本任务新建窗口和原 worktree，完成后新提交并报告准确 HEAD，旧审核不自动有效。
+
+## 本任务职责
+
+读取本仓库源工作区的 CROSS_SERVICE_DIAGNOSTICS_PLAN_CN.md、CROSS_SERVICE_DIAGNOSTICS_CLAUDE_REVIEW_CN.md、CROSS_SERVICE_DIAGNOSTICS_TASKS_CN.md。它们目前为未提交输入，不会自动出现在新 worktree；只读源文件并把完整内容纳入你自己的任务分支。整合用户已确认的八任务计划，更新技术方案、Claude 取舍和任务规范。冻结 contracts/diagnostics/v1 的契约、JSON Schema、脱敏样例、共享测试向量、版本和 SHA-256 清单。重点明确多实例归属、server/call/attempt、双边证据、DIAG_PEERS 精确 origin/路径、X-Diag-* 与旧头兼容、DEBUG 边界、完整性及 Aitoapi 字段映射。不要实施业务诊断模块。
+
+## 验证与交付
+
+验证 schema 与有效/无效 fixtures；共享向量须涵盖合法/非法/重复头、来源作用域、无父节点、重复父节点、配置边界和缺失/零值；检查契约摘要可重现。完整修订方案由协调窗口送 Claude 审核后才冻结。
+
+
+## v1 契约消费与审核门槛（DIAG-00 候选补充）
+
+契约候选：`contracts/diagnostics/v1`，`ai-proxy-diagnostics/1`，制品 `1.0.0-rc.1`。当前未获批准；除 DIAG-01 的独立业务修复外，依赖任务不可自行使用草稿开工。
+协调窗口批准后提供准确来源 Git SHA 与 SHA256SUMS 原始字节 SHA-256。其他仓库按字节纳入测试资源并记录来源；不运行时跨仓库导入。不改变已有 ID/seq/管理统计含义，不私自扩展公共 schema 或分叉版本。
+
+共同验收：合法/非法/重复头、未来版本、配置 origin/路径边界、调用方来源作用域、双边证据/冲突、缺父节点、实例/worker/重启、缺失/零值、DEBUG/基础日志独立门控、终局序号与完整性。runtime 测试须针对真实处理边界；DIAG-00 oracle 通过不代表运行时实现通过。
+报告每个命令及退出结果、完整 baseline/HEAD、契约来源/摘要、脱敏样例和覆盖缺口。协调窗口代码检查后再调用 Claude，准确 HEAD 通过才放行推送；任何修订重新提交/审核。无 P1/P2 才放行。保持最多三个开发任务并行，任务自身不得派发其他开发任务。
+
+此任务仅维护契约、规范、样例及离线验证 oracle，不能提前实施 DIAG-06 完整分析工具。完整修订方案须协调窗口先检查再送 Claude；通过前状态只能为待审核。
+
+## 派发信息
+
+已创建本批独立任务：threadId `01a0d64a-0519-7fc0-9810-110cd3f6835b`；projectId `3ae4cfeb-efd4-4533-b1b1-8464dd33b4b4`；worktree `C:/Users/lywx2/.codex/worktrees/622a/CLIProxyAPI`；分支 `codex/diag-00-contract`；锁定基线 `fde3903689b8c9882d1f0233587fe33e2edfdf77`。本分支交付状态：待审核，未调用 Claude、未推送。
