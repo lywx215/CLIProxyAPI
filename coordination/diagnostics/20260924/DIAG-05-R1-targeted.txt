@@ -1,0 +1,2 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	4.309s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	7.842s

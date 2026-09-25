@@ -58,8 +58,11 @@ usage tracking stays outside diagnostics and remains the sole caller of
 `MarkUpstreamAttempt` at that boundary. It supplies the `model` call-kind label;
 unclassified synchronous helper calls use `other`. The conductor labels each actual Gemini/Antigravity executor dispatch with a
 locally generated attempt ID and a server-local sequence under
-`conductor_executor`. Explicit re-execution creates a new identity. All HTTP
-calls inside that dispatch inherit it; redirects do not create an attempt.
+`conductor_executor`. Explicit re-execution creates a new identity. Only sends explicitly marked `model` by the existing usage wrapper inherit it.
+Authentication, metadata and grounding calls do not acquire a model attempt just
+by sharing the executor context. Redirects retain the source send's model-owner
+label; an auxiliary redirect does not become model-owned. No new business labels
+are added, and redirects do not create an attempt.
 Direct executor calls without this owner retain null attempt fields. Existing
 usage attempt trackers are untouched. Redirect calls use `redirect`.
 
@@ -104,6 +107,24 @@ share the server's sequence allocator. Calls currently contain one basic
 terminal, so each call's own sequence remains 1. Server Finish seals immediately,
 waits for already-constructed semantic records, then snapshots counters and
 allocates its terminal sequence. No subsequent semantic event may be appended.
+
+Each DEBUG exchange registers a counter under the same lock used to seal the
+server. Its once-only Finish unregisters it after its observations have settled,
+even if sealing or a DEBUG transition already suppressed them. If an exchange
+is still outstanding when the server seals, `debugCapture=interrupted` records
+that capture ended before the observation lifecycle settled. This conservatively
+reports partial coverage; it does not synthesize an attempt result or EOF, claim
+an attempt terminal exists, or wait for an executor's cleanup/read/channel. The
+server never reads mutable exchange payload summaries from another goroutine.
+Late cleanup cannot amend the earlier terminal or append semantic records.
+
+Pending observations have not necessarily constructed public events: they do
+not increment droppedForSpan or reserve fictitious sequence numbers. That
+counter continues to describe known constructed-event losses, and the terminal's
+expectedLastLogSeq remains its actual sequence. Even contiguous sequences and a
+custom acknowledged sink's zero dropped count cannot imply full coverage when
+capture is interrupted; the frozen coverage rules give known interruption
+precedence over unknown sink/access evidence.
 
 A request opts into DEBUG only at server start. `NotifyDebugDisabled`, called
 before the application's existing `util.SetLogLevel` transition, advances a
@@ -326,3 +347,29 @@ branches, including cancellation. Disabled/no-wait paths do not invent token use
 See the DIAG-05 delivery for actual tests, synthetic artifacts, source formulas,
 local DIAG-07 entry instructions and environmental restrictions. Production
 multi-worker collection and external logrus lifecycle changes remain unverified.
+
+
+## DIAG-05 coordinator R1 follow-up
+
+The deterministic cancellation regression uses the real Gemini Gin handler,
+conductor, executor and diagnostics middleware. Both upstream-wait and
+throttle-wait cancellations hold Body.Close behind a channel until Gin has
+returned and emitted its server terminal. The test releases cleanup only after
+checking interrupted coverage and absent attempt/conversion terminals; it never
+drains or closes the business stream. Pending-exchange unit tests also cover
+multiple registrations, concurrent duplicate Finish, normal completion before
+sealing and rejected post-seal registrations.
+
+The auxiliary-call regression uses one actual conductor attempt context for
+model/other/auth/metadata sends and Go-managed redirects through the real helper
+client/usage wrapper. It additionally invokes the actual Antigravity grounding
+HEAD helper with an in-memory transport. The helper retains its existing redirect
+policy and output. Transport projection now requires the pre-redirect model
+label, because these auxiliary helpers contain no explicit owner association;
+context inheritance alone is insufficient evidence. The contract's explicit
+owner-association exception is preserved for future proven owners; it is not
+inferred for these paths.
+
+See `coordination/diagnostics/20260924/DIAG-05-R1-disposition.zh-CN.md` for the
+reproductions, exact test outcomes, environmental restrictions and revised HEAD
+handoff. This is a coordinator-requested revision, not a Claude approval.

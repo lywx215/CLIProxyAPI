@@ -5,6 +5,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -261,6 +262,8 @@ func ObserveNormalized(ctx context.Context, before, after []byte) {
 // Exchange is owned by one executor invocation, not by HTTP send counts. It
 // retains only bounded numeric evidence. Unknown business attempt IDs stay null.
 type Exchange struct {
+	owner                *ServerSpan
+	finishOnce           sync.Once
 	ctx                  context.Context
 	started              time.Time
 	up, down             responseObservation
@@ -286,14 +289,24 @@ func NewExchange(ctx context.Context, outputProtocol string, upstreamStream, cli
 			exchange = nil
 		}
 	}()
-	if !DebugActive(ctx) {
+	s := ServerFromContext(ctx)
+	if s == nil {
 		return nil
 	}
 	started := time.Now()
 	if a, ok := ctx.Value(attemptKey{}).(attemptIdentity); ok {
 		started = a.started
 	}
-	return &Exchange{ctx: ctx, started: started, up: newObservation("gemini"), down: newObservation(outputProtocol), stream: upstreamStream, clientStream: clientStream, timing: Timing{Source: "server_monotonic"}}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.debugActiveLocked() {
+		return nil
+	}
+	x := &Exchange{owner: s, ctx: ctx, started: started, up: newObservation("gemini"), down: newObservation(outputProtocol), stream: upstreamStream, clientStream: clientStream, timing: Timing{Source: "server_monotonic"}}
+	// Registration and sealing share one lock, so no late exchange can escape
+	// the terminal's pending-lifecycle check. No response bytes are retained.
+	s.pendingExchanges++
+	return x
 }
 func (x *Exchange) active() bool { return x != nil && DebugActive(x.ctx) }
 func (x *Exchange) Status(status int) {
@@ -476,6 +489,20 @@ func (o *responseObservation) observePayload(b []byte, source string, stream boo
 }
 
 func (x *Exchange) Finish(err error) {
+	if x == nil {
+		return
+	}
+	x.finishOnce.Do(func() {
+		defer func() {
+			x.owner.mu.Lock()
+			x.owner.pendingExchanges--
+			x.owner.mu.Unlock()
+		}()
+		x.finish(err)
+	})
+}
+
+func (x *Exchange) finish(err error) {
 	Guard(func() {
 		if !x.active() {
 			return

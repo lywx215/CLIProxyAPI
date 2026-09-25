@@ -1,0 +1,10 @@
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: synthetic delayed cleanup failure"
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: synthetic delayed cleanup failure"
+--- FAIL: TestDIAG05GinCancellationBeforeExchangeCleanup (0.01s)
+    --- FAIL: TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-upstream (0.01s)
+        diagnostics_cancel_lifecycle_test.go:122: pending exchange silently omitted: coverage=map[accessCapture:unknown debugCapture:enabled_throughout droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0]
+    --- FAIL: TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-throttle (0.00s)
+        diagnostics_cancel_lifecycle_test.go:122: pending exchange silently omitted: coverage=map[accessCapture:unknown debugCapture:enabled_throughout droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0]
+FAIL
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	8.349s
+FAIL

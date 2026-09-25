@@ -3,8 +3,10 @@ package diagnostics
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -158,5 +160,67 @@ func TestSemanticMalformedSSEIsNotRecursive(t *testing.T) {
 	scalar.observe([]byte("1"), "upstream", false)
 	if scalar.parsed {
 		t.Fatal("scalar response accepted")
+	}
+}
+
+func TestSemanticPendingExchangeCoverageAndOnceSettlement(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		sink := &recordSink{}
+		e := NewEngine(ResourceConfig{}, "", nil, func() bool { return true }, sink.write)
+		ctx, span := e.StartServer(context.Background(), nil, "fixture")
+		first, second := NewExchange(ctx, "gemini", true, true), NewExchange(ctx, "gemini", true, true)
+		first.ReadFinished(nil)
+		// Repeated concurrent cleanup must neither duplicate records nor settle
+		// the other still-pending exchange's registration.
+		var finishers sync.WaitGroup
+		for range 8 {
+			finishers.Go(func() { first.Finish(nil) })
+		}
+		finishers.Wait()
+		if span.pendingExchanges != 1 {
+			t.Fatal("duplicate settlement lost pending exchange")
+		}
+		if !pending {
+			second.ReadFinished(nil)
+			second.Finish(nil)
+		}
+		span.Finish(ServerData{EndReason: "client_cancel", DeliveryState: "cancelled"})
+		if NewExchange(ctx, "gemini", true, true) != nil {
+			t.Fatal("exchange registered after seal")
+		}
+		terminals := sink.records(t, "diag.server")
+		if len(terminals) != 1 {
+			t.Fatal("terminal count")
+		}
+		r := terminals[0]
+		encoded, _ := json.Marshal(r.Data)
+		var terminal ServerData
+		if err := json.Unmarshal(encoded, &terminal); err != nil {
+			t.Fatal(err)
+		}
+		want := "enabled_throughout"
+		if pending {
+			want = "interrupted"
+		}
+		if terminal.Coverage.DebugCapture != want {
+			t.Fatalf("coverage=%+v", terminal.Coverage)
+		}
+		before := len(sink.records(t, "upstream.attempt_finished"))
+		second.ReadFinished(context.Canceled)
+		second.Finish(context.Canceled)
+		second.Finish(nil)
+		if span.pendingExchanges != 0 || len(sink.records(t, "upstream.attempt_finished")) != before {
+			t.Fatal("late completion changed sealed records")
+		}
+		if pending {
+			c := terminal.Coverage
+			assessment := AssessCoverage(CoverageEvidence{Sequences: []uint64{1, 2}, ExpectedLastLogSeq: &c.ExpectedLastLogSeq, TerminalCount: 1, TerminalLogSeq: &r.LogSeq, DebugCapture: c.DebugCapture, AccessCapture: c.AccessCapture, DroppedForSpan: c.DroppedForSpan, TruncatedEvents: &c.TruncatedEvents})
+			if assessment.DebugCoverage != "partial" || assessment.TerminalMissing {
+				t.Fatalf("pending exchange not reported as partial: %+v", assessment)
+			}
+			if c.DroppedForSpan == nil || *c.DroppedForSpan != 0 || c.ExpectedLastLogSeq != 2 {
+				t.Fatal("invented event loss or EOF record")
+			}
+		}
 	}
 }

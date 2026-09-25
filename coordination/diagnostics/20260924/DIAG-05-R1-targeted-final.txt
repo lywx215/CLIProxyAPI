@@ -1,0 +1,7 @@
+ok  	github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics	7.338s
+fork/exec C:\Users\lywx2\AppData\Local\Temp\go-build1794385888\b290\executor.test.exe: An Application Control policy has blocked this file.
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	5.523s
+fork/exec C:\Users\lywx2\AppData\Local\Temp\go-build1794385888\b464\helps.test.exe: An Application Control policy has blocked this file.
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps	4.660s
+ok  	github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth	5.112s
+FAIL

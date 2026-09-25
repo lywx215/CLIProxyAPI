@@ -301,6 +301,7 @@ type ServerSpan struct {
 	sealed                       bool
 	calls                        uint64
 	attempts                     uint64
+	pendingExchanges             uint64
 	emitMu                       sync.Mutex
 	seq, dropped, truncated      uint64
 	debugOpted, debugInterrupted bool
@@ -365,6 +366,12 @@ func (s *ServerSpan) Finish(data ServerData) {
 		return
 	}
 	s.debugActiveLocked()
+	// Never wait for an executor or read its mutable response observation. A
+	// registered exchange still outstanding at sealing proves capture ended
+	// before its lifecycle settled, even if its later Finish is suppressed.
+	if s.pendingExchanges > 0 {
+		s.debugInterrupted = true
+	}
 	s.sealed = true
 	s.mu.Unlock()
 	// Seal immediately, then await only already-constructed semantic emissions.

@@ -101,6 +101,10 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if kind == "" {
 		kind = "other"
 	}
+	// Only the existing usage owner marks a model send. A redirect keeps that
+	// source label; merely inheriting executor context does not associate auth,
+	// metadata or grounding requests with the model attempt.
+	modelOwned := kind == "model"
 	if req.Response != nil {
 		kind = "redirect"
 	}
@@ -113,7 +117,9 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	r := s.record("call", "diag.call", spanID, &s.id)
 	r.CallNo = &callNo
-	applyAttempt(req.Context(), &r)
+	if modelOwned {
+		applyAttempt(req.Context(), &r)
+	}
 	c := &callCompletion{server: s, record: r, data: data, started: time.Now(), ctx: req.Context()}
 	outgoing := prepareRequest(req, s.incoming, s.requestID, spanID, peer != nil)
 	resp, err := t.base.RoundTrip(outgoing)

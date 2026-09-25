@@ -1,0 +1,36 @@
+time="2000-01-01T08:00:00+08:00" level=error msg="gemini executor: close response body error: synthetic delayed cleanup failure"
+--- FAIL: TestDIAG05GinCancellationBeforeExchangeCleanup (0.01s)
+    --- FAIL: TestDIAG05GinCancellationBeforeExchangeCleanup/waiting-upstream (0.01s)
+        diagnostics_cancel_lifecycle_test.go:119: pending exchange silently omitted: coverage=map[accessCapture:unknown debugCapture:enabled_throughout droppedForSpan:0 expectedLastLogSeq:3 sinkDroppedTotal:<nil> truncatedEvents:0]
+        diagnostics_cancel_lifecycle_test.go:128: unexpected pre-cleanup result: server=1 attempt=0 converted=0 body=55
+panic: deadlock: main bubble goroutine has exited but blocked goroutines remain [recovered, repanicked]
+
+goroutine 44 [running]:
+testing.tRunner.func1.2({0x7ff778f2cda0, 0x104aeb79a8d0})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1974 +0x239
+testing.tRunner.func1()
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:1977 +0x349
+panic({0x7ff778f2cda0?, 0x104aeb79a8d0?})
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/panic.go:860 +0x13a
+internal/synctest.Run(0x104aeba140a0)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/synctest.go:251 +0x2f4
+testing/synctest.Test(0x104aeb867200, 0x104aeba8c590)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/synctest/synctest.go:290 +0x90
+github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor.TestDIAG05GinCancellationBeforeExchangeCleanup.func1(0x104aeb867200)
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/internal/runtime/executor/diagnostics_cancel_lifecycle_test.go:61 +0x46
+testing.tRunner(0x104aeb867200, 0x104aeba8c540)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2036 +0xc3
+created by testing.(*T).Run in goroutine 43
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/testing/testing.go:2101 +0x4a9
+
+goroutine 66 [sync.Cond.Wait (durable), synctest bubble 1]:
+sync.runtime_notifyListWait(0x104aeb6c1390, 0x0)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/runtime/sema.go:617 +0x1b4
+sync.(*Cond).Wait(0x7ff7792bb3f0?)
+	C:/Users/lywx2/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.windows-amd64/src/sync/cond.go:71 +0x73
+github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage.(*Manager).run(0x104aeb9641b0, {0x104aeb565e10?, 0x104aeb565e00?})
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/sdk/cliproxy/usage/manager.go:364 +0xed
+created by github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage.(*Manager).Start.func1 in goroutine 49
+	C:/Users/lywx2/.codex/worktrees/15cf/CLIProxyAPI/sdk/cliproxy/usage/manager.go:288 +0xec
+FAIL	github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor	6.478s
+FAIL

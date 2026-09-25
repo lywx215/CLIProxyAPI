@@ -130,3 +130,11 @@ go test -timeout 120s ./sdk/cliproxy/auth -run TestDIAG05ConductorOwnsAttemptIde
 - `DIAG-05-throttle-synthetic.jsonl`：SHA-256 `bd559fbffd8e6eb4f59b5691da2983e8a69efc6f404e4af7be8d55fbb108a8d9`；9行，最大1126字节。
 
 临时清理：自动审批拒绝删除本worktree的 `.diag05-validation` 目录，仅返回 `blocked by policy`，没有更具体原因。目录保留、排除Git；没有改用其他删除方式或绕过审批。
+
+
+## 协调方 R1 退回修订
+
+初始交付准确 HEAD 为 `a8298639d0e1cc22b7372a57d66baceead5cb459`，未获 Claude 审核，也未推送。
+协调窗口发现 server 提前封存与辅助 call attempt 继承的边界缺口，本轮已按 Go 实际生命周期核验并修订。
+此前正文的“最终”测试记录属于初始交付；当前修订与完整验证以
+[DIAG-05-R1-disposition.zh-CN.md](DIAG-05-R1-disposition.zh-CN.md) 为准，新的准确提交 SHA 由任务交付消息给出。
