@@ -1,0 +1,32 @@
+{
+  "plan": ".codex/review-plan.md",
+  "requirements": [
+    "AGENTS.md",
+    "INTEGRATION_GUIDE_CN.md",
+    "SYNC_GUIDE.md"
+  ],
+  "deliverables": [
+    "*.go",
+    "cmd/**/*.go",
+    "internal/**/*.go",
+    "sdk/**/*.go",
+    "examples/**/*.go",
+    "test/**/*.go",
+    "*.md",
+    "docs/**/*.md",
+    "*.yaml",
+    "*.yml",
+    "*.json",
+    ".github/**/*.yaml",
+    ".github/**/*.yml",
+    ".github/scripts/**/*",
+    "*.sh",
+    "*.ps1",
+    "Dockerfile",
+    "go.mod",
+    "go.sum",
+    ".env.example",
+    ".env.cluster.example",
+    "static/management.html"
+  ]
+}
