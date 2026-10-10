@@ -7,6 +7,7 @@ import (
 	"time"
 
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -450,7 +451,7 @@ func configuredModelAliasEntries(cfg *internalconfig.Config, auth *Auth) []model
 	switch provider {
 	case "gemini":
 		if entry := resolveGeminiAPIKeyConfig(cfg, auth); entry != nil {
-			models = asModelAliasEntries(entry.Models)
+			models = asModelAliasEntries(modelconfig.GeminiAPIKeyRoutingModels(cfg, entry))
 		}
 	case "gemini-interactions":
 		if entry := resolveInteractionsAPIKeyConfig(cfg, auth); entry != nil {
@@ -611,6 +612,14 @@ func (m *Manager) rebuildAPIKeyModelAliasLocked(cfg *internalconfig.Config) {
 		case "gemini":
 			if entry := resolveGeminiAPIKeyConfig(cfg, auth); entry != nil {
 				compileAPIKeyModelAliasForModels(byAlias, entry.Models)
+				aliases := modelconfig.GeminiAPIKeyAliases(cfg, entry)
+				// Explicit global aliases own their routes before upstream fallbacks.
+				for _, alias := range aliases {
+					addAPIKeyModelAliasRoute(byAlias, alias.Model.Alias, alias.Model.Name)
+				}
+				for _, alias := range aliases {
+					addAPIKeyModelAliasRoute(byAlias, alias.Model.Name, alias.Model.Name)
+				}
 			}
 		case "gemini-interactions":
 			if entry := resolveInteractionsAPIKeyConfig(cfg, auth); entry != nil {
@@ -673,15 +682,6 @@ func compileAPIKeyModelAliasForModels[T interface {
 	if out == nil {
 		return
 	}
-	add := func(key, name string) {
-		key = strings.ToLower(strings.TrimSpace(key))
-		if key == "" {
-			return
-		}
-		if _, exists := out[key]; !exists {
-			out[key] = name
-		}
-	}
 	for i := range models {
 		alias := strings.TrimSpace(models[i].GetAlias())
 		name := strings.TrimSpace(models[i].GetName())
@@ -689,11 +689,21 @@ func compileAPIKeyModelAliasForModels[T interface {
 			continue
 		}
 		// Exact suffix routes are retained alongside first-entry base fallbacks.
-		add(alias, name)
-		add(thinking.ParseSuffix(alias).ModelName, name)
+		addAPIKeyModelAliasRoute(out, alias, name)
 		// Direct upstream requests use the same exact-first lookup behavior.
-		add(name, name)
-		add(thinking.ParseSuffix(name).ModelName, name)
+		addAPIKeyModelAliasRoute(out, name, name)
+	}
+}
+
+func addAPIKeyModelAliasRoute(out map[string]string, route, name string) {
+	for _, candidate := range []string{route, thinking.ParseSuffix(route).ModelName} {
+		key := strings.ToLower(strings.TrimSpace(candidate))
+		if key == "" {
+			continue
+		}
+		if _, exists := out[key]; !exists {
+			out[key] = name
+		}
 	}
 }
 
@@ -877,7 +887,7 @@ func resolveUpstreamModelForGeminiAPIKey(cfg *internalconfig.Config, auth *Auth,
 	if entry == nil {
 		return ""
 	}
-	return resolveModelAliasFromConfigModels(requestedModel, asModelAliasEntries(entry.Models))
+	return resolveModelAliasFromConfigModels(requestedModel, asModelAliasEntries(modelconfig.GeminiAPIKeyRoutingModels(cfg, entry)))
 }
 
 func resolveUpstreamModelForInteractionsAPIKey(cfg *internalconfig.Config, auth *Auth, requestedModel string) string {

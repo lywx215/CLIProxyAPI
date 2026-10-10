@@ -1,0 +1,95 @@
+{
+  "feature": "Standalone v8 Gemini API key management",
+  "verifiedOn": "2026-10-10",
+  "backendBaseline": "1dc1dad4",
+  "frontendBaseline": "5070636",
+  "delivery": {
+    "frontendCommit": "63eebcd14a23b934b4a666c456d6b6aee117ee7b",
+    "managementAssetSHA256": "1C0E12FA9F7257C7753029148816C31FDB37105DB9CD0D263A4365CECBD8A84B",
+    "stagedRealCredentialMatches": 0,
+    "followUpLocalInferenceRecords": [
+      "gemini-real-request-test.md",
+      "gemini-preview-alias-configured.md"
+    ]
+  },
+  "scope": {
+    "productionDeployment": false,
+    "realCredentialsUsed": false,
+    "realModelInferenceCalls": false,
+    "testOrigin": "http://127.0.0.1:18317",
+    "testSizes": [100, 1000],
+    "viewports": [{"width": 1440, "height": 900}, {"width": 390, "height": 844}]
+  },
+  "implementation": {
+    "uiEntry": "AI Providers > Gemini > Gemini API Key unified model aliases",
+    "frontendRoute": "#/ai-providers/model-alias?provider=gemini",
+    "configurationPath": "routing.api-key-model-alias.gemini",
+    "apiBase": "/v8/management",
+    "revision": "SHA-256 of persisted configuration file bytes",
+    "endpoints": [
+      "GET /credentials/api-keys/gemini/snapshot",
+      "POST /credentials/api-keys/gemini/batch",
+      "POST /credentials/api-keys/gemini/alias-migration/preview",
+      "POST /credentials/api-keys/gemini/alias-migration/apply",
+      "PUT /config/routing/api-key-model-alias/gemini"
+    ]
+  },
+  "automatedValidation": {
+    "backendPackagesPassed": [
+      "internal/config",
+      "internal/modelconfig",
+      "internal/watcher",
+      "internal/watcher/diff",
+      "internal/api/handlers/management",
+      "internal/api",
+      "sdk/cliproxy/auth",
+      "sdk/cliproxy"
+    ],
+    "rootManagementCommand": "go test ./internal/api/handlers/management ./internal/api -count=1 -timeout=3m",
+    "finalSdkRegression": "Crossed aliases A->B/B->A and A->public/B->A agree in catalog, compiled/slow routing, capability metadata and force mapping",
+    "payloadBarrierCommand": "go test ./internal/runtime/executor -run 'TestGeminiExecutor.*Payload' -count=1 -timeout=2m",
+    "backendBuild": "go build -o UnitTest/v8-gemini-integration/verified-server.exe ./cmd/server",
+    "frontendCommand": "bun run verify",
+    "frontendTestsPassed": 1633,
+    "frontendTestsFailed": 0,
+    "frontendTestFiles": 167,
+    "frontendAssertions": 15450,
+    "eslintErrors": 0,
+    "eslintWarnings": 0,
+    "typescriptAndSingleFileBuild": "passed",
+    "formatAndDiffChecks": "passed",
+    "environmentNotes": [
+      "Windows sandbox denied loopback sockets in existing HTTP mock tests; the same suites passed with local test execution outside the sandbox.",
+      "Bun could not read the current directory inside the sandbox; final verify passed outside the sandbox.",
+      "The unchanged Vite configuration emits a future native-config-loader advisory about __dirname; the production build succeeds."
+    ]
+  },
+  "browserAndLiveApiValidation": [
+    {"case": "1000 Key initial pagination", "result": "25 DOM rows; page 1 of 40"},
+    {"case": "Compact view", "result": "Group names retained; request history detail reduced"},
+    {"case": "Cross-page selection and batch disable", "result": "One Key on each of two pages; confirmation and persisted mutation affect exactly two Keys"},
+    {"case": "Group plus disabled-status filtering", "result": "12 matching Keys; select all filtered chooses exactly 12"},
+    {"case": "Common Key parameters", "result": "Only checked priority field changes to 3 on 12 selected Keys"},
+    {"case": "Repeated alias migration", "result": "One candidate affects 1000 Keys across ten groups; global rule preserves original name; source model metadata and inherited null Key models remain intact"},
+    {"case": "Runtime model hot reload", "result": "The migrated alias and original source appear in /v1/models without a model inference call"},
+    {"case": "Alias creation and removal", "result": "New rule defaults fork to true; save and subsequent removal succeed"},
+    {"case": "Stale alias save in browser", "result": "An independent batch changes the file revision; old alias draft is rejected and latest server values reload"},
+    {"case": "Mobile batch enable", "result": "25 selected Keys shown in confirmation; save succeeds and selection clears"},
+    {"case": "Page sizes", "result": "100 DOM rows; page 1 of 10 for 1000 Keys"},
+    {"case": "Group-scoped patch", "result": "Selecting one Key and choosing its group previews 100 affected Keys; group priority changes while Key priority override remains 3; base URL is available only at group scope"},
+    {"case": "Cold restart", "result": "1000 Keys, two global aliases, original model metadata, group priority, Key overrides and null inheritance restore successfully"},
+    {"case": "Batch group deletion", "result": "Nine selected synthetic groups delete exactly 900 Keys, leaving one group with 100 Keys and both aliases"},
+    {"case": "100 Key pagination and selection", "result": "25 DOM rows; page 2 of 4; two selections remain across pages"},
+    {"case": "Stale batch save", "result": "HTTP 409 and identical configuration SHA-256 before and after"},
+    {"case": "Responsive layout", "result": "No document horizontal overflow at 1440 and 390 pixels; mobile header buttons remain on one line"},
+    {"case": "Final browser console", "result": "No error or warning entries in final build session"}
+  ],
+  "artifacts": {
+    "frontend": "G:/code/gemini30/Cli-Proxy-API-Management-Center/dist/index.html",
+    "backend": "G:/code/gemini30/CLIProxyAPI/static/management.html",
+    "httpResponse": "G:/code/gemini30/CLIProxyAPI/UnitTest/v8-gemini-integration/served-management.html",
+    "sha256": "1C0E12FA9F7257C7753029148816C31FDB37105DB9CD0D263A4365CECBD8A84B",
+    "allThreeHashesMatch": true,
+    "screenshots": ["keys-desktop.jpg", "aliases-desktop.jpg", "aliases-mobile.jpg", "batch-mobile.jpg"]
+  }
+}

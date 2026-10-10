@@ -467,6 +467,11 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 	if entries, _ := DiffOAuthModelAliasChanges(oldCfg.OAuthModelAlias, newCfg.OAuthModelAlias); len(entries) > 0 {
 		changes = append(changes, entries...)
 	}
+	if entries, _ := DiffOAuthModelAliasChanges(oldCfg.APIKeyModelAlias, newCfg.APIKeyModelAlias); len(entries) > 0 {
+		for _, entry := range entries {
+			changes = append(changes, strings.Replace(entry, "oauth-model-alias", "api-key-model-alias", 1))
+		}
+	}
 	if entries, _ := DiffOAuthRequestScopedErrorsChanges(oldCfg.OAuthRequestScopedErrors, newCfg.OAuthRequestScopedErrors); len(entries) > 0 {
 		changes = append(changes, entries...)
 	}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"reflect"
 	"strings"
 
@@ -21,22 +20,19 @@ const ConfigV8ContextKey = "management.config-v8"
 func (h *Handler) ConfigV8(c *gin.Context) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	data, err := os.ReadFile(h.configFilePath)
+	state, err := h.readConfigV8Locked()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "read_failed"})
+		writeConfigV8Error(c, err)
 		return
 	}
-	data, _, err = config.NormalizeConfigLayout(data, true)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid_config", "message": err.Error()})
-		return
+	root, data := state.Root, state.Data
+	c.Header("ETag", `"`+state.Revision+`"`)
+	if c.Request.Method != http.MethodGet {
+		if match := c.GetHeader("If-Match"); match != "" && !configV8RevisionMatches(match, state.Revision) {
+			writeConfigV8Error(c, configV8Conflict(state.Revision))
+			return
+		}
 	}
-	var doc yaml.Node
-	if err = yaml.Unmarshal(data, &doc); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid_config"})
-		return
-	}
-	root := doc.Content[0]
 	path := strings.Trim(c.Param("path"), "/")
 	parts := []string{}
 	if path != "" {
@@ -72,7 +68,7 @@ func (h *Handler) ConfigV8(c *gin.Context) {
 		c.JSON(http.StatusOK, result)
 		return
 	}
-	before := cloneConfigV8Node(root)
+	before := state.Before
 	config.ProjectV8ConfigAliases(root, strings.Join(parts, "."))
 	if c.Request.Method == http.MethodDelete {
 		if len(parts) == 0 {
@@ -139,63 +135,16 @@ func (h *Handler) ConfigV8(c *gin.Context) {
 			*dst = *update.Content[0]
 		}
 	}
-	if err = config.NormalizeV8ConfigAliases(root); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_config", "message": err.Error()})
-		return
-	}
 	if !yamlRequest && c.Request.Method != http.MethodDelete {
 		preserveV8TURNSecrets(root, before)
 	}
-	// Revisions are owned by Home and must not become ordinary editable settings.
-	for _, field := range []string{"credentials/concurrency/lifecycle-config-revision", "credentials/concurrency/observation-barrier-revision", "plugins/auth-revision"} {
-		old := configV8Node(before, strings.Split(field, "/"))
-		next := configV8Node(root, strings.Split(field, "/"))
-		var a, b any
-		if old != nil {
-			_ = old.Decode(&a)
-		}
-		if next != nil {
-			_ = next.Decode(&b)
-		}
-		if !reflect.DeepEqual(a, b) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "read_only_field", "field": field})
-			return
-		}
-	}
-	stripAPIKeysAuthIndexesFromRoot(root)
-	config.NormalizeCollectionNodeStyles(root)
-	data, err = yaml.Marshal(&doc)
+	revision, err := h.commitConfigV8Locked(c.Request.Context(), state)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_config", "message": err.Error()})
+		writeConfigV8Error(c, err)
 		return
 	}
-	next, err := config.ParseConfigBytes(data)
-	if err != nil {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_config", "message": err.Error()})
-		return
-	}
-	if err = config.ValidateV8Config(data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_config", "message": err.Error()})
-		return
-	}
-	data, _, err = config.NormalizeConfigLayout(data, true)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_config", "message": err.Error()})
-		return
-	}
-	// Save the validated canonical tree directly: projecting runtime defaults
-	// back onto it loses explicit nulls, empty maps, and opaque plugin settings.
-	// WriteConfig retains the inode of a mounted configuration file.
-	if err = WriteConfig(h.configFilePath, data); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "write_failed", "message": err.Error()})
-		return
-	}
-	// Runtime-only ownership state is never sourced from an uploaded YAML document.
-	next.Home = h.cfg.Home
-	h.cfg = next
-	snapshot := h.reloadSnapshotConfigLocked()
-	h.reloadConfigAfterManagementSaveAsync(c.Request.Context(), snapshot)
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "config-version": 8})
+	c.Header("ETag", `"`+revision+`"`)
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "config-version": 8, "revision": revision})
 }
 
 func preserveConfigV8JSONComments(dst, src *yaml.Node) {

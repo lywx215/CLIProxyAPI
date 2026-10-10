@@ -67,6 +67,7 @@ func SaveConfigPreserveComments(configFile string, cfg *Config, migrateV8 ...boo
 
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-excluded-models")
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-model-alias")
+	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "api-key-model-alias")
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-request-scoped-errors")
 	pruneMappingToGeneratedKeys(original.Content[0], generated.Content[0], "oauth-settings")
 	replacePluginConfigsSubtree(original.Content[0], generated.Content[0])
@@ -760,9 +761,9 @@ func pruneMappingToGeneratedKeys(dstRoot, srcRoot *yaml.Node, keyPath ...string)
 	}
 	srcIdx := findMapKeyIndex(srcRoot, key)
 	if srcIdx < 0 {
-		// Keep explicit OAuth maps when the last channel is removed. Their presence
+		// Keep explicit alias maps when the last channel is removed. Their presence
 		// must survive saves and override legacy fields when restored to the v8 layout.
-		if key == "oauth-excluded-models" || key == "oauth-model-alias" || key == "oauth-request-scoped-errors" || key == "oauth-settings" {
+		if key == "oauth-excluded-models" || key == "oauth-model-alias" || key == "api-key-model-alias" || key == "oauth-request-scoped-errors" || key == "oauth-settings" {
 			dstRoot.Content[dstIdx+1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 			return
 		}

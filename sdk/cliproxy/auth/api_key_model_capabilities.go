@@ -373,6 +373,17 @@ func compileAPIKeyModelCapabilitiesForAuth(cfg *internalconfig.Config, auth *Aut
 	case "gemini":
 		if entry := resolveGeminiAPIKeyConfig(cfg, auth); entry != nil {
 			compileConfiguredModelCapabilities(out, entry.Models, "gemini")
+			for _, alias := range modelconfig.GeminiAPIKeyAliases(cfg, entry) {
+				model := alias.Model
+				info := addConfiguredModelCapability(out, model.Name, model.Alias, "gemini", model.Thinking, model.IsCompat)
+				if model.MaxContextLength > 0 {
+					info.ContextLength = model.MaxContextLength
+					info.MaxContextLength = model.MaxContextLength
+				}
+				if model.DisplayName != "" {
+					info.DisplayName = model.DisplayName
+				}
+			}
 		}
 	case "gemini-interactions":
 		if entry := resolveInteractionsAPIKeyConfig(cfg, auth); entry != nil {

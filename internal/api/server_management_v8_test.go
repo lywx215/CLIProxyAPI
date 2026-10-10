@@ -40,7 +40,7 @@ func TestManagementV8RoutesShareAccessControl(t *testing.T) {
 			}
 			cfg.Home.Enabled = tc.home
 			cfg.Plugins.Dir = filepath.Dir(path)
-			for _, route := range []string{"/v0/management/config", "/v8/management/config", "/v0/management/plugins", "/v8/management/plugins", "/v0/management/usage", "/v8/management/observability/usage", "/v0/management/antigravity-stats", "/v8/management/observability/antigravity-stats"} {
+			for _, route := range []string{"/v0/management/config", "/v8/management/config", "/v0/management/plugins", "/v8/management/plugins", "/v0/management/usage", "/v8/management/observability/usage", "/v0/management/antigravity-stats", "/v8/management/observability/antigravity-stats", "/v8/management/credentials/api-keys/gemini/snapshot"} {
 				// Isolate each route from the management authentication failure counter.
 				h := management.NewHandler(cfg, path, nil)
 				h.SetLocalPassword("test-password")
@@ -98,6 +98,8 @@ func TestManagementV8IndependentContract(t *testing.T) {
 		"POST /v8/management/routing/cooldown/reset",
 		"GET /v8/management/plugins/:id/quota", "POST /v8/management/plugins/:id/quota", "DELETE /v8/management/plugins/:id/quota",
 		"POST /v8/management/plugins/store/:id/install", "DELETE /v8/management/plugins/:id",
+		"GET /v8/management/credentials/api-keys/gemini/snapshot", "POST /v8/management/credentials/api-keys/gemini/batch",
+		"POST /v8/management/credentials/api-keys/gemini/alias-migration/preview", "POST /v8/management/credentials/api-keys/gemini/alias-migration/apply",
 	} {
 		if !routes[route] {
 			t.Errorf("missing route %s", route)

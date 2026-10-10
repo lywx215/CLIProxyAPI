@@ -371,6 +371,12 @@ func (s *Service) registerModelRefreshCallback() {
 			}
 		}
 
+		// Global Gemini API-key aliases depend on the current default catalog.
+		// Publish routing and capability projections before registering its aliases.
+		if providerSet["gemini"] {
+			s.coreManager.RefreshAPIKeyModelAlias()
+		}
+
 		auths := s.coreManager.List()
 		refreshed := 0
 		var refreshedMu sync.Mutex

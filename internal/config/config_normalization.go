@@ -62,11 +62,26 @@ func (cfg *Config) SanitizeClaudeHeaderDefaults() {
 // It trims whitespace, normalizes channel keys to lower-case, drops empty entries,
 // allows multiple aliases per upstream name, and ensures aliases are unique within each channel.
 func (cfg *Config) SanitizeOAuthModelAlias() {
-	if cfg == nil || len(cfg.OAuthModelAlias) == 0 {
+	if cfg == nil {
 		return
 	}
-	out := make(map[string][]OAuthModelAlias, len(cfg.OAuthModelAlias))
-	for rawChannel, aliases := range cfg.OAuthModelAlias {
+	cfg.OAuthModelAlias = sanitizeModelAliases(cfg.OAuthModelAlias)
+}
+
+// SanitizeAPIKeyModelAlias uses the same alias normalization as OAuth channels.
+func (cfg *Config) SanitizeAPIKeyModelAlias() {
+	if cfg == nil {
+		return
+	}
+	cfg.APIKeyModelAlias = sanitizeModelAliases(cfg.APIKeyModelAlias)
+}
+
+func sanitizeModelAliases(entries map[string][]OAuthModelAlias) map[string][]OAuthModelAlias {
+	if len(entries) == 0 {
+		return entries
+	}
+	out := make(map[string][]OAuthModelAlias, len(entries))
+	for rawChannel, aliases := range entries {
 		channel := strings.ToLower(strings.TrimSpace(rawChannel))
 		if channel == "" || len(aliases) == 0 {
 			continue
@@ -99,7 +114,7 @@ func (cfg *Config) SanitizeOAuthModelAlias() {
 			out[channel] = clean
 		}
 	}
-	cfg.OAuthModelAlias = out
+	return out
 }
 
 // SanitizeOAuthSettings normalizes and deduplicates global OAuth model settings.

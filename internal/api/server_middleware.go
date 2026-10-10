@@ -16,6 +16,7 @@ import (
 )
 
 var corsExposedResponseHeaders = []string{
+	"ETag",
 	"X-Diag-Request-Id",
 	"X-Diag-Trace-Id",
 	logging.CPATraceIDHeader,

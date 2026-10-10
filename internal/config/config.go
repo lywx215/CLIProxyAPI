@@ -185,6 +185,10 @@ type Config struct {
 	// gemini-api-key, interactions-api-key, codex-api-key, xai-api-key, meta-api-key, claude-api-key, openai-compatibility, and vertex-api-key.
 	OAuthModelAlias map[string][]OAuthModelAlias `yaml:"oauth-model-alias,omitempty" json:"oauth-model-alias,omitempty"`
 
+	// APIKeyModelAlias defines default aliases for configured API-key credentials.
+	// Credential and group model mappings take precedence. Currently supported: gemini.
+	APIKeyModelAlias map[string][]OAuthModelAlias `yaml:"api-key-model-alias,omitempty" json:"api-key-model-alias,omitempty"`
+
 	// APIKeyRateLimit configures per-API-key request rate limiting.
 	// When configured, each client API key is independently rate-limited using a sliding window.
 	APIKeyRateLimit APIKeyRateLimit `yaml:"api-key-rate-limit" json:"api-key-rate-limit"`

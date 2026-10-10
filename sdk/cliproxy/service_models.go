@@ -75,7 +75,8 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	switch provider {
 	case constant.Gemini:
 		models = registry.GetGeminiModels()
-		if entry := s.resolveConfigGeminiKey(a); entry != nil {
+		entry := s.resolveConfigGeminiKey(a)
+		if entry != nil {
 			if len(entry.Models) > 0 {
 				models = buildGeminiConfigModels(entry)
 			}
@@ -84,6 +85,9 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 			}
 		}
 		models = applyExcludedModels(models, excluded)
+		if authKind == "apikey" {
+			models = applyGeminiAPIKeyModelAliases(s.cfg, entry, models)
+		}
 	case constant.GeminiInteractions:
 		models = registry.GetGeminiModels()
 		if entry := s.resolveConfigInteractionsKey(a); entry != nil {
@@ -890,6 +894,40 @@ func buildGeminiConfigModels(entry *config.GeminiKey) []*ModelInfo {
 		return nil
 	}
 	return buildConfigModels(entry.Models, "google", "gemini", "gemini")
+}
+
+func applyGeminiAPIKeyModelAliases(cfg *config.Config, entry *config.GeminiKey, models []*ModelInfo) []*ModelInfo {
+	aliases := modelconfig.GeminiAPIKeyAliases(cfg, entry)
+	if len(aliases) == 0 {
+		return models
+	}
+	rules := make([]config.OAuthModelAlias, 0, len(aliases))
+	targets := make(map[string]struct{}, len(aliases))
+	for _, alias := range aliases {
+		rule := alias.Rule
+		rule.Name = alias.SourceName
+		rules = append(rules, rule)
+		targets[strings.ToLower(rule.Alias)] = struct{}{}
+	}
+	out := make([]*ModelInfo, 0, len(models)+len(aliases))
+	seen := make(map[string]struct{})
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		for _, projected := range applyOAuthModelAliasEntries(rules, []*ModelInfo{model}) {
+			key := strings.ToLower(strings.TrimSpace(projected.ID))
+			// A global alias owns its route even if a baseline model has the same ID.
+			if _, replaced := targets[key]; replaced && projected == model {
+				continue
+			}
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				out = append(out, projected)
+			}
+		}
+	}
+	return out
 }
 
 func buildClaudeConfigModels(entry *config.ClaudeKey) []*ModelInfo {
