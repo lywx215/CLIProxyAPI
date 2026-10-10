@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/buildinfo"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/buildinfo"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -41,7 +41,12 @@ func GinDiagnostics() gin.HandlerFunc {
 		}
 		// Non-model routes did not historically have a request ID. Their new
 		// diagnostic ID does not change legacy Gin log or management identities.
-		return GenerateRequestID()
+		id, errGenerate := GenerateRequestID()
+		if errGenerate != nil {
+			log.WithError(errGenerate).Error("Failed to generate diagnostic request ID")
+			return ""
+		}
+		return id
 	})
 }
 

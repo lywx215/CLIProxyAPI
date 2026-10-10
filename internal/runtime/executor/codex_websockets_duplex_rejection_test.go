@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	internalcache "github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	auth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	core "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	translator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
+	internalcache "github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	auth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	core "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	translator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 )
 
@@ -54,6 +54,9 @@ func TestCodexDuplexRejectedCreateMetadata(t *testing.T) {
 					}
 				}
 				firstKey := read()
+				if want := codexIdentityConfuseUUID("metadata-account", "prompt-cache", "first-key"); firstKey != want {
+					t.Errorf("wire first key = %q, want %q", firstKey, want)
+				}
 				write("response.created", "first", firstKey)
 				rejectedKey, rejectedID := firstKey, "first"
 				if !activeFailure {
@@ -61,6 +64,9 @@ func TestCodexDuplexRejectedCreateMetadata(t *testing.T) {
 					rejectedKey, rejectedID = read(), "rejected"
 				}
 				goodKey := read()
+				if want := codexIdentityConfuseUUID("metadata-account", "prompt-cache", "good-key"); goodKey != want {
+					t.Errorf("wire good key = %q, want %q", goodKey, want)
+				}
 				if ambiguous {
 					write("response.failed", "", rejectedKey)
 					_, _, _ = c.ReadMessage()
@@ -200,6 +206,8 @@ func TestCodexDuplexLaterInvalidSignatureClearsReplay(t *testing.T) {
 				cfg := &config.Config{}
 				cfg.Codex.ResponseSteering = true
 				cfg.CodexResponseSteering = true
+				cfg.Codex.IdentityConfuse = true
+				cfg.Routing.SessionAffinity = true
 				exec := NewCodexWebsocketsExecutor(cfg)
 				exec.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
 				credential := &auth.Auth{ID: "replay-account", Provider: "codex", Attributes: map[string]string{"api_key": "test", "base_url": upstream.URL, "websockets": "true"}}

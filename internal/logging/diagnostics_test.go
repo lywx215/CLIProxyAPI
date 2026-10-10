@@ -2,7 +2,7 @@ package logging
 
 import (
 	"bytes"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/tui"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/tui"
 	"strings"
 	"testing"
 

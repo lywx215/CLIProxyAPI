@@ -14,12 +14,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	translatorcommon "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/common"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
 
 type directResponseTestError struct {
@@ -399,6 +400,57 @@ func TestBuildErrorResponseBodyWithError_TerminalAuthEnforcesContractOnJSONInput
 	normalBody := BuildErrorResponseBodyWithError(http.StatusInternalServerError, jsonErrText, errors.New("normal error"))
 	if strings.Contains(string(normalBody), "token refresh failed") || !strings.Contains(string(normalBody), FixedErrorMessage(http.StatusInternalServerError)) {
 		t.Fatalf("expected safe non-terminal error, got %s", string(normalBody))
+	}
+}
+
+func TestBuildErrorResponseBodyRejectsDiagnosticClassificationFields(t *testing.T) {
+	body := BuildErrorResponseBody(http.StatusBadGateway, `{"error":{"message":"private upstream diagnostic","type":"https://private.invalid/auth","code":"Bearer synthetic-private-token","param":"/run/secrets/synthetic","retryable":true},"debug":"private"}`)
+	var payload ErrorResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Error.Message != FixedErrorMessage(http.StatusBadGateway) || payload.Error.Type != "server_error" || payload.Error.Code != "internal_server_error" || payload.Error.Param != nil || payload.Error.Retryable == nil || !*payload.Error.Retryable {
+		t.Fatalf("safe error contract lost: %s", body)
+	}
+	for _, forbidden := range []string{"private", "Bearer", "/run/secrets", "debug"} {
+		if strings.Contains(string(body), forbidden) {
+			t.Fatalf("error leaked %q: %s", forbidden, body)
+		}
+	}
+}
+
+func TestBuildErrorResponseBodyWithError_RequestTimeoutIsServerError(t *testing.T) {
+	body := BuildErrorResponseBodyWithError(http.StatusRequestTimeout, "upstream request timeout", nil)
+	var payload struct {
+		Error struct {
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
+		t.Fatalf("unmarshal error body: %v", errUnmarshal)
+	}
+	if payload.Error.Type != "server_error" {
+		t.Fatalf("type = %q, want server_error", payload.Error.Type)
+	}
+	if payload.Error.Code != "request_timeout" {
+		t.Fatalf("code = %q, want request_timeout", payload.Error.Code)
+	}
+	if payload.Error.Message != FixedErrorMessage(http.StatusRequestTimeout) {
+		t.Fatalf("message = %q, want fixed timeout message", payload.Error.Message)
+	}
+}
+
+func TestBuildErrorResponseBody_CompactsPrettyPrintedJSON(t *testing.T) {
+	prettyJSON := "{\n  \"error\": {\n    \"code\": 500,\n    \"message\": \"Internal error encountered.\",\n    \"status\": \"INTERNAL\"\n  }\n}"
+	body := BuildErrorResponseBody(http.StatusInternalServerError, prettyJSON)
+	if strings.Contains(string(body), "\n") {
+		t.Fatalf("expected compacted JSON without newlines for SSE compatibility, got:\n%s", string(body))
+	}
+	expected := `{"error":{"message":"Internal server error","type":"server_error","code":"internal_server_error"}}`
+	if string(body) != expected {
+		t.Fatalf("body = %s, want %s", string(body), expected)
 	}
 }
 
@@ -886,6 +938,17 @@ func TestStatusFromErrorMapsContextStatuses(t *testing.T) {
 	}
 	if got := statusFromError(errors.New("boom")); got != 0 {
 		t.Fatalf("statusFromError(plain) = %d, want 0", got)
+	}
+}
+
+func TestExecutionErrorMessage_UnsupportedPartKeepsNameAnd400(t *testing.T) {
+	err := &translatorcommon.UnsupportedPartError{Type: "container_upload"}
+	msg := ExecutionErrorMessage(err)
+	if msg == nil || msg.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %v", msg)
+	}
+	if msg.Error == nil || !strings.Contains(msg.Error.Error(), "container_upload") {
+		t.Fatalf("part name lost: %v", msg.Error)
 	}
 }
 

@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 )
@@ -765,6 +766,7 @@ func LogWithRequestID(ctx context.Context) *log.Entry {
 
 // MarkCreditsUsed flags the request as having used AI credits for billing.
 func MarkCreditsUsed(ctx context.Context) {
+	cliproxyauth.MarkAntigravityCreditsUsed(ctx)
 	ginCtx := ginContextFrom(ctx)
 	if ginCtx != nil {
 		ginCtx.Set(creditsUsedKey, true)
@@ -773,6 +775,9 @@ func MarkCreditsUsed(ctx context.Context) {
 
 // CreditsUsed returns true if the request used AI credits.
 func CreditsUsed(ctx context.Context) bool {
+	if used, tracked := cliproxyauth.AntigravityCreditsUsage(ctx); tracked {
+		return used
+	}
 	ginCtx := ginContextFrom(ctx)
 	if ginCtx != nil {
 		if val, exists := ginCtx.Get(creditsUsedKey); exists {

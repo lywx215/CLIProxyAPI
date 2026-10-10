@@ -4,12 +4,56 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	homekv "github.com/router-for-me/CLIProxyAPI/v7/internal/home"
+	homekv "github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 )
 
 type antigravityUseCreditsContextKey struct{}
+type antigravityCreditsUsageContextKey struct{}
+
+// WithAntigravityCreditsUsage installs an isolated marker for one execution attempt.
+// Derived contexts share this marker; retries receive a new marker.
+func WithAntigravityCreditsUsage(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, antigravityCreditsUsageContextKey{}, &atomic.Bool{})
+}
+
+// MarkAntigravityCreditsUsed records that credits were injected into the request.
+func MarkAntigravityCreditsUsed(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	if marker, ok := ctx.Value(antigravityCreditsUsageContextKey{}).(*atomic.Bool); ok && marker != nil {
+		marker.Store(true)
+	}
+}
+
+// AntigravityCreditsUsage reports actual usage and whether this attempt is tracked.
+func AntigravityCreditsUsage(ctx context.Context) (used, tracked bool) {
+	if ctx == nil {
+		return false, false
+	}
+	marker, ok := ctx.Value(antigravityCreditsUsageContextKey{}).(*atomic.Bool)
+	if !ok || marker == nil {
+		return false, false
+	}
+	return marker.Load(), true
+}
+
+func executionResultCreditsUsed(ctx context.Context, result Result) Result {
+	if !result.CreditsUsed {
+		if used, tracked := AntigravityCreditsUsage(ctx); tracked {
+			result.CreditsUsed = used
+		} else {
+			result.CreditsUsed = AntigravityCreditsRequested(ctx)
+		}
+	}
+	return result
+}
 
 // WithAntigravityCredits returns a child context that signals the executor to
 // inject enabledCreditTypes into the request payload.

@@ -4,9 +4,9 @@
 
 日常前后端功能联动开发可参考 [前后端联动开发指南](INTEGRATION_GUIDE_CN.md)。该指南为单人开发提供建议性清单，不替代本文的 fork 同步安全规则。
 
-> Last updated: 2026-09-22
-> Backend upstream: `555662940411a07460e9d24d14477a5f50dffdb5`
-> Management frontend upstream: `bbac79d2222a0f345458203a5ab92d859f30ff30`
+> Last updated: 2026-10-10
+> Backend upstream: `d318bcc3afb9ea8782862f5e8cdb541afdc9dfa5`
+> Management frontend upstream: `c9e2f7cb0b065c13211285d9525bcc8761f17837`
 
 ## 1. 核心原则
 
@@ -97,8 +97,8 @@ git merge --ff-only codex/sync-upstream-<version>
 
 ### 4.1 流量、响应与模型
 
-- `api-key-rate-limit`：滑动窗口、默认 RPM、按 key overrides、热更新和 `/v1`/`/v1beta` 中间件。
-- `speed-throttle`：首个完整 SSE data frame 的首包延迟，以及后续 token 节流。最大并发/队列目前只有前端读写控件，基线后端未实现，不能宣称已生效；详见第 10 节。
+- `access.api-key-rate-limit`：滑动窗口、默认 RPM、按 key overrides、热更新和 `/v1`/`/v1beta` 中间件。每 key 的 `rpm: 0` 表示免限流。
+- `requests.speed-throttle`：首个完整 SSE data frame 的首包延迟、后续 token 节流和非流式延迟。最大并发/队列仅有 YAML/UI 往返，未实现后端调度，不能宣称已生效。
 - 模型名中的 `-Nm` 输入 token 限制。
 - Gemini、Gemini CLI、Antigravity 等响应中的 `ModelVersion`/alias 回写。
 - 模型目录显式 `display-name` 优先；未配置时展示客户端可见 alias，而不是上游内部 name。
@@ -109,7 +109,7 @@ git merge --ff-only codex/sync-upstream-<version>
 
 - `antigravity-credits-force`、Credits 请求选择、`CreditsUsed` 记录和全部 credit 类型统计。
 - Antigravity 使用上游单请求、quota signal 和 retry-round 语义；不得重新引入已移除的跨 endpoint fallback。
-- Usage 与 Antigravity Stats 管理端点、导入/导出/重置和统计日志。
+- Usage 查询/导入/导出、Antigravity Stats 查询/重置和统计日志。基线没有独立 Usage reset，不新增该能力。
 - Gemini CLI OAuth、配额与 usage 解析。
 - `enable-gemini-cli-endpoint` 独立开关，以及 Gemini/Gemini CLI provider alias 归一化；OAuth 登录路由需要相应插件提供。
 - Vertex ADC `authorized_user` 导入、刷新与 executor 支持，同时保留 service account。
@@ -139,7 +139,7 @@ git merge --ff-only codex/sync-upstream-<version>
 - Vertex ADC `authorized_user` 凭证导入。
 - `/usage`、`/antigravity-stats` 路由及 Usage store 导出。
 - Windows 构建兼容逻辑、前后端独立 build time。
-- 四种语言的所有本地独有键；同名等价键采用上游最新措辞，语义变化必须再次确认。
+- 原四种语言的所有本地独有键及上游越南语、韩语；新增定制键提供翻译或明确英文 fallback。同名等价键采用上游最新措辞，语义变化必须再次确认。
 - Claude provider 的 `fingerprint-profile=claude-code-cli` 配置、展示和 YAML 往返，以及上游最新 Codex 配额 User-Agent。
 - Codex `identity-confuse`、Gemini CLI endpoint 开关的 UI、类型、搜索和 YAML 往返；编辑时保留上游及未知嵌套字段。
 - Code0 的四协议聚合、创建/编辑/删除、快速接入、品牌图标及注册入口；随上游 sponsor/provider 结构迁移，不保留孤立旧模块。
@@ -368,3 +368,74 @@ sha256sum "$BACKEND_REPO_PATH/static/management.html"
 - Linux preflight initially exposed a scheduling assumption in the Antigravity concurrent pool tests: fast responses can race with pending speculative dials. Both pool-limit tests now hold each wave until every request has acquired a connection, without changing production pooling or weakening assertions. Both tests passed 100 Windows repetitions and server compilation passed. Full Linux and race checks must pass again before the backend tag is pushed.
 - The next Linux run passed the pool tests but exposed cross-test Usage delivery in the AI Studio TTFT assertion. Its record selector now matches AuthID as well as provider/model, so a queued failure from an earlier auth cannot satisfy the current request assertion. Production usage behavior is unchanged.
 - A subsequent Linux run exposed premature socket closure in the three Codex upload/keepalive test servers. They now read the released request before sending a terminal response and closing; the pong-during-upload assertion remains unchanged. All three passed 100 repetitions on Windows. This is test-fixture synchronization only.
+
+## 13. 2026-10-10 v8 同步记录
+
+### 13.1 固定目标与本地范围
+
+| 仓库 | fork 基线 | 固定 upstream | 同步分支 |
+| --- | --- | --- | --- |
+| 后端 | `5654785134fe752db82555bc618cc1ebf96165bf` | `d318bcc3afb9ea8782862f5e8cdb541afdc9dfa5` | `codex/sync-upstream-20261010-d318bcc3` |
+| 前端 | `fb802786583e88e047c47efa0f803307a8bda27c` | `c9e2f7cb0b065c13211285d9525bcc8761f17837` | `codex/sync-upstream-20261010-c9e2f7cb` |
+
+- 开始实施时重新 `fetch origin --no-tags`，两边 origin/main 均未变化。上游目标保持固定；后端 243 个新增提交（218 个非 merge），前端 72 个（70 个非 merge）。
+- 使用独立工作树实施普通 `merge --no-ff --no-commit`，后端 28 个、前端 22 个实际冲突与预演一致，逐块迁移定制。保留两个 `codex/backup-main-*` 引用。
+- 前端本地 merge commit：`5070636a9da0d9c44b56e4fd532867e86d60a9d9`，父提交精确为表中基线和固定 upstream。后端最终 SHA 和祖先校验写入忽略的 `.codex/sync-upstream-progress.md`，避免自引用。
+- 原两个工作区保持 main 及原有 `.gitignore` 未提交修改，前端未跟踪 `.codex/` 保留原位。只交付本地同步提交，不更新 main、不推送、不打 tag、不发布。
+
+### 13.2 配置与接口契约
+
+| 旧字段 | v8 规范路径 |
+| --- | --- |
+| `api-key-rate-limit` | `access.api-key-rate-limit` |
+| `speed-throttle` | `requests.speed-throttle` |
+| `enable-gemini-cli-endpoint` | `server.enable-gemini-cli-endpoint` |
+| `quota-exceeded.antigravity-credits-force` | `oauth.providers.antigravity.antigravity-credits-force` |
+| `codex.identity-confuse` | `upstream.codex.identity-confuse` |
+
+- 全部本仓库 Go 引用、23 个示例模块及示例生成器迁入 `/v8`；采用上游配置转换、认证并发安全、冷却持久化、provider groups 和执行器结构。依实际引用保留 AWS SDK/COS，根模块及示例模块经 `go mod tidy` 维护校验文件。
+- 旧格式仍可导入，规范字段按存在性优先，显式 false/0/null 不被旧值覆盖。Claude fingerprint 仍位于每 key。已知定制进入转换与校验链路；真正未知内容归档为非生效 YAML 注释并警告。JSON 根替换保留已有归档和匹配节点注释，页面编辑保留 YAML 注释，完整 YAML 替换遵循提交文档的替换语义。
+- `/v8/management/observability/usage` 查询、`/usage/export`、`/usage/import` 与 `/observability/antigravity-stats` 查询/重置可用；已有 v0 fork 端点继续保留。queue/API-key usage 使用上游 v8 现有路由，不新增 Usage reset。
+- 保留固定安全错误及内部错误分类/retryable、模型 alias/display-name、token cap、Gemini CLI、Vertex ADC/service account、COS/AWS SDK/OBJECTSTORE_PREFIX、Usage/Credits、流式及非流式节流。普通请求不保存整个 auth，独立 cooldown 持久化保留。
+- Codex identity-confuse 被上游无文本冲突删除，已恢复规范字段及 HTTP/compact/stream/WebSocket/duplex/images 调用链。诊断环境变量、Gin/final HTTP 观测、诊断契约及离线分析器保留，不新增诊断 YAML 字段；UUIDv7 与上游生成器签名适配。
+- 保持敏感 fixture 清理边界，将必要的 builtin-tools/usage synthetic 回归迁入 executor 外部测试包，不恢复已清理的敏感测试目录内容。
+
+### 13.3 前端与缺陷修复
+
+- Code0 四协议 CRUD 迁入 group/key source 身份结构，保留策略、未知字段及无关条目。重复凭据、组重排、过期 source 的安全边界有回归覆盖；快捷入口保留。
+- Gemini CLI 入口先打开空闲项目对话框，再明确启动 v8 OAuth；支持空值自动选择、ALL 和项目 ID，透传 project_id，callback provider=gemini、取消及会话隔离保留。Vertex 新对话框同时支持 ADC 和 service account。
+- 使用上游 Config/OAuth gallery/Quota/Logs feature 结构，迁移全部定制控件、类型、搜索、dirty tracking、YAML 往返、Usage/Stats 和日志 resolver。原四语言键保留；越南语/韩语的上游原生文案保留，定制键使用明确英文 fallback。补齐 usage_stats.total_time。
+- 修复每 key RPM=0 被回退成默认 RPM；统一强制 credits 在 Usage/Stats 中的标记。实际启动发现 v0 Usage/Stats 重复注册导致启动 panic，已消除重复注册并保留两代接口。
+- 浏览器保存配置发现后端未注册 max-concurrent/queue-size，已补齐转换、JSON/YAML、克隆及 watcher 往返。实际浏览器保存 4/6 后热更新保留；这两个字段仍不实现并发/队列调度。
+- 上游截断流/speech 测试的原始错误文案断言改为安全错误契约，保留状态码、单终止 error、无 DONE 和不泄漏检查。HTTP interrupt fixture 改为真实回环 HTTP SSE，明确等待 worker 与 HTTP 服务端取消，同一 WebSocket 后续请求仍能完成；不改生产取消逻辑。
+
+### 13.4 验证结果
+
+环境：Go 1.26.0 windows/amd64、Bun 1.3.14；只使用隔离配置和合成凭据。
+
+| 检查 | 结果 |
+| --- | --- |
+| gofmt、根模块/23 个示例模块 tidy、源码差异检查 | 通过；无未解决冲突。生成 HTML 保留原始字节，见下文 |
+| config/限流/Speed Throttle/watcher/管理 API、COS/store、Usage、executor/helps、handlers/auth/service 定向回归 | 通过 |
+| 最终 `go test -count=1 -json ./...` | 退出 0；104 个包通过、33 个包无测试，18311 项测试/子测试通过、9 项条件跳过、0 失败 |
+| `go build ./...`、Windows server 编译 | 通过 |
+| Linux amd64/arm64 server 交叉编译 | 均通过，不代表 Linux 运行测试 |
+| Bun 安装及 frozen-lockfile 检查、`bun run verify` | 1586 项测试通过；lint、TypeScript、生产构建通过 |
+| Code0 source 身份、v8 YAML、OAuth、Quota、Usage/Stats、日志、六语言键/占位符审计 | 通过；明确保留 fallback |
+| 编译后的 server 与管理页面隔离 HTTP 冒烟 | 62 项通过，覆盖 v8 主契约和 v0 fork 兼容、鉴权、配置/归档、Usage 导入去重/导出、Stats 三视图/重置、queue、OAuth/ADC 失败路径及页面哈希 |
+| 实际浏览器 | Code0 四协议创建/编辑/删除、配置保存及热更新、Gemini 项目输入先于 OAuth 启动、v8 project_id 请求、ADC 校验、Quota 空状态、Usage 总耗时、Stats credits、日志搜索/请求 ID resolver/两种下载均通过 |
+| 本地模拟上游的实际 HTTP 行为 | 26 项通过：每 key RPM=0 连续请求不受默认限制、其他 key 429/Retry-After、非流式/首 SSE/token 节流、四协议安全错误、alias 转发/display-name/token cap、三种 Antigravity 调用强制 credits、Usage/Stats 一致、auth 文件哈希不变 |
+| 本轮启动诊断离线分析 | 当前 boot 103 条接受、0 隔离；62 server/Gin、18 HTTP model call、6 attempts EOF/terminal/success，throttle 事件和实际等待保留；合成敏感标记 0 匹配 |
+
+9 个条件跳过：Devin live 未启用；6 个外部签名语料/catalog 缺样本；TLS capture 缺 CPA_TLS_FP_PROXY；Windows 环境变量大小写相关 GitHub token 测试。早轮真实断言失败均已修复后复测，最终全量没有 Application Control 阻断。
+
+诊断 accessCapture=unknown、call debugCapture=none 和 mock peer not_participating 如实保留，不据此宣称完整双边追踪。旧冻结集成证据不覆盖，新增本轮隔离运行证据。
+
+### 13.5 页面装配与发布前缺项
+
+- 固定 `VERSION=sync-20261010-c9e2f7cb`、`BUILD_TIME=2026-10-10T03:36:28.118Z`。BUILD_TIME 未设置时仍使用原有当前时间行为。前端验证后提交源码、锁文件和 dist，再从该提交使用相同环境重建，核验页面哈希不变，复制至后端 static/management.html；未手工编辑生成 HTML。
+- 两个页面 SHA-256：`6fed561184624c1044f5ceb29f4445d5197553e60d2102fc612d5da2095cd2c5`。最终装配后重复隔离冒烟，服务返回页面哈希相同。
+- 前端提交 blob、重建产物、后端页面逐字节一致。生成器输出含 CRLF 及 root 行双 CR，普通后端 diff --check 会把它报告为尾部空白；仅该生成文件从源码空白检查中排除，未手工修剪 HTML。页面哈希和浏览器实际渲染验证通过。
+- race 实际尝试失败于 `-race requires cgo`：本机 CGO_ENABLED=0，缺 C 编译器。WSL/Linux 运行环境不可用，Linux 全量/race 阻断；Docker build 实际尝试失败于 dockerDesktopLinuxEngine 管道缺失，镜像构建/冒烟阻断。CGO 原生插件示例编译亦缺少该工具链；根模块编译与两个 Linux server 交叉编译已通过。
+- 真实账号 OAuth、ADC refresh、付费 credits、外部 COS 和插件配额需要隔离测试条件，本轮跳过；本地 mock 验证不代表真实上游登录或扣费。测试关闭 discovery、插件和页面自动更新，不读取真实 .env 或凭据，服务使用随机回环端口并在验证完成后停止。
+- 本轮证据在工作树同级 evidence/，最终提交/工作区/恢复记录在原后端忽略目录 .codex/sync-20261010/ 与 .codex/sync-upstream-progress.md。main/远程更新、tag 与发布仍需下一次独立授权。

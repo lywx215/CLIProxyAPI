@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser()
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('--binary')
 group.add_argument('--image')
+parser.add_argument('--evidence-dir', help='Retain isolated HTTP results and server logs')
 args = parser.parse_args()
 runtime_dir = tempfile.TemporaryDirectory(prefix='cliproxy-release-smoke-')
 runtime = Path(runtime_dir.name)
@@ -55,6 +56,7 @@ codex:
   orphan-delegation-compatibility: true
 routing:
   session-affinity-subagents: false
+unknown-seed-field: preserved
 '''
 (runtime/'isolated.yaml').write_text(config,encoding='utf-8')
 env={k:v for k,v in os.environ.items() if k.upper() in {'SYSTEMROOT','WINDIR','PATH','TEMP','TMP','COMSPEC','PATHEXT','SYSTEMDRIVE','USERPROFILE','APPDATA','LOCALAPPDATA'}}
@@ -72,7 +74,7 @@ base=f'http://127.0.0.1:{port}'
 def request(path,method='GET',body=None,content_type='application/json',expected=200,auth=True):
     headers={'Content-Type':content_type}
     if auth: headers['Authorization']='Bearer '+key
-    if isinstance(body,(dict,list)): body=json.dumps(body).encode()
+    if isinstance(body,(dict,list,bool,int,float)): body=json.dumps(body).encode()
     if isinstance(body,str): body=body.encode()
     req=Request(base+path,data=body,headers=headers,method=method)
     try:
@@ -84,7 +86,9 @@ def request(path,method='GET',body=None,content_type='application/json',expected
     except (json.JSONDecodeError,UnicodeDecodeError): return raw
 try:
     for _ in range(80):
-        if proc.poll() is not None: raise RuntimeError('isolated server exited; see server.log')
+        if proc.poll() is not None:
+            log.flush()
+            raise RuntimeError('isolated server exited:\n'+(runtime/'server.log').read_text(errors='replace')[-5000:])
         try:
             with urlopen(base+'/healthz',timeout=1) as response: response.read()
             break
@@ -133,6 +137,51 @@ try:
     request(prefix+'/vertex/import','POST',b'',expected=400)
     # The Gemini CLI login route is plugin-provided; no plugin/real credentials are loaded here.
     request(prefix+'/gemini-cli-auth-url?project_id=synthetic',expected=404)
+    # The v8 view must migrate every known fork field without making GET mutate the file.
+    original_bytes=(runtime/'isolated.yaml').read_bytes()
+    v8='/v8/management'
+    request(v8+'/config',auth=False,expected=401)
+    current=request(v8+'/config')
+    assert current['config-version']==8,current
+    assert current['upstream']['codex']['identity-confuse'] is True
+    assert current['requests']['speed-throttle']['min-tokens-per-second']==70
+    assert current['access']['api-key-rate-limit']['default-rpm']==60
+    assert current['server']['enable-gemini-cli-endpoint'] is False
+    assert current['oauth']['providers']['antigravity']['antigravity-credits-force'] is False
+    assert (runtime/'isolated.yaml').read_bytes()==original_bytes,'GET migrated the persisted file'
+    canonical=request(v8+'/config.yaml',content_type='text/plain')
+    assert b'unknown-sync-field: preserved' in canonical
+    request(v8+'/config','PUT',current)
+    after_json=request(v8+'/config.yaml',content_type='text/plain')
+    assert b'unknown-sync-field: preserved' in after_json,'JSON root PUT lost unknown archive'
+    request(v8+'/config/requests/speed-throttle','PATCH',{'enabled':False,'max-tokens-per-second':101})
+    assert request(v8+'/config/requests/speed-throttle')['max-tokens-per-second']==101
+    request(v8+'/config/requests/speed-throttle','PATCH',{'unknown-new-field':True},expected=400)
+    roundtrip=request(v8+'/config.yaml',content_type='text/plain')
+    request(v8+'/config.yaml','PUT',roundtrip,'application/yaml')
+    assert b'unknown-sync-field: preserved' in request(v8+'/config.yaml',content_type='text/plain')
+    request(v8+'/config.yaml','PUT','invalid: [','application/yaml',expected=400)
+    request(v8+'/config/server/enable-gemini-cli-endpoint','PUT',False)
+    assert request(v8+'/config/server/enable-gemini-cli-endpoint') is False
+    assert request(v8+'/observability/usage')['usage']['total_tokens']==5
+    assert request(v8+'/observability/usage/export')['usage']['total_requests']==1
+    assert request(v8+'/observability/usage/import','POST',snapshot)['added']==0
+    for view in ['auth','model','detail']:
+        assert request(v8+'/observability/antigravity-stats?view='+view)['view']==view
+    assert request(v8+'/observability/antigravity-stats?auth_id=synthetic','DELETE')['cleared_entries']==0
+    assert request(v8+'/credentials')['files']==[]
+    request(v8+'/credentials/refresh','POST',{},expected=400)
+    request(v8+'/observability/usage/queue?count=0',expected=400)
+    assert request(v8+'/observability/usage/queue')==[]
+    request(v8+'/observability/usage/api-keys')
+    assert request(v8+'/oauth/status?state=isolated-sync-state')['status']=='error'
+    assert request(v8+'/oauth/session?state=isolated-sync-state','DELETE')['cancelled'] is False
+    request(v8+'/oauth/callback','POST',{'provider':'codex','redirect_url':'http://localhost/?state=isolated-sync-state&code=synthetic'},expected=404)
+    request(v8+'/oauth/import?provider=vertex','POST',b'',expected=400)
+    request(v8+'/oauth/auth-url?provider=gemini-cli&project_id=synthetic&is_webui=true',expected=404)
+    # Legacy fork reads remain usable after a v8 mutation migrated the file.
+    assert request(prefix+'/config')['codex']['identity-confuse'] is True
+    assert request(prefix+'/usage')['usage']['total_requests']==1
     html=request('/management.html',auth=False)
     assert hashlib.sha256(html).hexdigest()==hashlib.sha256(management_path.read_bytes()).hexdigest()
     assert not list((runtime/'auths').iterdir()),'smoke checks wrote credentials'
@@ -146,4 +195,9 @@ finally:
     except subprocess.TimeoutExpired: proc.kill(); proc.wait()
     log.close()
     (runtime/'http-results.json').write_text(json.dumps(results,indent=2),encoding='utf-8')
+    if args.evidence_dir:
+        evidence=Path(args.evidence_dir)
+        evidence.mkdir(parents=True,exist_ok=True)
+        for name in ['http-results.json','server.log']:
+            shutil.copyfile(runtime/name,evidence/name)
     runtime_dir.cleanup()

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 )
 
 type throttleObservation struct {

@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/api/middleware"
-	codexlive "github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/live"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/home"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/safemode"
-	sdkaccess "github.com/router-for-me/CLIProxyAPI/v7/sdk/access"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/api/middleware"
+	codexlive "github.com/router-for-me/CLIProxyAPI/v8/internal/client/codex/live"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/safemode"
+	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,7 +48,7 @@ func (s *Server) homeHeartbeatMiddleware() gin.HandlerFunc {
 		}
 		if c != nil && c.Request != nil {
 			path := c.Request.URL.Path
-			if strings.HasPrefix(path, "/v0/management/") || path == "/v0/management" || strings.HasPrefix(path, "/v0/resource/plugins/") || path == "/management.html" {
+			if strings.HasPrefix(path, "/v0/management/") || path == "/v0/management" || strings.HasPrefix(path, "/v8/management/") || path == "/v8/management" || strings.HasPrefix(path, "/v0/resource/plugins/") || path == "/management.html" {
 				c.Next()
 				return
 			}
@@ -247,7 +247,7 @@ func buildRateLimitConfig(cfg *config.Config) middleware.RateLimitConfig {
 	}
 	rateLimitCfg.Overrides = make(map[string]int, len(cfg.APIKeyRateLimit.Overrides))
 	for _, entry := range cfg.APIKeyRateLimit.Overrides {
-		if key := strings.TrimSpace(entry.APIKey); key != "" && entry.RPM > 0 {
+		if key := strings.TrimSpace(entry.APIKey); key != "" && entry.RPM >= 0 {
 			rateLimitCfg.Overrides[key] = entry.RPM
 		}
 	}

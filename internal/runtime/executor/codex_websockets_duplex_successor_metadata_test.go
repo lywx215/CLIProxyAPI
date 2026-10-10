@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	auth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	core "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	translator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	auth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	core "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	translator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 )
 
@@ -54,6 +54,9 @@ func TestCodexDuplexAutomaticSuccessorMetadata(t *testing.T) {
 				}
 				first := read()
 				firstKey := gjson.GetBytes(first, "prompt_cache_key").String()
+				if want := codexIdentityConfuseUUID(t.Name(), "prompt-cache", "first-key"); firstKey != want {
+					t.Errorf("wire first key = %q, want %q", firstKey, want)
+				}
 				response("response.created", "first", firstKey)
 				if scenario == "create_before_steer" {
 					middle := read()
@@ -113,6 +116,9 @@ func TestCodexDuplexAutomaticSuccessorMetadata(t *testing.T) {
 					return
 				}
 				nextKey := gjson.GetBytes(next, "prompt_cache_key").String()
+				if want := codexIdentityConfuseUUID(t.Name(), "prompt-cache", "explicit-key"); nextKey != want {
+					t.Errorf("wire explicit key = %q, want %q", nextKey, want)
+				}
 				response("response.created", "explicit", nextKey)
 				response("response.completed", "explicit", nextKey)
 				_, _, _ = c.ReadMessage()

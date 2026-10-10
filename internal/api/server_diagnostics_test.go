@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
 )
@@ -35,7 +35,7 @@ func TestNewServerDiagnosticRequestIDMatchesLegacyContextAndLog(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.engine.ServeHTTP(w, httptest.NewRequest("GET", "/v1/diagnostic-fixture", nil))
 	id := w.Header().Get("X-Diag-Request-Id")
-	if !regexp.MustCompile(`^[0-9a-f]{8}$`).MatchString(id) || id != ginID || id != contextID || w.Code != 201 || w.Body.String() != "fixture-response" {
+	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(id) || id != ginID || id != contextID || w.Code != 201 || w.Body.String() != "fixture-response" {
 		t.Fatalf("request identity/response: header=%q gin=%q context=%q status=%d body=%q", id, ginID, contextID, w.Code, w.Body.String())
 	}
 	found := false

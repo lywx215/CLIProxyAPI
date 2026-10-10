@@ -17,16 +17,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	coresession "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/session"
-	coreusage "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	coresession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
+	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"golang.org/x/net/context"
@@ -193,6 +193,9 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 		code = "rate_limit_exceeded"
 	case http.StatusNotFound:
 		code = "model_not_found"
+	case http.StatusRequestTimeout:
+		errType = "server_error"
+		code = "request_timeout"
 	default:
 		if status >= http.StatusInternalServerError {
 			errType = "server_error"
@@ -236,7 +239,16 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 
 func safeErrorIdentifier(value string) bool {
 	value = strings.TrimSpace(value)
-	return value != "" && len(value) <= 256 && !internalLeakPatterns.MatchString(value)
+	if value == "" || len(value) > 256 || internalLeakPatterns.MatchString(value) {
+		return false
+	}
+	for _, char := range value {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-' || char == '.' || char == '[' || char == ']' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func safeErrorParam(value any) any {
@@ -615,11 +627,12 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 	if c != nil && c.Request != nil {
 		sessionID, parentSessionID := extractSessionIDsFromRequest(c.Request)
 		newCtx = logging.WithClientRequestMetadata(newCtx, logging.ClientRequestMetadata{
-			ClientIP:        requestClientIP(c.Request),
-			XForwardedFor:   strings.TrimSpace(strings.Join(c.Request.Header.Values("X-Forwarded-For"), ", ")),
-			UserAgent:       strings.TrimSpace(c.Request.UserAgent()),
-			SessionID:       sessionID,
-			ParentSessionID: parentSessionID,
+			ClientIP:         requestClientIP(c.Request),
+			ResolvedClientIP: strings.TrimSpace(c.ClientIP()),
+			XForwardedFor:    strings.TrimSpace(strings.Join(c.Request.Header.Values("X-Forwarded-For"), ", ")),
+			UserAgent:        strings.TrimSpace(c.Request.UserAgent()),
+			SessionID:        sessionID,
+			ParentSessionID:  parentSessionID,
 		})
 	}
 	newCtx = logging.WithResponseStatusHolder(newCtx)

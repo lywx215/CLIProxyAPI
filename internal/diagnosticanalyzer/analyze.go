@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 )
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)

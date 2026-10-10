@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnosticanalyzer"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnosticanalyzer"
 )
 
 type listFlag []string

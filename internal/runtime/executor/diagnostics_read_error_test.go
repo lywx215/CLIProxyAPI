@@ -15,15 +15,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/gemini"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers/openai"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	coreusage "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers/gemini"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers/openai"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 )
 
 type diagnosticReadErrorBody struct {
@@ -136,17 +136,12 @@ func TestDIAG05GinReadErrorBeforeExchangeCleanup(t *testing.T) {
 						}
 						before := len(records)
 						mu.Unlock()
-						completedTail := provider == "gemini" && protocol == "responses" && initial != ""
-						if attempts != 1 || servers != 1 || (!completedTail && !strings.Contains(writer.Body.String(), `"error"`)) {
+						if attempts != 1 || servers != 1 || !strings.Contains(writer.Body.String(), `"error"`) {
 							t.Errorf("attempt=%d server=%d business error=%s", attempts, servers, writer.Body.String())
 						}
-						// Gemini's Responses converter emits a completed tail before Err; the forwarder
-						// treats it as payload and still receives the error afterwards.
-						if provider == "gemini" && protocol == "responses" && initial != "" && !strings.Contains(writer.Body.String(), "response.completed") {
-							t.Error("existing Gemini DONE tail changed")
-						}
-						if provider == "antigravity" && (strings.Contains(writer.Body.String(), "[DONE]") || strings.Contains(writer.Body.String(), "response.completed")) {
-							t.Error("Antigravity read error synthesized a clean tail")
+						// A failed read must not be converted into a successful terminal event.
+						if strings.Contains(writer.Body.String(), "[DONE]") || strings.Contains(writer.Body.String(), "response.completed") {
+							t.Error("read error synthesized a clean tail")
 						}
 						close(body.release)
 						synctest.Wait()

@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 )
 
@@ -46,6 +46,7 @@ func TestAntigravityCompactionPreservesForkCreditsAndAlias(t *testing.T) {
 				}
 				ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 				ctx := context.WithValue(context.Background(), "gin", ginCtx)
+				ctx = cliproxyauth.WithAntigravityCreditsUsage(ctx)
 				req := cliproxyexecutor.Request{Model: "claude-sonnet-4-6", Payload: []byte(`{"input":[{"role":"user","content":"summarize"},{"type":"compaction_trigger"}]}`)}
 				opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatOpenAIResponse, ResponseFormat: sdktranslator.FormatOpenAIResponse, Metadata: map[string]any{cliproxyexecutor.RequestedModelMetadataKey: "client-visible-alias"}}
 				var output strings.Builder
@@ -69,6 +70,13 @@ func TestAntigravityCompactionPreservesForkCreditsAndAlias(t *testing.T) {
 				}
 				if calls.Load() != 1 || !helps.CreditsUsed(ctx) {
 					t.Fatalf("summary calls=%d credits=%v, want one credited request", calls.Load(), helps.CreditsUsed(ctx))
+				}
+				manager := cliproxyauth.NewManager(nil, nil, nil)
+				manager.MarkResult(ctx, cliproxyauth.Result{AuthID: credential.ID, Provider: "antigravity", Model: req.Model, Success: true})
+				t.Cleanup(func() { cliproxyauth.ResetStatsByAuth(credential.ID) })
+				stats := cliproxyauth.GetStatsByAuth(credential.ID)
+				if len(stats) != 1 || stats[0].CreditsCount != 1 || stats[0].SuccessCount != 1 {
+					t.Fatalf("forced credits differ between Usage and Stats: %+v", stats)
 				}
 				if !strings.Contains(output.String(), `"model":"client-visible-alias"`) || !strings.Contains(output.String(), `"total_tokens":30`) {
 					t.Fatalf("compaction lost alias or usage: %s", output.String())

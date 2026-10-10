@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 )
 
 const contract = "../../contracts/diagnostics/v1"
