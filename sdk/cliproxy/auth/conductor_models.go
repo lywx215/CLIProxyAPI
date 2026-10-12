@@ -226,6 +226,9 @@ func (m *Manager) clientModelProjectionForAuth(auth *Auth, routeModel string, no
 	if auth == nil {
 		return registry.ClientModelProjection{ModelID: targetModel}
 	}
+	if m != nil {
+		auth = m.geminiBudgetSelectionAuth(auth, targetModel)
+	}
 
 	targetKey := ""
 	if m != nil {
@@ -308,8 +311,22 @@ func (m *Manager) filterExecutionModels(auth *Auth, routeModel string, candidate
 	now := time.Now()
 	out := make([]string, 0, len(candidates))
 	for _, upstreamModel := range candidates {
+		if m.geminiBudgetEnabled() && IsOfficialGeminiAuth(auth) {
+			real := CanonicalBudgetModel(upstreamModel)
+			if _, managed := m.GeminiBudgetPolicy().ManagedModels[real]; managed {
+				engine := m.GeminiBudgetEngine()
+				if engine == nil || !engine.Available(GeminiBudgetScope(auth, real)) {
+					continue
+				}
+			}
+		}
 		stateModel := m.stateModelForExecution(auth, routeModel, upstreamModel, pooled)
-		blocked, _, _ := isAuthBlockedForModel(auth, stateModel, now)
+		selectionAuth := m.geminiBudgetExecutionAuth(auth, upstreamModel, stateModel)
+		blocked, _, _ := isAuthBlockedForModel(selectionAuth, stateModel, now)
+		if selectionAuth != auth && !blocked {
+			state := existingModelState(selectionAuth, canonicalModelKey(upstreamModel))
+			blocked = state != nil && state.Status == StatusDisabled
+		}
 		if blocked {
 			continue
 		}

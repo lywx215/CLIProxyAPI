@@ -17,6 +17,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	cliproxysession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
@@ -122,6 +123,14 @@ func preferredExecutionAttemptError(fallback, upstream error) error {
 // Execute performs a non-streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = budget.WithRequest(ctx)
+	if m.geminiBudgetEnabled() {
+		ctx = budget.WithEngine(ctx, m.GeminiBudgetEngine())
+	}
+	if m.GeminiBudgetModelManaged(req.Model) {
+		opts = ensureRequestedModelMetadata(opts, req.Model)
+		req.Model = NormalizeGeminiBudgetThinkingModel(req.Model)
+	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
@@ -139,6 +148,9 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	var preferredUpstreamErr error
 	retryModel := authSelectionModelFromOptions(opts, req.Model)
 	for attempt := 0; ; attempt++ {
+		if m.geminiBudgetRequestLimitReached(ctx) {
+			break
+		}
 		roundAttempted := make(map[string]struct{})
 		roundOpts := withAttemptedAuthTracker(opts, roundAttempted)
 		resp, errExec := m.executeMixedOnce(ctx, normalized, req, roundOpts, maxRetryCredentials, attempt, defaultRequestRetry)
@@ -235,6 +247,14 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 // ExecuteStream performs a streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
+	ctx = budget.WithRequest(ctx)
+	if m.geminiBudgetEnabled() {
+		ctx = budget.WithEngine(ctx, m.GeminiBudgetEngine())
+	}
+	if m.GeminiBudgetModelManaged(req.Model) {
+		opts = ensureRequestedModelMetadata(opts, req.Model)
+		req.Model = NormalizeGeminiBudgetThinkingModel(req.Model)
+	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	req, opts = cliproxysession.Enrich(req, opts)
 	if m.HomeEnabled() {
@@ -501,6 +521,12 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 	var lastErr error
 	var upstreamErr error
 	for {
+		if m.geminiBudgetRequestLimitReached(ctx) {
+			if lastErr != nil {
+				return cliproxyexecutor.Response{}, preferredExecutionAttemptError(lastErr, upstreamErr)
+			}
+			return cliproxyexecutor.Response{}, m.geminiBudgetUnavailableError()
+		}
 		if maxRetryCredentials > 0 && len(attempted) >= maxRetryCredentials {
 			if lastErr != nil {
 				return cliproxyexecutor.Response{}, preferredExecutionAttemptError(lastErr, upstreamErr)
@@ -935,6 +961,12 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 	var upstreamErr error
 	var roundTiming homeRetryRoundTiming
 	for {
+		if m.geminiBudgetRequestLimitReached(ctx) {
+			if lastErr != nil {
+				return nil, preferredExecutionAttemptError(lastErr, upstreamErr)
+			}
+			return nil, m.geminiBudgetUnavailableError()
+		}
 		allowSameAuthRetry := homeMode && homeSameAuthRetryPending && lastHomeAuthID != "" && homeSameAuthRetries[lastHomeAuthID] == 0
 		if maxRetryCredentials > 0 && len(attempted) >= maxRetryCredentials && !allowSameAuthRetry {
 			if lastErr != nil {

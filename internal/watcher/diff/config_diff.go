@@ -19,6 +19,9 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 	}
 
 	// Simple scalars
+	if !reflect.DeepEqual(oldCfg.GeminiFreeTierPolicy, newCfg.GeminiFreeTierPolicy) {
+		changes = append(changes, "gemini-free-tier-policy: configuration updated")
+	}
 	if oldCfg.Client.Codex.EnableApplyPatch != newCfg.Client.Codex.EnableApplyPatch {
 		changes = append(changes, fmt.Sprintf("client.codex.enable-apply-patch: %t -> %t", oldCfg.Client.Codex.EnableApplyPatch, newCfg.Client.Codex.EnableApplyPatch))
 	}
@@ -215,6 +218,9 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 		for i := range oldCfg.GeminiKey {
 			o := oldCfg.GeminiKey[i]
 			n := newCfg.GeminiKey[i]
+			if strings.TrimSpace(o.QuotaProject) != strings.TrimSpace(n.QuotaProject) {
+				changes = append(changes, fmt.Sprintf("gemini[%d].quota-project: updated", i))
+			}
 			if strings.TrimSpace(o.BaseURL) != strings.TrimSpace(n.BaseURL) {
 				changes = append(changes, fmt.Sprintf("gemini[%d].base-url: %s -> %s", i, formatURL(o.BaseURL), formatURL(n.BaseURL)))
 			}
@@ -250,6 +256,9 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 		for i := range oldCfg.InteractionsKey {
 			o := oldCfg.InteractionsKey[i]
 			n := newCfg.InteractionsKey[i]
+			if strings.TrimSpace(o.QuotaProject) != strings.TrimSpace(n.QuotaProject) {
+				changes = append(changes, fmt.Sprintf("interactions[%d].quota-project: updated", i))
+			}
 			if strings.TrimSpace(o.BaseURL) != strings.TrimSpace(n.BaseURL) {
 				changes = append(changes, fmt.Sprintf("interactions[%d].base-url: %s -> %s", i, formatURL(o.BaseURL), formatURL(n.BaseURL)))
 			}

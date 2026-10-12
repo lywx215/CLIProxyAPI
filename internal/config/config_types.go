@@ -772,6 +772,9 @@ type GeminiKey struct {
 	// APIKey is the authentication key for accessing Gemini API services.
 	APIKey string `yaml:"api-key" json:"api-key"`
 
+	// QuotaProject associates keys sharing a Google project without changing routing identity.
+	QuotaProject string `yaml:"quota-project,omitempty" json:"quota-project,omitempty"`
+
 	// Priority controls selection preference when multiple credentials match.
 	// Higher values are preferred; defaults to 0.
 	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`

@@ -774,6 +774,12 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 			}
 		}
 	}
+	if m.geminiBudgetOwnsResult(result) {
+		// The local ledger owns admission and recovery for managed Google models.
+		// Generic cooldown persistence must not generate request-driven COS writes.
+		m.recordAvailabilityNeutralResult(ctx, result)
+		return
+	}
 	result = executionResultCreditsUsed(ctx, result)
 	modelKey := canonicalModelKey(result.Model)
 

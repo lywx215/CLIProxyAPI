@@ -80,6 +80,7 @@ func buildV8Paths() []configPath {
 		{"credential-concurrency", "credentials.concurrency"}, {"credential-in-flight", "credentials.in-flight"},
 		{"force-model-prefix", "routing.force-model-prefix"},
 		{"api-key-model-alias", "routing.api-key-model-alias"},
+		{"gemini-free-tier-policy", "gemini-free-tier-policy"},
 		{"request-retry", "routing.retry.request-retry"}, {"max-retry-credentials", "routing.retry.max-retry-credentials"},
 		{"max-retry-interval", "routing.retry.max-retry-interval"},
 		{"disable-cooling", "routing.cooldown.disable-cooling"}, {"save-cooldown-status", "routing.cooldown.save-cooldown-status"},
@@ -257,6 +258,9 @@ func (cfg *Config) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if errValidate := decoded.Models.Validate(); errValidate != nil {
+		return errValidate
+	}
+	if errValidate := decoded.GeminiFreeTierPolicy.Validate(); errValidate != nil {
 		return errValidate
 	}
 	*cfg = Config(decoded)
@@ -496,6 +500,9 @@ func NormalizeConfigLayout(data []byte, migrate bool) ([]byte, bool, error) {
 		paths = append(paths, path)
 	}
 	for _, path := range paths {
+		if path.old == path.current {
+			continue
+		}
 		old := legacyPath(root, path.old)
 		if old == nil {
 			continue
@@ -875,6 +882,9 @@ func ValidateV8Config(data []byte) error {
 	root = expandConfigAliases(root)
 	allowedRoots := v8AllowedRoots()
 	for _, path := range append(append(append([]configPath(nil), v8Paths...), v8Aliases...), v8SharedStructPaths...) {
+		if path.old == path.current {
+			continue
+		}
 		if legacyPath(root, path.old) != nil {
 			return fmt.Errorf("legacy field %s is not accepted by v8; use %s", path.old, path.current)
 		}
@@ -919,6 +929,9 @@ func ValidateV8Config(data []byte) error {
 	var cfg legacyConfig
 	if errDecode := decoder.Decode(&cfg); errDecode != nil {
 		return errDecode
+	}
+	if errPolicy := cfg.GeminiFreeTierPolicy.Validate(); errPolicy != nil {
+		return errPolicy
 	}
 	return cfg.Models.Validate()
 }

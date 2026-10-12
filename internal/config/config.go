@@ -127,6 +127,9 @@ type Config struct {
 	// GeminiKey defines Gemini API key configurations with optional routing overrides.
 	GeminiKey []GeminiKey `yaml:"gemini-api-key" json:"gemini-api-key"`
 
+	// GeminiFreeTierPolicy gates official Google generation using a durable local ledger.
+	GeminiFreeTierPolicy GeminiFreeTierPolicyConfig `yaml:"gemini-free-tier-policy,omitempty" json:"gemini-free-tier-policy,omitempty"`
+
 	// InteractionsKey defines native Google Interactions API key configurations.
 	InteractionsKey []GeminiKey `yaml:"interactions-api-key" json:"interactions-api-key"`
 

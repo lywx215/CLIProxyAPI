@@ -95,6 +95,9 @@ func (s *ConfigSynthesizer) synthesizeGeminiKeyEntries(ctx *SynthesisContext, en
 		if key != "" {
 			attrs["api_key"] = key
 		}
+		if project := strings.TrimSpace(entry.QuotaProject); project != "" {
+			attrs["quota_project"] = project
+		}
 		metadata := map[string]any{}
 		if entry.DisableCooling != nil {
 			metadata["disable_cooling"] = *entry.DisableCooling

@@ -9,6 +9,28 @@
 # The compatibility notes at the end show old spellings for existing deployments.
 config-version: 8
 
+# Optional admission control for direct Google AI Studio free-tier generation.
+# Initialize the local ledger through the v8 management API while disabled,
+# then enable this policy. The directory must be on a persistent volume.
+# These daily limits are local policy values; confirm actual project quotas in AI Studio.
+# gemini-free-tier-policy:
+#   enabled: false
+#   storage-path: "/data/gemini-budget"
+#   cos-backup:
+#     enabled: false # Independent budget backup; at most one PUT attempt per Pacific day.
+#     schedule: "00:10" # America/Los_Angeles; no startup or shutdown catch-up.
+#     object-key: "quota/gemini-budget/latest.json"
+#   managed-models:
+#     gemini-2.5-flash: 20
+#     gemini-3.5-flash: 20
+#     gemini-3.6-flash: 20
+#     gemini-3.7-flash: 20
+#     gemini-3.8-flash: 20
+#     gemini-2.5-flash-lite: 500
+#     gemini-3.1-flash-lite: 500
+#     gemini-3.1-flash-lite-preview: 500
+#     gemini-3.5-flash-lite: 500
+
 # Optional model catalog sources: http(s) URLs or absolute local file paths.
 # Each explicit source overrides --local-model; otherwise --local-model uses
 # embedded catalogs, and normal mode uses the official remote sources.
@@ -535,9 +557,11 @@ upstream:
 #         - "*flash*"            # wildcard matching substring (e.g. gemini-2.5-flash-lite)
 #       keys:
 #         - api-key: "AIzaSy...01"
+#           quota-project: "shared-google-project" # Optional stable quota identity for keys in the same Google project.
 #           weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
 #         # A second key shares this group's endpoint, headers, and models.
 #         - api-key: "replace-with-second-gemini-key"
+#           quota-project: "shared-google-project" # UI grouping alone does not establish a shared Google quota pool.
 #           weight: 2
 #           priority: null # inherit the group priority
 #           prefix: null # inherit the group prefix

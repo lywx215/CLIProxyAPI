@@ -78,6 +78,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	s.applyRetryConfig(s.cfg)
 	s.configureCooldownStateStore(s.cfg)
+	s.configureGeminiBudget(ctx, s.cfg)
 
 	s.registerPluginAuthParser()
 	if s.coreManager != nil && !homeEnabled {
@@ -243,6 +244,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		if ctx == nil {
 			ctx = context.Background()
 		}
+		s.stopGeminiBudgetWorker()
 
 		s.homeMu.Lock()
 		runCancel := s.runCancel
@@ -367,6 +369,11 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			}
 		}
 
+		if s.coreManager != nil {
+			if errClose := s.coreManager.CloseGeminiBudget(); errClose != nil && shutdownErr == nil {
+				shutdownErr = errClose
+			}
+		}
 		usage.StopDefault()
 	})
 	return shutdownErr

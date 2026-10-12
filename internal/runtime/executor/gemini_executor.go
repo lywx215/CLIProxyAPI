@@ -15,6 +15,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	internalsignature "github.com/router-for-me/CLIProxyAPI/v8/internal/signature"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
@@ -42,8 +43,9 @@ const (
 // It supports regular and streaming requests to the Google Generative Language API.
 type GeminiExecutor struct {
 	// cfg holds the application configuration.
-	cfg        *config.Config
-	identifier string
+	cfg          *config.Config
+	identifier   string
+	budgetEngine *budget.Engine
 }
 
 // NewGeminiExecutor creates a new Gemini executor instance.
@@ -60,6 +62,19 @@ func NewGeminiExecutor(cfg *config.Config) *GeminiExecutor {
 // NewGeminiInteractionsExecutor creates a Gemini executor bound to the native Interactions provider.
 func NewGeminiInteractionsExecutor(cfg *config.Config) *GeminiExecutor {
 	return &GeminiExecutor{cfg: cfg, identifier: "gemini-interactions"}
+}
+
+// WithBudgetEngine also protects management HTTP calls outside Conductor execution.
+func (e *GeminiExecutor) WithBudgetEngine(engine *budget.Engine) *GeminiExecutor {
+	e.budgetEngine = engine
+	return e
+}
+func (e *GeminiExecutor) budgetContext(ctx context.Context) context.Context {
+	ctx = budget.WithRequest(ctx)
+	if !budget.HasEngineBinding(ctx) && e.budgetEngine != nil {
+		ctx = budget.WithEngine(ctx, e.budgetEngine)
+	}
+	return ctx
 }
 
 // Identifier returns the executor identifier.
@@ -103,11 +118,14 @@ func (e *GeminiExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.Aut
 	if ctx == nil {
 		ctx = req.Context()
 	}
+	ctx = e.budgetContext(ctx)
 	httpReq := req.WithContext(ctx)
 	if err := e.PrepareRequest(httpReq, auth); err != nil {
 		return nil, err
 	}
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, "")
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
 	return httpClient.Do(httpReq)
 }
 
@@ -125,6 +143,10 @@ func (e *GeminiExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.Aut
 //   - cliproxyexecutor.Response: The response from the API
 //   - error: An error if the request fails
 func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
+	ctx = e.budgetContext(ctx)
+	if e.cfg != nil && e.cfg.GeminiFreeTierPolicy.Enabled && cliproxyauth.IsOfficialGeminiAuth(auth) {
+		req.Model = cliproxyauth.NormalizeGeminiBudgetThinkingModel(req.Model)
+	}
 	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
 	if opts.Alt == "responses/compact" {
 		return resp, statusErr{code: http.StatusNotImplemented, msg: "/responses/compact not supported"}
@@ -214,7 +236,9 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, requestedModel)
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	diag := diagnostics.NewExchange(ctx, responseFormat.String(), false, false)
 	defer func() { diag.Finish(err) }()
@@ -236,7 +260,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		diag.ReadFinished(errReadDiagnostic)
 		helps.AppendAPIResponseChunk(ctx, e.cfg, b)
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b))
-		err = statusErr{code: httpResp.StatusCode, msg: string(b)}
+		err = statusErr{code: httpResp.StatusCode, msg: string(b), retryAfter: helps.GeminiBudgetRetryAfter(httpResp.Header)}
 		return resp, err
 	}
 	data, err := io.ReadAll(httpResp.Body)
@@ -268,6 +292,10 @@ func (e *GeminiExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 
 // ExecuteStream performs a streaming request to the Gemini API.
 func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (_ *cliproxyexecutor.StreamResult, err error) {
+	ctx = e.budgetContext(ctx)
+	if e.cfg != nil && e.cfg.GeminiFreeTierPolicy.Enabled && cliproxyauth.IsOfficialGeminiAuth(auth) {
+		req.Model = cliproxyauth.NormalizeGeminiBudgetThinkingModel(req.Model)
+	}
 	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
 	if opts.Alt == "responses/compact" {
 		return nil, statusErr{code: http.StatusNotImplemented, msg: "/responses/compact not supported"}
@@ -349,7 +377,9 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, requestedModel)
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	diag := diagnostics.NewExchange(ctx, responseFormat.String(), true, true)
 	defer func() {
@@ -373,7 +403,7 @@ func (e *GeminiExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		if errClose := httpResp.Body.Close(); errClose != nil {
 			log.Errorf("gemini executor: close response body error: %v", errClose)
 		}
-		err = statusErr{code: httpResp.StatusCode, msg: string(b)}
+		err = statusErr{code: httpResp.StatusCode, msg: string(b), retryAfter: helps.GeminiBudgetRetryAfter(httpResp.Header)}
 		return nil, err
 	}
 	out := make(chan cliproxyexecutor.StreamChunk)
@@ -512,7 +542,10 @@ func (e *GeminiExecutor) executeInteractions(ctx context.Context, auth *cliproxy
 		AuthValue: authValue,
 	})
 
-	httpClient := reporter.TrackHTTPClient(helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0))
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, requestedModel)
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
+	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
@@ -532,7 +565,7 @@ func (e *GeminiExecutor) executeInteractions(ctx context.Context, auth *cliproxy
 	helps.AppendAPIResponseChunk(ctx, e.cfg, data)
 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), data))
-		err = statusErr{code: httpResp.StatusCode, msg: string(data)}
+		err = statusErr{code: httpResp.StatusCode, msg: string(data), retryAfter: helps.GeminiBudgetRetryAfter(httpResp.Header)}
 		return resp, err
 	}
 	continuation.Observe(data)
@@ -602,7 +635,10 @@ func (e *GeminiExecutor) executeInteractionsStream(ctx context.Context, auth *cl
 		AuthValue: authValue,
 	})
 
-	httpClient := reporter.TrackHTTPClient(helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0))
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, requestedModel)
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
+	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
@@ -615,7 +651,7 @@ func (e *GeminiExecutor) executeInteractionsStream(ctx context.Context, auth *cl
 			log.Errorf("gemini executor: close interactions error response body error: %v", errClose)
 		}
 		helps.AppendAPIResponseChunk(ctx, e.cfg, data)
-		return nil, statusErr{code: httpResp.StatusCode, msg: string(data)}
+		return nil, statusErr{code: httpResp.StatusCode, msg: string(data), retryAfter: helps.GeminiBudgetRetryAfter(httpResp.Header)}
 	}
 
 	out := make(chan cliproxyexecutor.StreamChunk)
@@ -723,6 +759,7 @@ func (e *GeminiExecutor) executeInteractionsStream(ctx context.Context, auth *cl
 
 // CountTokens counts tokens for the given request using the Gemini API.
 func (e *GeminiExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = e.budgetContext(ctx)
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 
 	apiKey := geminiAPIKey(auth)
@@ -786,7 +823,9 @@ func (e *GeminiExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Aut
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, auth, 0)
+	httpClient = helps.GeminiBudgetHTTPClient(ctx, httpClient, e.cfg, auth, helps.PayloadRequestedModel(opts, req.Model))
+	httpClient = diagnostics.FinalizeClient(ctx, httpClient)
 	cliproxyexecutor.MarkUpstreamAttempt(ctx)
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
