@@ -88,6 +88,147 @@ func TestGeminiBudgetConcurrentFinalRequestSendsOnce(t *testing.T) {
 	}
 }
 
+func TestGeminiBudgetAdmissionTurnHandsOffAfterReserveBeforeTransmission(t *testing.T) {
+	engine, cfg, auth := geminiBudgetTestSetup(t, 20)
+	scope := cliproxyauth.GeminiBudgetScope(auth, "gemini-2.5-flash")
+	var released atomic.Int32
+	ctx := budget.WithRequest(budget.WithEngine(t.Context(), engine))
+	ctx = budget.WithAdmissionTurn(ctx, func() {
+		view := engine.View(scope)
+		if view.Used != 1 || view.InFlight != 1 || budget.Attempts(ctx) != 0 {
+			t.Errorf("gate handoff did not follow reservation: %+v attempts=%d", view, budget.Attempts(ctx))
+		}
+		released.Add(1)
+	})
+	client := GeminiBudgetHTTPClient(ctx, &http.Client{Transport: geminiBudgetTestTransport(func(req *http.Request) (*http.Response, error) {
+		if released.Load() != 1 || budget.Attempts(ctx) != 1 {
+			t.Error("transport started before selection gate was released")
+		}
+		return geminiBudgetTestResponse(req, http.StatusOK, `{}`), nil
+	})}, cfg, auth, "public-flash")
+	resp, err := client.Do(geminiBudgetTestRequest(ctx, "gemini-2.5-flash"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	budget.ReleaseAdmissionTurn(ctx)
+	if released.Load() != 1 {
+		t.Fatal("conductor cleanup released the transport handoff twice")
+	}
+}
+
+func TestGeminiBudgetRejectedReservationRetainsTurnForConductorCleanup(t *testing.T) {
+	engine, cfg, auth := geminiBudgetTestSetup(t, 1)
+	seedCtx := budget.WithRequest(budget.WithEngine(t.Context(), engine))
+	ticket, err := engine.Reserve(seedCtx, cliproxyauth.GeminiBudgetScope(auth, "gemini-2.5-flash"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ticket.TryStartTransmission(seedCtx); err != nil {
+		t.Fatal(err)
+	}
+	ticket.Release()
+	var released atomic.Int32
+	ctx := budget.WithRequest(budget.WithEngine(t.Context(), engine))
+	ctx = budget.WithAdmissionTurn(ctx, func() { released.Add(1) })
+	client := GeminiBudgetHTTPClient(ctx, &http.Client{Transport: geminiBudgetTestTransport(func(*http.Request) (*http.Response, error) {
+		t.Error("rejected reservation reached the physical transport")
+		return nil, errors.New("unexpected transmission")
+	})}, cfg, auth, "public-flash")
+	resp, err := client.Do(geminiBudgetTestRequest(ctx, "gemini-2.5-flash"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests || released.Load() != 0 || budget.Attempts(ctx) != 0 {
+		t.Fatalf("rejected reservation handed off early: status=%d callbacks=%d attempts=%d", resp.StatusCode, released.Load(), budget.Attempts(ctx))
+	}
+	budget.ReleaseAdmissionTurn(ctx)
+	budget.ReleaseAdmissionTurn(ctx)
+	if released.Load() != 1 {
+		t.Fatal("conductor cleanup did not release exactly once")
+	}
+}
+
+func TestGeminiBudgetErrorObservationPrecedesSlotRelease(t *testing.T) {
+	for _, failPersist := range []bool{false, true} {
+		t.Run(strconv.FormatBool(failPersist), func(t *testing.T) {
+			observeStarted := make(chan struct{})
+			allowObserve := make(chan struct{})
+			var allowOnce sync.Once
+			defer allowOnce.Do(func() { close(allowObserve) })
+			path := t.TempDir()
+			engine, err := budget.Open(t.Context(), budget.Options{
+				Path: path, Models: map[string]budget.ModelPolicy{"gemini-2.5-flash": {DailyLimit: 20}},
+				BeforePersist: func(operation string) error {
+					if operation == "entry" {
+						close(observeStarted)
+						<-allowObserve
+						if failPersist {
+							return errors.New("simulated persistent volume failure")
+						}
+					}
+					return nil
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			if err = engine.Initialize(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			cfg := &config.Config{GeminiFreeTierPolicy: config.GeminiFreeTierPolicyConfig{Enabled: true, StoragePath: path, ManagedModels: map[string]int{"gemini-2.5-flash": 20}}}
+			auth := &cliproxyauth.Auth{Provider: "gemini", Attributes: map[string]string{"api_key": "synthetic-only-key"}}
+			ctx := budget.WithRequest(budget.WithEngine(t.Context(), engine))
+			entered := make(chan struct{})
+			returnError := make(chan struct{})
+			client := GeminiBudgetHTTPClient(ctx, &http.Client{Transport: geminiBudgetTestTransport(func(req *http.Request) (*http.Response, error) {
+				close(entered)
+				<-returnError
+				return geminiBudgetTestResponse(req, http.StatusTooManyRequests, `{"error":{"message":"rate limit"}}`), nil
+			})}, cfg, auth, "public-flash")
+			finished := make(chan *http.Response, 1)
+			go func() {
+				resp, errRequest := client.Do(geminiBudgetTestRequest(ctx, "gemini-2.5-flash"))
+				if errRequest != nil {
+					t.Error(errRequest)
+				}
+				finished <- resp
+			}()
+			<-entered
+			changes := engine.Changes()
+			close(returnError)
+			<-observeStarted
+			select {
+			case <-changes:
+				t.Error("slot release notified waiters before cooldown persistence completed")
+			default:
+			}
+			allowOnce.Do(func() { close(allowObserve) })
+			resp := <-finished
+			if resp == nil {
+				t.Fatal("transport did not return a safe error response")
+			}
+			_ = resp.Body.Close()
+			select {
+			case <-changes:
+			default:
+				t.Fatal("completed observation did not wake waiters")
+			}
+			view := engine.View(cliproxyauth.GeminiBudgetScope(auth, "gemini-2.5-flash"))
+			wantState := "cooldown"
+			if failPersist {
+				wantState = budget.StateStorageError
+			}
+			if view.Available || view.State != wantState || view.InFlight != 0 || view.Used != 1 {
+				t.Fatalf("waiter observed unsafe post-error state: %+v", view)
+			}
+		})
+	}
+}
+
 func TestGeminiBudgetTransmissionFailureNeverCompensates(t *testing.T) {
 	engine, cfg, auth := geminiBudgetTestSetup(t, 20)
 	ctx := budget.WithEngine(context.Background(), engine)

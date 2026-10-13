@@ -155,7 +155,11 @@ func (h *Handler) geminiBudgetView(revision string, cfg *config.Config) gin.H {
 	if snap.Backup.Success {
 		completedAt = timeOrNil(snap.Backup.At)
 	}
-	return gin.H{"revision": revision, "enabled": p.Enabled, "engine_state": state, "initialized": snap.Initialized, "can_initialize": canInit, "pacific_date": snap.Day, "next_reset": nextReset, "estimated": estimated, "projects": projects, "backup_enabled": p.COSBackup.Enabled, "last_backup": gin.H{"state": backupState, "date": snap.Backup.Day, "attempted_at": timeOrNil(snap.Backup.At), "completed_at": completedAt}}
+	var queue any
+	if h.authManager != nil {
+		queue = h.authManager.GeminiAdmissionQueueStatus()
+	}
+	return gin.H{"revision": revision, "enabled": p.Enabled, "engine_state": state, "initialized": snap.Initialized, "can_initialize": canInit, "pacific_date": snap.Day, "next_reset": nextReset, "estimated": estimated, "projects": projects, "admission_queue": queue, "backup_enabled": p.COSBackup.Enabled, "last_backup": gin.H{"state": backupState, "date": snap.Backup.Day, "attempted_at": timeOrNil(snap.Backup.At), "completed_at": completedAt}}
 }
 
 func geminiBudgetViewRank(state string) int {

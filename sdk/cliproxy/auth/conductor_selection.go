@@ -174,6 +174,7 @@ func (m *Manager) RefreshSchedulerEntry(authID string) {
 	m.mu.RUnlock()
 	m.structuralEpoch.Add(1)
 	m.scheduler.upsertAuth(snapshot)
+	m.geminiAdmission.notify()
 }
 
 // RefreshSchedulerAll rebuilds scheduler entries for every known auth.

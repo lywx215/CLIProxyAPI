@@ -10,11 +10,39 @@ import (
 
 // GeminiFreeTierPolicyConfig is opt-in and only manages official Google API key generation.
 type GeminiFreeTierPolicyConfig struct {
-	Enabled       bool                        `yaml:"enabled" json:"enabled"`
-	StoragePath   string                      `yaml:"storage-path" json:"storage-path"`
-	COSBackup     GeminiBudgetCOSBackupConfig `yaml:"cos-backup" json:"cos-backup"`
-	ManagedModels map[string]int              `yaml:"managed-models" json:"managed-models"`
+	Enabled        bool                        `yaml:"enabled" json:"enabled"`
+	StoragePath    string                      `yaml:"storage-path" json:"storage-path"`
+	COSBackup      GeminiBudgetCOSBackupConfig `yaml:"cos-backup" json:"cos-backup"`
+	ManagedModels  map[string]int              `yaml:"managed-models" json:"managed-models"`
+	AdmissionQueue *GeminiAdmissionQueueConfig `yaml:"admission-queue,omitempty" json:"admission-queue,omitempty"`
 }
+
+// GeminiAdmissionQueueConfig only bounds pre-transmission credential acquisition.
+type GeminiAdmissionQueueConfig struct {
+	Enabled            *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	MaxPendingPerModel int   `yaml:"max-pending-per-model,omitempty" json:"max-pending-per-model,omitempty"`
+	MaxPendingTotal    int   `yaml:"max-pending-total,omitempty" json:"max-pending-total,omitempty"`
+	MaxWaitSeconds     int   `yaml:"max-wait-seconds,omitempty" json:"max-wait-seconds,omitempty"`
+}
+
+func (p GeminiFreeTierPolicyConfig) AdmissionSettings() GeminiAdmissionQueueConfig {
+	q := GeminiAdmissionQueueConfig{}
+	if p.AdmissionQueue != nil {
+		q = *p.AdmissionQueue
+	}
+	if q.MaxPendingPerModel == 0 {
+		q.MaxPendingPerModel = 128
+	}
+	if q.MaxPendingTotal == 0 {
+		q.MaxPendingTotal = 256
+	}
+	if q.MaxWaitSeconds == 0 {
+		q.MaxWaitSeconds = 75
+	}
+	return q
+}
+
+func (q GeminiAdmissionQueueConfig) IsEnabled() bool { return q.Enabled == nil || *q.Enabled }
 
 type GeminiBudgetCOSBackupConfig struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled"`
@@ -43,6 +71,10 @@ func (p GeminiFreeTierPolicyConfig) WithDefaults() GeminiFreeTierPolicyConfig {
 
 func (p GeminiFreeTierPolicyConfig) Validate() error {
 	p = p.WithDefaults()
+	q := p.AdmissionSettings()
+	if q.MaxPendingPerModel < 1 || q.MaxPendingPerModel > 4096 || q.MaxPendingTotal < 1 || q.MaxPendingTotal > 8192 || q.MaxWaitSeconds < 1 || q.MaxWaitSeconds > 300 {
+		return fmt.Errorf("gemini-free-tier-policy.admission-queue requires bounded positive queue sizes and max-wait-seconds between 1 and 300")
+	}
 	if p.Enabled && len(p.ManagedModels) == 0 {
 		return fmt.Errorf("gemini-free-tier-policy.managed-models cannot be empty when enabled")
 	}

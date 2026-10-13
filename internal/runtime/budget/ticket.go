@@ -11,7 +11,12 @@ import (
 
 type requestContextKey struct{}
 type engineContextKey struct{}
+type admissionTurnContextKey struct{}
 type engineBinding struct{ engine *Engine }
+type admissionTurn struct {
+	once    sync.Once
+	release func()
+}
 type attemptCounter struct {
 	mu       sync.Mutex
 	count    int
@@ -46,6 +51,31 @@ func WithEngine(ctx context.Context, engine *Engine) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, engineContextKey{}, engineBinding{engine: engine})
+}
+
+// WithAdmissionTurn binds a request-local selection gate to its transport handoff.
+// This callback is unrelated to quota reservations and changes no durable state.
+func WithAdmissionTurn(ctx context.Context, release func()) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, admissionTurnContextKey{}, &admissionTurn{release: release})
+}
+
+// ReleaseAdmissionTurn releases the selection gate at most once across derived
+// contexts. The conductor's failure cleanup and the transport handoff may race.
+func ReleaseAdmissionTurn(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	turn, _ := ctx.Value(admissionTurnContextKey{}).(*admissionTurn)
+	if turn != nil {
+		turn.once.Do(func() {
+			if turn.release != nil {
+				turn.release()
+			}
+		})
+	}
 }
 func EngineFromContext(ctx context.Context) *Engine {
 	if ctx == nil {
@@ -365,6 +395,7 @@ func (t *Ticket) Release() {
 	e := t.engine
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.notifyLocked()
 	key := entryKey(t.scope, t.day)
 	if e.inflight[key] > 1 {
 		e.inflight[key]--
@@ -428,5 +459,6 @@ func (e *Engine) UpdateModels(models map[string]ModelPolicy) error {
 		return admissionError("budget_storage_unavailable", 503, 0)
 	}
 	e.models = updated
+	e.notifyLocked()
 	return nil
 }

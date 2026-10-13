@@ -79,6 +79,7 @@ type Engine struct {
 	jitter            func(time.Duration) time.Duration
 	checkpointRecords uint64
 	lastCheckpoint    uint64
+	changes           chan struct{}
 }
 
 func emptyState() diskState {
@@ -252,6 +253,7 @@ func (e *Engine) Initialize(ctx context.Context, arguments ...InitializeOptions)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.notifyLocked()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -390,6 +392,11 @@ func (e *Engine) enterRecoveryLocked(ctx context.Context, now time.Time) error {
 }
 
 func (e *Engine) ensureReadyLocked(ctx context.Context, now time.Time) error {
+	defer func() {
+		if e.unhealthy {
+			e.notifyLocked()
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -422,6 +429,11 @@ func (e *Engine) ensureReadyLocked(ctx context.Context, now time.Time) error {
 }
 
 func (e *Engine) appendLocked(ctx context.Context, operation string, value any, business bool) error {
+	defer func() {
+		if operation != "backup" || e.unhealthy {
+			e.notifyLocked()
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -453,6 +465,28 @@ func (e *Engine) appendLocked(ctx context.Context, operation string, value any, 
 	}
 	e.sequence = record.Sequence
 	return nil
+}
+
+// Changes returns a broadcast subscription for in-memory admission changes.
+// Subscribe before checking View so a change between the check and a wait cannot
+// be missed. A closed subscription means callers must subscribe and check again.
+func (e *Engine) Changes() <-chan struct{} {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.changes == nil {
+		e.changes = make(chan struct{})
+	}
+	return e.changes
+}
+
+func (e *Engine) notifyLocked() {
+	if e.changes != nil {
+		close(e.changes)
+	}
+	e.changes = make(chan struct{})
 }
 
 func (e *Engine) applyRecord(record walRecord) error {
@@ -618,6 +652,7 @@ func (e *Engine) Observe(ctx context.Context, scope Scope, signal Signal) error 
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.notifyLocked()
 	scope = normalizedScope(scope)
 	now := e.now()
 	if _, managed := e.models[scope.Model]; !managed {
@@ -869,6 +904,7 @@ func (e *Engine) Restore(ctx context.Context, snapshot Snapshot) error {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.notifyLocked()
 	if e.closed || e.unhealthy {
 		return admissionError("budget_storage_unavailable", 503, 0)
 	}
@@ -913,6 +949,11 @@ func (e *Engine) Checkpoint(ctx context.Context) error {
 }
 
 func (e *Engine) checkpointLocked(ctx context.Context) error {
+	defer func() {
+		if e.unhealthy {
+			e.notifyLocked()
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -982,6 +1023,7 @@ func (e *Engine) Close() error {
 		return nil
 	}
 	e.closed = true
+	defer e.notifyLocked()
 	var err error
 	if e.wal != nil {
 		err = errors.Join(e.wal.Sync(), e.wal.Close())

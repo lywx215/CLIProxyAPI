@@ -605,7 +605,7 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 		}
 	}
 	parentCtx = diagnostics.CarryContext(parentCtx, requestCtx)
-	newCtx, cancel := context.WithCancel(budget.WithRequest(parentCtx))
+	newCtx, cancel := context.WithCancel(coreauth.WithGeminiAdmissionRequest(budget.WithRequest(parentCtx)))
 
 	endpoint := ""
 	if c != nil && c.Request != nil {

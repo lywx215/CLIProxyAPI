@@ -76,6 +76,9 @@ func TestGeminiFreeTierConfigurationRejectsInvalidPolicy(t *testing.T) {
 		"gemini-free-tier-policy: {managed-models: {Gemini-2.5-flash: 20}}",
 		"gemini-free-tier-policy: {cos-backup: {object-key: 'quota//latest.json'}}",
 		"gemini-free-tier-policy: {cos-backup: {object-key: 'quota\\latest.json'}}",
+		"gemini-free-tier-policy: {admission-queue: {max-pending-per-model: -1}}",
+		"gemini-free-tier-policy: {admission-queue: {max-pending-total: 8193}}",
+		"gemini-free-tier-policy: {admission-queue: {max-wait-seconds: 301}}",
 	} {
 		if _, err := ParseConfigBytes([]byte(raw)); err == nil {
 			t.Fatalf("accepted invalid policy: %s", raw)
@@ -87,6 +90,35 @@ func TestGeminiFreeTierConfigurationRejectsInvalidPolicy(t *testing.T) {
 	}
 	if cfg.GeminiFreeTierPolicy.Enabled {
 		t.Fatal("legacy config unexpectedly enabled budget")
+	}
+}
+
+func TestGeminiAdmissionConfigurationDefaultsAndRoundTrip(t *testing.T) {
+	defaults := (GeminiFreeTierPolicyConfig{}).AdmissionSettings()
+	if !defaults.IsEnabled() || defaults.MaxPendingPerModel != 128 || defaults.MaxPendingTotal != 256 || defaults.MaxWaitSeconds != 75 {
+		t.Fatalf("unexpected defaults: %+v", defaults)
+	}
+	raw := []byte("config-version: 8\ngemini-free-tier-policy:\n  enabled: true\n  managed-models: {gemini-2.5-flash: 20}\n  admission-queue: {enabled: false, max-pending-per-model: 8, max-pending-total: 16, max-wait-seconds: 30}\n")
+	cfg, err := ParseConfigBytes(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloned := cfg.CloneForRuntime()
+	*cfg.GeminiFreeTierPolicy.AdmissionQueue.Enabled = true
+	if cloned.GeminiFreeTierPolicy.AdmissionSettings().IsEnabled() {
+		t.Fatal("runtime queue config pointer was shared")
+	}
+	encoded, err := yaml.Marshal(cloned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := ParseConfigBytes(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := after.GeminiFreeTierPolicy.AdmissionSettings()
+	if settings.IsEnabled() || settings.MaxPendingPerModel != 8 || settings.MaxPendingTotal != 16 || settings.MaxWaitSeconds != 30 {
+		t.Fatalf("queue config lost: %+v", settings)
 	}
 }
 

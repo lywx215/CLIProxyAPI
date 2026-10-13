@@ -158,6 +158,7 @@ type Manager struct {
 	geminiBudgetPath          string
 	geminiBudgetOpenError     error
 	geminiBudgetBackup        *budgetbackup.Service
+	geminiAdmission           geminiAdmissionCoordinator
 	store                     Store
 	cooldownStore             CooldownStateStore
 	pendingCooldownStateStore CooldownStateStore

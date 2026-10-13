@@ -173,6 +173,7 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 		m.clearHomeRuntimeAuths()
 	}
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
+	m.geminiAdmission.notify()
 	return clearedCooldowns
 }
 

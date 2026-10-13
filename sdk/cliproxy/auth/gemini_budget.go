@@ -133,7 +133,7 @@ func (m *Manager) EnsureGeminiBudget(ctx context.Context, initialize bool) (*bud
 	}
 	p := m.GeminiBudgetPolicy()
 	m.geminiBudgetMu.Lock()
-	defer m.geminiBudgetMu.Unlock()
+	defer func() { m.geminiBudgetMu.Unlock(); m.geminiAdmission.notify() }()
 	if m.geminiBudget != nil {
 		if filepath.Clean(m.geminiBudgetPath) != filepath.Clean(p.StoragePath) {
 			m.geminiBudgetOpenError = errors.New("Gemini budget storage path changes require restart")

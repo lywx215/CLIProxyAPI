@@ -16,6 +16,11 @@ config-version: 8
 # gemini-free-tier-policy:
 #   enabled: false
 #   storage-path: "/data/gemini-budget"
+#   admission-queue:
+#     enabled: true # Only waits for temporary credential availability before sending.
+#     max-pending-per-model: 128
+#     max-pending-total: 256
+#     max-wait-seconds: 75 # Total acquisition wait per client request; excludes upstream I/O.
 #   cos-backup:
 #     enabled: false # Independent budget backup; at most one PUT attempt per Pacific day.
 #     schedule: "00:10" # America/Los_Angeles; no startup or shutdown catch-up.

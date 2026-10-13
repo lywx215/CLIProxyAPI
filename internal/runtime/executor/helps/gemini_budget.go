@@ -96,6 +96,7 @@ func (t *geminiBudgetTransport) RoundTrip(req *http.Request) (*http.Response, er
 	model = cliproxyauth.CanonicalBudgetModel(model)
 	ctx := geminiBudgetContext{Context: req.Context(), fallback: t.ctx}
 	if _, managed := t.models[model]; !generation || !managed {
+		budget.ReleaseAdmissionTurn(ctx)
 		// Unlisted generation shares the channel send limit without spending RPD.
 		// Auxiliary Google calls also sanitize errors, without spending generation quota.
 		if generation {
@@ -132,6 +133,9 @@ func (t *geminiBudgetTransport) RoundTrip(req *http.Request) (*http.Response, er
 	if err != nil {
 		return geminiBudgetAdmissionResponse(req, err, t.alias), nil
 	}
+	// The durable reservation now owns the scope's in-flight slot. Other
+	// requests may select a different free scope before this one enters I/O.
+	budget.ReleaseAdmissionTurn(ctx)
 	if err = ticket.TryStartTransmission(ctx); err != nil {
 		_ = ticket.Compensate(context.WithoutCancel(ctx))
 		ticket.Release()
@@ -154,12 +158,14 @@ func (t *geminiBudgetTransport) RoundTrip(req *http.Request) (*http.Response, er
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		ticket.Release()
 		signal := geminiBudgetSignal(resp.StatusCode, resp.Header, body)
 		signal.AttemptID = ticket.ID()
 		if signal.Kind != "" {
 			_ = engine.Observe(context.WithoutCancel(ctx), scope, signal)
 		}
+		// Publish cooldown or fail-closed storage state before releasing the
+		// slot, so an awakened waiter cannot race ahead of the observation.
+		ticket.Release()
 		delay := signal.RetryAfter
 		if view := engine.View(scope); !view.RetryAt.IsZero() {
 			delay = max(delay, time.Until(view.RetryAt))
