@@ -56,6 +56,9 @@ func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
 	})
 	gate := make(chan struct{})
 	m.SetRoundTripperProvider(enterpriseRefreshTransport(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "www.googleapis.com" {
+			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+		}
 		if req.Header.Get("Authorization") == "Bearer old" {
 			if oldCalls.Add(1) == 8 {
 				close(gate)

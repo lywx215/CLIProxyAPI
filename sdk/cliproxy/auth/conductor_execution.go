@@ -508,6 +508,9 @@ func mergeRequestHeaders(current, updates http.Header, clear []string) http.Head
 }
 
 func executorForAuth(executor ProviderExecutor, auth *Auth) ProviderExecutor {
+	if auth != nil && auth.enterpriseQuota != nil {
+		return &enterpriseQuotaExecutor{ProviderExecutor: executor, gate: auth.enterpriseQuota}
+	}
 	if auth.AuthKind() == AuthKindAPIKey {
 		if scoped, ok := executor.(APIKeyConfigExecutor); ok {
 			return scoped.ForAPIKey()

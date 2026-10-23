@@ -136,6 +136,9 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 		return nil, fmt.Errorf("auth %s changed registration during persistence", auth.ID)
 	}
 	authClone := auth.Clone()
+	m.attachEnterpriseQuotaLocked(authClone)
+	auth.enterpriseQuota = authClone.enterpriseQuota
+	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	// Snapshot before unlocking: MarkResult mutates the published auth in place.
@@ -259,6 +262,9 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		existingVersion = 1
 	}
 	credChanged := CredentialsChanged(existing, auth)
+	if credChanged && mode != updateModeRefresh && mode != updateModePrepare {
+		auth.EnterpriseQuotaIdentity = nil
+	}
 	if credChanged {
 		auth.CredentialVersion = max(auth.CredentialVersion, existingVersion) + 1
 	} else {
@@ -323,6 +329,9 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		auth.Generation = existing.Generation + 1
 	}
 	authClone := auth.Clone()
+	m.attachEnterpriseQuotaLocked(authClone)
+	auth.enterpriseQuota = authClone.enterpriseQuota
+	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	// Snapshot before unlocking: MarkResult mutates the published auth in place.
@@ -369,6 +378,10 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	}
 	provider := strings.TrimSpace(existing.Provider)
 	delete(m.auths, id)
+	m.enterpriseQuota.mu.Lock()
+	m.enterpriseQuota.releaseGateLocked(m.enterpriseQuota.bindings[id])
+	delete(m.enterpriseQuota.bindings, id)
+	m.enterpriseQuota.mu.Unlock()
 	m.notifyAuthChangeLocked(id)
 	if m.modelPoolOffsets != nil {
 		delete(m.modelPoolOffsets, id)
@@ -472,6 +485,7 @@ func (m *Manager) Load(ctx context.Context) error {
 		if auth.CredentialVersion == 0 {
 			auth.CredentialVersion = 1
 		}
+		m.attachEnterpriseQuotaLocked(auth)
 		m.auths[auth.ID] = auth.Clone()
 	}
 

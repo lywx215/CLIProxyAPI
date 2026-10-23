@@ -50,10 +50,10 @@ func (f *enterpriseFixtureTransport) requestBody() []byte {
 
 func (f *enterpriseFixtureTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper { return f }
 func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	f.calls.Add(1)
 	if req.URL.Host != "discoveryengine.googleapis.com" {
 		return nil, io.ErrUnexpectedEOF
 	}
+	f.calls.Add(1)
 	body, _ := io.ReadAll(req.Body)
 	f.mu.Lock()
 	f.lastBody = append([]byte(nil), body...)

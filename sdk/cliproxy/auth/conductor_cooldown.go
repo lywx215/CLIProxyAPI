@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	internallogging "github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
@@ -157,6 +158,7 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 	oldCooldownStore := m.cooldownStore
 	m.mu.RUnlock()
 	previousCfg, _ := m.runtimeConfig.Load().(*internalconfig.Config)
+	m.fenceEnterpriseQuotaHomeTransition(previousCfg != nil && previousCfg.Home.Enabled, cfg.Home.Enabled)
 	if homeSessionAliasTTL(previousCfg) != homeSessionAliasTTL(cfg) {
 		m.homeSessionAliases.clear()
 	}
@@ -174,6 +176,7 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 	}
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	m.geminiAdmission.notify()
+	m.publishEnterpriseQuota()
 	return clearedCooldowns
 }
 
@@ -201,6 +204,10 @@ func (m *Manager) ApplyConfigWithCooldownStateStore(ctx context.Context, cfg *in
 		return false
 	}
 	if errContext := ctx.Err(); errContext != nil {
+		return false
+	}
+	if errShared := m.restoreSharedQuota(ctx, store); errShared != nil {
+		logEntryWithRequestID(ctx).Warnf("failed to restore shared quota state during store transition: %v", errShared)
 		return false
 	}
 	m.mu.Lock()
@@ -246,6 +253,10 @@ func (m *Manager) SwapCooldownStateStore(ctx context.Context, store CooldownStat
 		return false
 	}
 	if errContext := ctx.Err(); errContext != nil {
+		return false
+	}
+	if errShared := m.restoreSharedQuota(ctx, store); errShared != nil {
+		logEntryWithRequestID(ctx).Warnf("failed to restore shared quota state during store transition: %v", errShared)
 		return false
 	}
 	m.mu.Lock()
@@ -313,6 +324,9 @@ func (m *Manager) RestoreCooldownStates(ctx context.Context) error {
 	records, errLoad := store.Load(ctx)
 	if errLoad != nil {
 		return errLoad
+	}
+	if errShared := m.restoreSharedQuota(ctx, store); errShared != nil {
+		return errShared
 	}
 	if len(records) == 0 {
 		return nil
@@ -606,6 +620,12 @@ func (m *Manager) persistCooldownStatesToLocked(ctx context.Context, store Coold
 		logEntryWithRequestID(ctx).Warnf("failed to persist cooldown state: %v", errSave)
 		return false
 	}
+	if shared, ok := store.(SharedQuotaStateStore); ok && !m.HomeEnabled() {
+		if errSave := shared.SaveSharedQuota(ctx, m.sharedQuotaSnapshot()); errSave != nil {
+			logEntryWithRequestID(ctx).Warnf("failed to persist shared quota state: %v", errSave)
+			return false
+		}
+	}
 	return ctx.Err() == nil
 }
 
@@ -762,6 +782,12 @@ func isStaleExecutionResult(result Result, current *Auth) bool {
 // MarkResult records an execution result and notifies hooks.
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
 	if result.AuthID == "" {
+		return
+	}
+	if isEnterpriseQuotaResult(result) {
+		if result.Error.Code != "enterprise_local_gate" {
+			m.recordAvailabilityNeutralResult(ctx, result)
+		}
 		return
 	}
 	if ctx == nil {
@@ -1559,6 +1585,14 @@ func isRequestScopedError(err error) bool {
 func resultErrorFromError(err error) *Error {
 	if err == nil {
 		return nil
+	}
+	var enterpriseErr *ge.GenerationError
+	if errors.As(err, &enterpriseErr) && enterpriseErr.Restriction != nil {
+		return &Error{Code: "enterprise_quota", Message: enterpriseErr.Error(), HTTPStatus: enterpriseErr.StatusCode()}
+	}
+	var localGate *enterpriseLocalGateError
+	if errors.As(err, &localGate) {
+		return &Error{Code: "enterprise_local_gate", Message: "shared quota gate blocked local dispatch", HTTPStatus: 429}
 	}
 	var sourceErr *Error
 	var resultErr *Error

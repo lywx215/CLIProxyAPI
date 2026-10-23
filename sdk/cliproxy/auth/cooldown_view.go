@@ -9,13 +9,23 @@ import (
 // CooldownView describes an unexpired local retry restriction, not overall
 // credential availability. It contains no credential metadata or raw errors.
 type CooldownView struct {
-	Scope            string    `json:"scope"`
-	ModelKey         string    `json:"model_key,omitempty"`
-	Reason           string    `json:"reason"`
-	RetryAt          time.Time `json:"retry_at"`
-	RemainingSeconds int64     `json:"remaining_seconds"`
-	BackoffLevel     *int      `json:"backoff_level,omitempty"`
-	HTTPStatus       int       `json:"http_status,omitempty"`
+	Origin               string    `json:"origin,omitempty"`
+	Feature              string    `json:"feature,omitempty"`
+	PoolID               string    `json:"pool_id,omitempty"`
+	PoolVersion          uint64    `json:"pool_version,omitempty"`
+	RelatedAuthCount     int       `json:"related_auth_count,omitempty"`
+	Phase                string    `json:"phase,omitempty"`
+	RestrictionKind      string    `json:"restriction_kind,omitempty"`
+	RestrictionScope     string    `json:"restriction_scope,omitempty"`
+	TimeSource           string    `json:"time_source,omitempty"`
+	SharedResetSupported bool      `json:"shared_reset_supported,omitempty"`
+	Scope                string    `json:"scope"`
+	ModelKey             string    `json:"model_key,omitempty"`
+	Reason               string    `json:"reason"`
+	RetryAt              time.Time `json:"retry_at"`
+	RemainingSeconds     int64     `json:"remaining_seconds"`
+	BackoffLevel         *int      `json:"backoff_level,omitempty"`
+	HTTPStatus           int       `json:"http_status,omitempty"`
 }
 
 // CooldownSnapshotForAuth projects a detached auth snapshot without mutating it.
@@ -27,6 +37,7 @@ func CooldownSnapshotForAuth(auth *Auth, now time.Time) []CooldownView {
 	if auth == nil {
 		return views
 	}
+	views = append(views, auth.enterpriseQuota.views(now)...)
 	// Match the explicit credential-wide gate in isAuthBlockedForModel. Other
 	// auth-level fields can be model aggregates and must not become global gates.
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
