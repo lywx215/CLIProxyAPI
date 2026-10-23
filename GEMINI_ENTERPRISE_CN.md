@@ -50,7 +50,7 @@ go build -o cli-proxy-api.exe ./cmd/server
 
 登录使用 `GET /v8/management/oauth/auth-url?provider=gemini-enterprise&is_webui=true`，新表单同时传入 `auto_discover_resources` 和公开会话参数，并检查响应的 `resource_inputs_supported: true`。旧后端缺少该标记时提示升级，并尽力取消刚创建的会话。返回的 `callback_url` 固定为 `http://localhost:8788/oauth-callback`；端口可用时由后端自动接收回调，否则支持把完整回调地址提交到 `/v8/management/oauth/callback`。收到回调后仍需等待 `/v8/management/oauth/status` 返回 `ok`，才表示资源绑定及凭据已保存；取消通过 `DELETE /v8/management/oauth/session` 完成。此入口仅在普通模式的 v8 管理 API 提供。
 
-认证文件列表显示账号实际保存的应用和资源标识，并提示是否具有 refresh token。没有 refresh token 的账号不会显示单账号手动续期按钮。账号列表不公开 Secret 或 Token，不宣称支持尚未实现的 Enterprise 配额查询。接口字段见 [v8 Management API](docs/management-api-v8.md#gemini-enterprise)。
+认证文件列表显示账号实际保存的应用和资源标识，并提示是否具有 refresh token。没有 refresh token 的账号不会显示单账号手动续期按钮。账号列表不公开 Secret 或 Token。凭证卡可读取绑定项目、区域及版本共享的每日助手与搜索额度，显示 Google 已上报用量、实际上限、计算剩余量、重置及查询时间；无数据不补零，无权限时提示检查 `roles/viewer` 或等效读取权限，其他读取失败显示额度暂不可用，不改变凭证健康状态。接口字段见 [v8 Management API](docs/management-api-v8.md#gemini-enterprise)。
 
 后端跟踪的 `static/management.html` 应与已提交前端的 `dist/index.html` 一致；完成生产构建后复制单文件产物，并核对 SHA256，避免后端托管旧版页面。
 
@@ -314,6 +314,22 @@ python test/gemini_enterprise_sdk_smoke.py
 本次测试程序的 SHA256 与已保存的历史受阻程序均不相同；源码路径和 Git 元数据条件也与此前工作区运行不同。现有证据尚不能确定放行决定变化的具体原因，不能据此认定原受阻程序已经获准，或保证未来构建不再被拦截。上述成功仅补齐固定提交的四包与离线双 SDK，不替代此前各阶段的 `go test ./...` 结果，不宣称重新完成全量回归；历史失败和拦截记录按原阶段保留。
 
 本机脱敏证据目录标识为 `windows4551-9ab28a2f-20261023`，包含 `FINAL_REPORT.json`、`go-four.log`、`go-four-summary.json`、`go-four-work-audit.json`、`sdk-offline.log`、`sdk-offline-summary.json`、策略前后快照、Code Integrity 事件及 `preservation-supplement.json`。既有 169 份受保护证据、另行核对的 61 份早期诊断以及 2,145 个旧源码快照文件均保持原哈希；这些计数分组记录，不合并为不重复文件总数。其他无关改动保留，补测期间并行产生的 `7b42e084` 未纳入固定快照。本节文档补录仅核对已有证据，没有追加测试、模型请求或修改静态产物，暂不推送。
+
+## 每日助手额度查询与前后端联调（2026-10-23）
+
+新增 `GET /v8/management/quota/gemini-enterprise?auth_index=<credential-index>`，仅使用目标凭证保存的项目、区域、OAuth 绑定及代理读取额度，不继承其他账号或全局资源绑定。读取 `licenseConfigs.list` 后，按有效版本查询 Cloud Monitoring 的每日助手与搜索指标。除 `ACTIVE` 外，仍保留访问权限的 `DEACTIVATING` 宽限期订阅也参与版本识别，见 Google 的 [LicenseConfig 状态说明](https://docs.cloud.google.com/generative-ai-app-builder/docs/reference/rest/v1/projects.locations.licenseConfigs#State)。同版本的多个订阅不重复叠加限额，不支持的版本不推算额度。
+
+上限使用最新 GAUGE，已上报用量累计当前 `America/Los_Angeles` 自然日内的全部 DELTA 分页和方法，并去除重复点。项目、区域及版本分别成池；剩余量为 `max(0, limit-used)` 的计算结果，不代表个人实时余额。缺少用量保持 `null`，明确上报的零保持数字零。分页失败、循环分页、数值溢出或 Monitoring 的 `executionErrors` / `unreachable` 部分结果不会产生剩余额度，参见 [Monitoring 返回契约](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/ListTimeSeriesResponse)。每日重置按太平洋当地午夜计算，覆盖夏令时切换。
+
+额度接口需要管理鉴权，返回 `Cache-Control: no-store`；可选读取失败使用 HTTP 200 的 `no_permission` 或 `unavailable` 状态，管理鉴权失败仍返回原有错误码。禁用、缺失或不属于该 provider 的凭证不访问上游。刷新仅在内存中取得本次查询 Token，不写回凭据，不改变路由健康状态。上游错误正文和 Token 不进入响应，授权头不跟随重定向，取消沿请求上下文传播。未新增 v0 额度路由，也未修改系统策略或 IAM。
+
+本轮先修正了新增测试中配置夹具的编译写法，再完成三包完整回归：`internal/auth/geminienterprise`、`internal/api/handlers/management` 和 `internal/api` 共 735 项测试及子测试通过，专项 23 项通过，server 编译通过；没有受策略拦截的包。本次没有重跑 `go test ./...`。前端专项 31 项及 `bun run verify` 的 1,791 项测试、Lint、TypeScript 和生产构建通过。
+
+隔离的真实 Go API 服务使用七条合成凭证及模拟 Google 上游，完成 17 项 HTTP 检查和 13 项浏览器检查。覆盖管理鉴权、Plus/Standard 独立额度池、宽限期订阅、未知与零、权限失败、服务未启用、分页部分失败、禁用凭证、筛选、手动刷新及退出会话。浏览器中 Plus 的合成用量由 6 刷新至 8、计算剩余由 9,994 更新至 9,992，Standard 保持上限 2,000、用量 1、剩余 1,999；这些是夹具值，不是生产账号观测。控制台无错误，全局配置及 ETag、凭证绑定/健康状态和七份合成文件内容不变。本轮没有使用真实 OAuth、发送 Google 请求或调用模型；午夜缓存和连接代际隔离由确定性单元测试覆盖。
+
+前端提交为 `13ce4bfec84e7d4b7d4dcb6b53bf21e4ed8e3424`。使用固定环境 `VERSION=dev`、`BUILD_TIME=2026-10-23T10:34:00Z` 构建，单文件产物、后端 `static/management.html` 及实际 HTTP 正文均为 4,014,911 字节，SHA256 为 `6f1b1cb51320dd1436f8fcdc32ea944bd0934b5ed28bb499f622f1c0df6ca080`。从该提交按相同环境重新构建后，产物逐字节一致。本次变更不包含其他功能或滚动周额度展示。
+
+脱敏证据目录标识为 `enterprise-quota-final-20261023`，包含各轮回归日志、`http-integration.json`、`browser-regression.json`、产物核对和 `quota-live-browser.jpg`。首轮测试夹具编译失败，以及独立联调夹具因缺少文件路径而未列出内存凭证的记录均保留；修正仅涉及本次测试夹具，没有为通过测试放宽产品校验。验收进程已退出，监听端口已关闭，两份临时二进制已删除。历史 Windows 4551 和各阶段全量受阻记录保持原文及原文件，不能用本轮成功取代历史结果。前后端分别提交，暂不推送。
 
 ## OAuth 切换与本机回调故障排查
 

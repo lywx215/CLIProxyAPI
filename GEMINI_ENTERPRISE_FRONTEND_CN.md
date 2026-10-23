@@ -37,7 +37,20 @@
 
 只读查询契约参考 Google 官方 [projects.search](https://docs.cloud.google.com/resource-manager/reference/rest/v3/projects/search) 和 [engines.get](https://docs.cloud.google.com/generative-ai-app-builder/docs/reference/rest/v1/projects.locations.collections.engines/get)。
 
-凭证支持品牌筛选、按项目/引擎/助手搜索、详情、启停、下载及现有模型浏览。模型由后端实际发现，不在前端预填 Argon 或虚构目录。该 provider 没有可用配额和 countTokens 接口，页面明确说明此限制。新增文案覆盖简体中文、繁体中文、英语、俄语、越南语和韩语。
+凭证支持品牌筛选、按项目/引擎/助手搜索、详情、启停、下载及现有模型浏览。模型由后端实际发现，不在前端预填 Argon 或虚构目录。凭证卡现已通过 v8 额度接口读取绑定资源的每日助手与搜索额度。文案覆盖简体中文、繁体中文、英语、俄语、越南语和韩语。
+
+### 每日助手与搜索额度（2026-10-23）
+
+- 后端根据当前凭证的资源绑定读取 `licenseConfigs.list`，按有效订阅版本查询 Cloud Monitoring 的 `text_answer_gen_tier_…_regional/limit` 和 `/usage`；包括仍可访问的宽限期订阅，不依赖服务生产方的 Service Consumer Management API。
+- 实际上限使用最新 GAUGE，已上报用量累计当前太平洋自然日的全部 DELTA 分页及方法。剩余量为上限减已上报用量，标明为计算值，并分别显示用量样本时间和查询时间。
+- 版本、项目及区域分别成池，不叠加同版本多个订阅的重复限额。Google 没有返回用量时显示未知，不能视为零，也不能视为个人实时余额。其他功能及滚动周额度暂不在本卡片展示。
+- 服务需启用 Discovery Engine 和 Cloud Monitoring API，账号需能读取订阅及监控数据。无权限时卡片提示检查 `roles/viewer` 或等效读取权限；服务未启用、分页失败或 Monitoring 返回部分结果时显示“额度暂不可用”。均不弹出原始错误、不标记凭证异常、不改变模型路由。
+- 页面自动首次读取，支持独立刷新、请求去重、资源绑定和连接代际隔离，以及太平洋午夜后的重新查询；不持久化额度或 OAuth 密钥。每日重置使用 `America/Los_Angeles` 时区，支持夏令时。
+- 后端三包完整回归共 735 项测试及子测试、专项 23 项和 server 编译通过；前端专项 31 项及 `bun run verify` 的 1,791 项测试、Lint、TypeScript 与单文件构建通过。初次新增 Go 测试的配置夹具编译错误已修正，失败日志保留。
+
+前端提交 `13ce4bfec84e7d4b7d4dcb6b53bf21e4ed8e3424` 与隔离的真实 Go 后端完成 17 项 HTTP 和 13 项浏览器检查。七条合成凭证覆盖正常、未知、明确零、无权限、API 未启用、Monitoring 部分失败及禁用状态；刷新时 Plus 用量从合成的 6 变为 8，Standard 独立池不变，筛选清除后恢复所有状态。页面显示用量上报、重置和查询时间；控制台无错误，退出后回到未记住密钥的空登录表单。午夜重查及连接切换后的旧响应丢弃由确定性单元测试覆盖。
+
+本轮只使用本机合成上游，不将夹具值描述为真实 Google 额度，也没有重新授权或模型调用。静态产物及实际 HTTP 正文一致，固定构建环境、产物哈希和证据目录见 [额度查询联调记录](GEMINI_ENTERPRISE_CN.md#每日助手额度查询与前后端联调2026-10-23)。此前各阶段 Windows 拦截记录保持保留，本轮相关三包通过不代表重新完成后端全量回归。
 
 ## 前期前端适配与联调记录
 

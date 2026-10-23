@@ -32,6 +32,7 @@ func (s *Server) registerManagementV8Routes() {
 	v8.POST("/routing/cooldown/reset", s.mgmt.ResetQuota)
 	v8.GET("/routing/model-definitions/:channel", s.mgmt.GetStaticModelDefinitions)
 	v8.GET("/quota/gemini-budget", s.mgmt.GetGeminiBudget)
+	v8.GET("/quota/gemini-enterprise", s.mgmt.GetGeminiEnterpriseQuota)
 	v8.POST("/quota/gemini-budget/init", s.mgmt.InitializeGeminiBudget)
 
 	v8.GET("/observability/logs", s.mgmt.GetLogs)

@@ -183,6 +183,31 @@ accounts retain their saved bindings when the default login configuration
 changes. See the [Enterprise guide](../GEMINI_ENTERPRISE_CN.md) for configuration
 and protocol details.
 
+`GET /quota/gemini-enterprise?auth_index=<credential-index>` reads the saved
+credential's daily Assistant/Search quota pools. It requires management
+authentication and returns only observations: `status`, `project_id`, `location`,
+`observed_at`, nullable `period_start` and `reset_at`, and `pools`. Each pool has
+`tier`, `status`, nullable numeric `limit`, `used`, and `remaining`, and nullable
+`usage_updated_at`. The status is `ok`, `no_data`, `no_permission`, or
+`unavailable`. Optional read failures return HTTP 200 with a soft status, without
+upstream error bodies or changes to credential health. Management authentication
+failures retain their normal HTTP status.
+
+The backend reads active and grace-period license configurations and Cloud
+Monitoring's native Discovery Engine quota metrics. It sums DELTA usage across all pages and methods
+in the current `America/Los_Angeles` calendar day and reads the latest limit
+GAUGE. `remaining` is calculated from reported usage, which can be delayed; it
+is not an account's real-time balance. Empty series remain unknown. Pools are
+shared by project, location, and edition. Enable Discovery Engine and Cloud
+Monitoring and grant the account subscription/monitoring read access (for
+example, the project's `roles/viewer` role). IAM denial is represented by
+`no_permission`; API-disabled and other failures use `unavailable`. Responses use
+`Cache-Control: no-store`. Pagination failures, overflow, and Monitoring responses
+with `executionErrors` or `unreachable` do not establish a remaining balance.
+Missing, disabled, and non-Enterprise credentials do not trigger upstream reads.
+An expiring token is refreshed only in memory for the optional query; stored
+credentials, resource bindings, and routing health remain unchanged.
+
 ## v0 compatibility
 
 The `/v0/management` endpoints keep their original paths and payloads, including
