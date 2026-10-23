@@ -14,6 +14,7 @@ import (
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
 )
@@ -97,6 +98,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if err := enterprise.ValidateFinal(body); err != nil {
 		return nil, input, err
 	}
+	input.Body = body
 	if auth == nil {
 		return nil, input, enterprise.Invalid("missing Gemini Enterprise authentication")
 	}
@@ -138,13 +140,32 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 		return result, err
 	}
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
-	defer reporter.TrackFailure(ctx, &err)
+	defer func() {
+		if err != nil {
+			reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
+		}
+	}()
 	response, input, err := e.open(ctx, auth, req, opts, reporter)
 	if err != nil {
 		return result, err
 	}
 	defer func() { _ = response.Body.Close() }()
+	counter := helps.NewEnterpriseTokenCounter(input.Body)
 	output := enterprise.NewOutput()
+	var finalDetail *usage.Detail
+	defer func() {
+		var detail usage.Detail
+		if finalDetail != nil {
+			detail = *finalDetail
+		} else {
+			detail = counter.Detail(output.Parts)
+		}
+		if err != nil {
+			reporter.PublishFailureWithDetail(ctx, detail, err)
+		} else {
+			reporter.Publish(ctx, detail)
+		}
+	}()
 	parser := &enterprise.Parser{}
 	err = parser.Parse(response.Body, func(event enterprise.Event) error {
 		reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
@@ -157,6 +178,8 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	if err != nil {
 		return result, err
 	}
+	detail := counter.Detail(output.Parts)
+	finalDetail = &detail
 	if err = output.Finish(input); err != nil {
 		return result, err
 	}
@@ -165,9 +188,9 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	} else {
 		result.Payload = output.Chat(req.Model)
 	}
+	result.Payload = helps.EnterpriseUsagePayload(result.Payload, opts.SourceFormat == translator.FormatGemini, detail)
 	result.Headers = helps.EnterpriseResponseHeaders(input.Ignored)
 	helps.AppendAPIResponseChunk(ctx, e.cfg, result.Payload)
-	reporter.EnsurePublished(ctx)
 	return result, nil
 }
 
@@ -179,15 +202,19 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 	reporter.SetStream(true)
 	response, input, err := e.open(ctx, auth, req, opts, reporter)
 	if err != nil {
-		reporter.TrackFailure(ctx, &err)
+		reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
 		return nil, err
 	}
 	chunks := make(chan coreexec.StreamChunk)
+	counter := helps.NewEnterpriseTokenCounter(input.Body)
+	includeUsage := helps.EnterpriseStreamUsageRequested(req.Payload)
+	if len(opts.OriginalRequest) > 0 {
+		includeUsage = helps.EnterpriseStreamUsageRequested(opts.OriginalRequest)
+	}
 	go func() {
 		defer close(chunks)
 		defer func() { _ = response.Body.Close() }()
 		var streamErr error
-		defer reporter.TrackFailure(ctx, &streamErr)
 		send := func(payload []byte) error {
 			select {
 			case chunks <- coreexec.StreamChunk{Payload: payload}:
@@ -198,6 +225,20 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			}
 		}
 		output := enterprise.NewOutput()
+		var finalDetail *usage.Detail
+		defer func() {
+			var detail usage.Detail
+			if finalDetail != nil {
+				detail = *finalDetail
+			} else {
+				detail = counter.Detail(output.Parts)
+			}
+			if streamErr != nil {
+				reporter.PublishFailureWithDetail(ctx, detail, streamErr)
+			} else {
+				reporter.Publish(ctx, detail)
+			}
+		}()
 		parser := &enterprise.Parser{}
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
 			reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
@@ -224,6 +265,8 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			streamErr = ctx.Err()
 		}
 		if streamErr == nil {
+			detail := counter.Detail(output.Parts)
+			finalDetail = &detail
 			streamErr = output.Finish(input)
 		}
 		if streamErr != nil {
@@ -238,7 +281,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			if input.JSON {
 				parts = output.Parts
 			}
-			streamErr = send(output.Gemini(true, parts))
+			streamErr = send(helps.EnterpriseUsagePayload(output.Gemini(true, parts), true, *finalDetail))
 		} else {
 			if input.JSON {
 				streamErr = send(output.ChatDelta(req.Model, output.Text, nil, false))
@@ -246,9 +289,9 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			if streamErr == nil {
 				streamErr = send(output.ChatDelta(req.Model, "", nil, true))
 			}
-		}
-		if streamErr == nil {
-			reporter.EnsurePublished(ctx)
+			if streamErr == nil && includeUsage && finalDetail.TokenPresence.TotalTokens {
+				streamErr = send(helps.EnterpriseChatUsageChunk(output.ChatDelta(req.Model, "", nil, true), *finalDetail))
+			}
 		}
 	}()
 	return &coreexec.StreamResult{Chunks: chunks, Headers: helps.EnterpriseResponseHeaders(input.Ignored)}, nil

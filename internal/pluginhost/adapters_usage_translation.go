@@ -197,6 +197,7 @@ func (a *usageAdapter) HandleUsage(ctx context.Context, record coreusage.Record)
 			Body:       record.Fail.Body,
 		},
 		Detail: pluginapi.UsageDetail{
+			TokenPresence:       cloneUsageTokenPresence(record.Detail.TokenPresence),
 			InputTokens:         record.Detail.InputTokens,
 			OutputTokens:        record.Detail.OutputTokens,
 			ReasoningTokens:     record.Detail.ReasoningTokens,
@@ -207,6 +208,14 @@ func (a *usageAdapter) HandleUsage(ctx context.Context, record coreusage.Record)
 		},
 		ResponseHeaders: cloneHeader(record.ResponseHeaders),
 	})
+}
+
+func cloneUsageTokenPresence(p *coreusage.TokenPresence) *pluginapi.TokenPresence {
+	if p == nil {
+		return nil
+	}
+	value := pluginapi.TokenPresence(*p)
+	return &value
 }
 
 func (a *thinkingAdapter) Apply(body []byte, config thinking.ThinkingConfig, modelInfo *registry.ModelInfo) (out []byte, err error) {

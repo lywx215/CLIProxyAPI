@@ -1551,6 +1551,8 @@ type UsageFailure struct {
 
 // UsageDetail contains token accounting counters.
 type UsageDetail struct {
+	// TokenPresence is optional; nil preserves existing producer semantics.
+	TokenPresence *TokenPresence
 	// InputTokens is the prompt or input token count.
 	InputTokens int64
 	// OutputTokens is the completion or output token count.
@@ -1565,6 +1567,17 @@ type UsageDetail struct {
 	CacheCreationTokens int64
 	// TotalTokens is the total token count.
 	TotalTokens int64
+}
+
+// TokenPresence distinguishes unavailable counters from genuine zero values.
+type TokenPresence struct {
+	InputTokens         bool
+	OutputTokens        bool
+	ReasoningTokens     bool
+	CachedTokens        bool
+	CacheReadTokens     bool
+	CacheCreationTokens bool
+	TotalTokens         bool
 }
 
 // QuotaProvider surfaces credential quota, balance, and billing information for management clients.

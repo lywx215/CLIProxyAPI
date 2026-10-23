@@ -251,6 +251,23 @@ func EnsureTokenBreakdown(detail Detail) Detail {
 // direct SDK usage details using the known provider's token semantics. Unknown
 // providers remain unclassified instead of guessing how their buckets overlap.
 func EnsureTokenBreakdownForProvider(detail Detail, provider, executorType string) Detail {
+	if p := detail.TokenPresence; p != nil {
+		detail.InputTokens = availableTokenCount(detail.InputTokens, p.InputTokens)
+		detail.OutputTokens = availableTokenCount(detail.OutputTokens, p.OutputTokens)
+		detail.ReasoningTokens = availableTokenCount(detail.ReasoningTokens, p.ReasoningTokens)
+		detail.CachedTokens = availableTokenCount(detail.CachedTokens, p.CachedTokens)
+		detail.CacheReadTokens = availableTokenCount(detail.CacheReadTokens, p.CacheReadTokens)
+		detail.CacheCreationTokens = availableTokenCount(detail.CacheCreationTokens, p.CacheCreationTokens)
+		detail.TotalTokens = availableTokenCount(detail.TotalTokens, p.TotalTokens)
+		if !p.InputTokens || !p.OutputTokens || !p.ReasoningTokens || !p.CacheReadTokens || !p.CacheCreationTokens || !p.TotalTokens {
+			// Partial counters cannot support a complete cache/reasoning breakdown.
+			detail.TokenBreakdown = NewUnclassifiedTokenBreakdown(detail.TotalTokens)
+			if detail.TotalTokens == 0 {
+				detail.TokenBreakdown.Quality = TokenAccountingQualityUnclassified
+			}
+			return detail
+		}
+	}
 	if !detail.TokenBreakdown.Valid() {
 		semantics := tokenAccountingSemanticsFor(provider, executorType)
 		if detail.CacheReadTokens == 0 && detail.CachedTokens > 0 && detail.InputTokens == 0 &&
@@ -260,10 +277,17 @@ func EnsureTokenBreakdownForProvider(detail Detail, provider, executorType strin
 		}
 		detail.TokenBreakdown = tokenBreakdownForSemantics(detail, semantics)
 	}
-	if detail.TotalTokens == 0 {
+	if detail.TotalTokens == 0 && detail.TokenPresence == nil {
 		detail.TotalTokens = detail.TokenBreakdown.TotalTokens
 	}
 	return detail
+}
+
+func availableTokenCount(value int64, present bool) int64 {
+	if !present {
+		return 0
+	}
+	return value
 }
 
 func tokenBreakdownForSemantics(detail Detail, semantics tokenAccountingSemantics) TokenBreakdown {

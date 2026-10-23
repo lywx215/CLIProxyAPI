@@ -85,13 +85,18 @@ func TestEnterpriseExecutorBothProtocolsAndStreams(t *testing.T) {
 					}
 					output = result.Payload
 				}
-				for _, bad := range []string{"private", "usage", "searchQueries", "urlRetrievalStatus"} {
+				for _, bad := range []string{"private", "searchQueries", "urlRetrievalStatus", "estimated", "usage_source"} {
 					if strings.Contains(string(output), bad) {
 						t.Fatalf("fabricated/leaked %s", bad)
 					}
 				}
 				if !strings.Contains(string(output), "hello") {
 					t.Fatal("lost output")
+				}
+				if !stream || format == translator.FormatGemini {
+					if !strings.Contains(string(output), "TokenCount") && !strings.Contains(string(output), "prompt_tokens") {
+						t.Fatal("missing usage")
+					}
 				}
 			})
 		}

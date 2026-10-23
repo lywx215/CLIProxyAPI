@@ -49,13 +49,21 @@ def main():
                     response = chat.chat.completions.create(**args, extra_body={"tools": [{"google_search": {}}]})
                     assert "offline" in response.choices[0].message.content
                     assert response.choices[0].message.annotations
-                    assert response.usage is None
-                    results.append("OpenAI full + annotations + no fabricated usage")
+                    assert response.usage.prompt_tokens > 0
+                    assert response.usage.completion_tokens > 0
+                    assert response.usage.total_tokens == response.usage.prompt_tokens + response.usage.completion_tokens
+                    assert response.usage.prompt_tokens_details is None
+                    assert response.usage.completion_tokens_details is None
+                    results.append("OpenAI full + annotations + token usage")
                     chunks = list(chat.chat.completions.create(**args, stream=True))
                     assert chunks[0].choices[0].delta.content
                     assert "offline" in "".join(c.choices[0].delta.content or "" for c in chunks)
                     assert chunks[-1].choices[0].finish_reason == "stop"
                     results.append("OpenAI SSE + visible first chunk + terminal finish")
+                    chunks = list(chat.chat.completions.create(**args, stream=True, stream_options={"include_usage": True}))
+                    assert chunks[-1].choices == [] and chunks[-1].usage.total_tokens > 0
+                    assert chunks[-2].choices[0].finish_reason == "stop"
+                    results.append("OpenAI SSE include_usage tail")
                     response = chat.chat.completions.create(**args, response_format={"type": "json_object"})
                     assert json.loads(response.choices[0].message.content) == {"ok": True}
                     results.append("OpenAI JSON object validation")
@@ -72,11 +80,15 @@ def main():
                     assert any(p.executable_code for p in parts)
                     assert any(p.code_execution_result for p in parts)
                     assert response.candidates[0].grounding_metadata.grounding_chunks
-                    assert response.usage_metadata is None
-                    results.append("Google GenAI full + code + execution + grounding + no fabricated usage")
+                    assert response.usage_metadata.prompt_token_count > 0
+                    assert response.usage_metadata.candidates_token_count > 0
+                    assert response.usage_metadata.thoughts_token_count is None
+                    assert response.usage_metadata.cached_content_token_count is None
+                    results.append("Google GenAI full + code + execution + grounding + token usage")
                     chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="offline fixture"))
                     assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
                     assert chunks[-1].candidates[0].finish_reason == "STOP"
+                    assert chunks[-1].usage_metadata.total_token_count > 0
                     results.append("Google GenAI SSE + terminal finish")
                     response = gemini.models.generate_content(model="gemini-4-argon", contents="offline fixture",
                         config=types.GenerateContentConfig(response_mime_type="application/json"))

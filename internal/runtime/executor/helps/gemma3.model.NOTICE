@@ -1,0 +1,8 @@
+Gemma 3 SentencePiece tokenizer data
+
+Source: https://github.com/google/gemma_pytorch/blob/014acb7ac4563a5f77c76d7ff98f31b568c16508/tokenizer/gemma3_cleaned_262144_v2.spiece.model
+Upstream repository license: Apache License 2.0 (see gemma3.model.LICENSE).
+The original model bytes are unchanged; this distribution compresses them with gzip.
+Uncompressed SHA256: 1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c
+
+This local tokenizer provides text counts, not Google Enterprise billing usage.

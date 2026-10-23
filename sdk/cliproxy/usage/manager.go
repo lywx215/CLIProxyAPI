@@ -84,8 +84,22 @@ type Detail struct {
 	CacheReadTokens     int64
 	CacheCreationTokens int64
 	TotalTokens         int64
+	// TokenPresence distinguishes unavailable counters from genuine zero values.
+	// nil preserves the availability semantics of existing usage producers.
+	TokenPresence       *TokenPresence
 	TokenBreakdown      TokenBreakdown
 	ResponseServiceTier string
+}
+
+// TokenPresence describes which counters were available for this execution.
+type TokenPresence struct {
+	InputTokens         bool
+	OutputTokens        bool
+	ReasoningTokens     bool
+	CachedTokens        bool
+	CacheReadTokens     bool
+	CacheCreationTokens bool
+	TotalTokens         bool
 }
 
 type requestedModelAliasContextKey struct{}

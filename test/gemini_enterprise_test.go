@@ -17,11 +17,13 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	runtimeexec "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+	stats "github.com/router-for-me/CLIProxyAPI/v8/internal/usage"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	geminihandlers "github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers/gemini"
 	openaihandlers "github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers/openai"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	"github.com/tidwall/gjson"
 	"golang.org/x/oauth2"
 )
@@ -117,6 +119,69 @@ func TestEnterprisePublicRoutesBothProtocolsAndOperations(t *testing.T) {
 	}
 }
 
+func TestEnterprisePublicTokenUsage(t *testing.T) {
+	router, _, _ := enterpriseFixtureRouter(t)
+	for _, scenario := range []struct {
+		path, body              string
+		stream, include, gemini bool
+	}{
+		{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}]}`, false, true, false},
+		{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}],"stream":true}`, true, false, false},
+		{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, true, true, false},
+		{"/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}]}`, false, true, true},
+		{"/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse", `{"contents":[{"parts":[{"text":"hi"}]}]}`, true, true, true},
+	} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest("POST", scenario.path, strings.NewReader(scenario.body))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(response, request)
+		if response.Code != 200 {
+			t.Fatalf("%s: %s", scenario.path, response.Body.String())
+		}
+		packets := []string{response.Body.String()}
+		if scenario.stream {
+			packets = nil
+			for _, line := range strings.Split(response.Body.String(), "\n") {
+				if strings.HasPrefix(line, "data:") {
+					packets = append(packets, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+				}
+			}
+		}
+		count := 0
+		for _, packet := range packets {
+			root := gjson.Parse(packet)
+			node := root.Get("usage")
+			input, output, total := "prompt_tokens", "completion_tokens", "total_tokens"
+			if scenario.gemini {
+				node = root.Get("usageMetadata")
+				input, output, total = "promptTokenCount", "candidatesTokenCount", "totalTokenCount"
+			}
+			if !node.Exists() {
+				continue
+			}
+			count++
+			if node.Get(input).Int() <= 0 || node.Get(output).Int() <= 0 || node.Get(total).Int() != node.Get(input).Int()+node.Get(output).Int() {
+				t.Fatalf("bad wire usage: %s", packet)
+			}
+			for _, field := range []string{"thoughtsTokenCount", "cachedContentTokenCount", "prompt_tokens_details", "completion_tokens_details"} {
+				if node.Get(field).Exists() {
+					t.Fatalf("unknown field %s was filled", field)
+				}
+			}
+			if scenario.stream && !scenario.gemini && root.Get("choices.#").Int() != 0 {
+				t.Fatal("usage tail contains choices")
+			}
+		}
+		want := 0
+		if scenario.include {
+			want = 1
+		}
+		if count != want {
+			t.Fatalf("%s: usage packets=%d want=%d", scenario.path, count, want)
+		}
+	}
+}
+
 // TestEnterpriseSDKHarness is opt-in and serves synthetic fixtures on loopback only.
 // The Python acceptance script uses real SDKs without Google credentials or model calls.
 func TestEnterpriseSDKHarness(t *testing.T) {
@@ -184,5 +249,33 @@ func TestEnterpriseSameNameMixedPoolAndOtherOperationFallback(t *testing.T) {
 	router.ServeHTTP(response, httptest.NewRequest("POST", "/v1/completions", strings.NewReader(`{"model":"gemini-4-argon","prompt":"hi"}`)))
 	if response.Code != 200 || !strings.Contains(response.Body.String(), "companion") || transport.calls.Load() != before {
 		t.Fatalf("legacy operation did not stay on companion: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestEnterpriseStatisticsUnknownRoundTrip(t *testing.T) {
+	source := stats.NewRequestStatistics()
+	source.Record(context.Background(), coreusage.Record{RequestedAt: time.Now(), APIKey: "fixture", Model: "enterprise", Detail: coreusage.Detail{InputTokens: 12, OutputTokens: 3, TotalTokens: 15, TokenPresence: &coreusage.TokenPresence{InputTokens: true, OutputTokens: true, TotalTokens: true}}})
+	data, err := json.Marshal(source.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot stats.StatisticsSnapshot
+	if err = json.Unmarshal(data, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	destination := stats.NewRequestStatistics()
+	if result := destination.MergeSnapshot(snapshot); result.Added != 1 {
+		t.Fatal(result)
+	}
+	if result := destination.MergeSnapshot(snapshot); result.Added != 0 || result.Skipped != 1 {
+		t.Fatal(result)
+	}
+	data, err = json.Marshal(destination.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := gjson.GetBytes(data, "apis.fixture.models.enterprise.details.0.tokens")
+	if fields.Get("reasoning_tokens").Type != gjson.Null || fields.Get("cached_tokens").Type != gjson.Null || fields.Get("input_tokens").Int() != 12 || destination.Snapshot().TotalTokens != 15 {
+		t.Fatalf("bad round trip: %s", data)
 	}
 }

@@ -228,7 +228,7 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 				n.ignored["response_format"] = true
 			}
 		}
-		n.unknown(b, "model|messages|stream|tools|gemini_tools|web_search_options|response_format|tool_choice", " ")
+		n.unknown(b, "model|messages|stream|stream_options|tools|gemini_tools|web_search_options|response_format|tool_choice", " ")
 	case "gemini":
 		for i, content := range n.array(b["contents"], "contents", true) {
 			path := fmt.Sprintf("contents[%d]", i)

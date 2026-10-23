@@ -210,6 +210,21 @@ func TestNewSubsetTokenBreakdown_RejectsArithmeticOverflow(t *testing.T) {
 	}
 }
 
+func TestEnsureTokenBreakdownPreservesPartialAvailability(t *testing.T) {
+	for _, totalKnown := range []bool{false, true} {
+		detail := EnsureTokenBreakdownForProvider(Detail{
+			InputTokens: 12, OutputTokens: 3, ReasoningTokens: 99, CachedTokens: 99,
+			TokenPresence: &TokenPresence{InputTokens: true, OutputTokens: true, TotalTokens: totalKnown},
+		}, "gemini-enterprise", "GeminiEnterpriseExecutor")
+		if detail.TotalTokens != 0 || detail.InputTokens != 12 || detail.OutputTokens != 3 || detail.ReasoningTokens != 0 || detail.CachedTokens != 0 {
+			t.Fatalf("availability was overwritten: %+v", detail)
+		}
+		if detail.TokenBreakdown.Quality != TokenAccountingQualityUnclassified {
+			t.Fatalf("partial counters became a complete breakdown: %+v", detail.TokenBreakdown)
+		}
+	}
+}
+
 func TestNewSeparateReasoningTokenBreakdown_RejectsArithmeticOverflow(t *testing.T) {
 	// Passing MaxInt64 for cacheRead and cacheWrite will overflow cacheRead + cacheWrite to negative (-2).
 	b := NewSeparateReasoningTokenBreakdown(math.MaxInt64, math.MaxInt64, math.MaxInt64, 0, 0, math.MaxInt64)

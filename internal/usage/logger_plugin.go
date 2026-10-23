@@ -101,11 +101,12 @@ type RequestDetail struct {
 
 // TokenStats captures the token usage breakdown for a request.
 type TokenStats struct {
-	InputTokens     int64 `json:"input_tokens"`
-	OutputTokens    int64 `json:"output_tokens"`
-	ReasoningTokens int64 `json:"reasoning_tokens"`
-	CachedTokens    int64 `json:"cached_tokens"`
-	TotalTokens     int64 `json:"total_tokens"`
+	InputTokens     int64                    `json:"input_tokens"`
+	OutputTokens    int64                    `json:"output_tokens"`
+	ReasoningTokens int64                    `json:"reasoning_tokens"`
+	CachedTokens    int64                    `json:"cached_tokens"`
+	TotalTokens     int64                    `json:"total_tokens"`
+	TokenPresence   *coreusage.TokenPresence `json:"-"`
 }
 
 // StatisticsSnapshot represents an immutable view of the aggregated metrics.
@@ -255,6 +256,9 @@ func (s *RequestStatistics) Snapshot() StatisticsSnapshot {
 		for modelName, modelStatsValue := range stats.Models {
 			requestDetails := make([]RequestDetail, len(modelStatsValue.Details))
 			copy(requestDetails, modelStatsValue.Details)
+			for i := range requestDetails {
+				requestDetails[i].Tokens = cloneTokenStats(requestDetails[i].Tokens)
+			}
 			apiSnapshot.Models[modelName] = ModelSnapshot{
 				TotalRequests: modelStatsValue.TotalRequests,
 				TotalTokens:   modelStatsValue.TotalTokens,
@@ -389,7 +393,7 @@ func dedupKey(apiName, modelName string, detail RequestDetail) string {
 	timestamp := detail.Timestamp.UTC().Format(time.RFC3339Nano)
 	tokens := normaliseTokenStats(detail.Tokens)
 	return fmt.Sprintf(
-		"%s|%s|%s|%s|%s|%t|%d|%d|%d|%d|%d",
+		"%s|%s|%s|%s|%s|%t|%d|%d|%d|%d|%d|%d",
 		apiName,
 		modelName,
 		timestamp,
@@ -401,6 +405,7 @@ func dedupKey(apiName, modelName string, detail RequestDetail) string {
 		tokens.ReasoningTokens,
 		tokens.CachedTokens,
 		tokens.TotalTokens,
+		tokens.presenceMask(),
 	)
 }
 
@@ -461,17 +466,31 @@ func normaliseDetail(detail coreusage.Detail) TokenStats {
 		ReasoningTokens: detail.ReasoningTokens,
 		CachedTokens:    detail.CachedTokens,
 		TotalTokens:     detail.TotalTokens,
+		TokenPresence:   detail.TokenPresence,
 	}
-	if tokens.TotalTokens == 0 {
-		tokens.TotalTokens = detail.InputTokens + detail.OutputTokens + detail.ReasoningTokens
-	}
-	if tokens.TotalTokens == 0 {
-		tokens.TotalTokens = detail.InputTokens + detail.OutputTokens + detail.ReasoningTokens + detail.CachedTokens
-	}
-	return tokens
+	return normaliseTokenStats(tokens)
 }
 
 func normaliseTokenStats(tokens TokenStats) TokenStats {
+	tokens = cloneTokenStats(tokens)
+	if p := tokens.TokenPresence; p != nil {
+		if !p.InputTokens {
+			tokens.InputTokens = 0
+		}
+		if !p.OutputTokens {
+			tokens.OutputTokens = 0
+		}
+		if !p.ReasoningTokens {
+			tokens.ReasoningTokens = 0
+		}
+		if !p.CachedTokens {
+			tokens.CachedTokens = 0
+		}
+		if !p.TotalTokens {
+			tokens.TotalTokens = 0
+		}
+		return tokens
+	}
 	if tokens.TotalTokens == 0 {
 		tokens.TotalTokens = tokens.InputTokens + tokens.OutputTokens + tokens.ReasoningTokens
 	}
@@ -479,6 +498,28 @@ func normaliseTokenStats(tokens TokenStats) TokenStats {
 		tokens.TotalTokens = tokens.InputTokens + tokens.OutputTokens + tokens.ReasoningTokens + tokens.CachedTokens
 	}
 	return tokens
+}
+
+func cloneTokenStats(tokens TokenStats) TokenStats {
+	if tokens.TokenPresence != nil {
+		value := *tokens.TokenPresence
+		tokens.TokenPresence = &value
+	}
+	return tokens
+}
+
+func (tokens TokenStats) presenceMask() uint8 {
+	p := tokens.TokenPresence
+	if p == nil {
+		return 31
+	}
+	var mask uint8
+	for i, present := range []bool{p.InputTokens, p.OutputTokens, p.ReasoningTokens, p.CachedTokens, p.TotalTokens} {
+		if present {
+			mask |= 1 << i
+		}
+	}
+	return mask
 }
 
 func normaliseLatency(latency time.Duration) int64 {

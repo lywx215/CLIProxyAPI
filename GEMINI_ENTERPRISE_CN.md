@@ -122,7 +122,7 @@ for chunk in client.models.generate_content_stream(model="gemini-4-argon", conte
 
 同一对象不能同时提供某个 camelCase/snake_case 别名。工具类型错误、函数工具、强制函数调用、tool 消息、图片、音频、文件、函数结果等不能保真转换的内容返回 400，不能静默删除后发送。普通可选参数如 sampling、token 限额、thinking 或 JSON schema 可被忽略，不宣称 schema 强制约束。忽略的字段名记入诊断日志和 `X-CLIProxyAPI-Ignored-Parameters` 响应头；经公开 HTTP 接口获取此头需要启用宿主 `requests.passthrough-headers`。
 
-Gemini 输出保留文本、真实 executableCode、codeExecutionResult、grounding parts/metadata；OpenAI 输出正文、URL annotations，并将代码及结果呈现为文本块。上游 grounding 的 UTF-8 字节 offset 在 Gemini 中保留字节单位，在 OpenAI 中转换为 Unicode 字符索引，包含中文和 emoji 的回归测试。不会制造 function call、usage、searchQueries 或 URL 抓取状态，不泄露 thought 正文、assistToken 或 sessionInfo。没有 usage 时仍发布宿主请求计数。
+Gemini 输出保留文本、真实 executableCode、codeExecutionResult、grounding parts/metadata；OpenAI 输出正文、URL annotations，并将代码及结果呈现为文本块。上游 grounding 的 UTF-8 字节 offset 在 Gemini 中保留字节单位，在 OpenAI 中转换为 Unicode 字符索引，包含中文和 emoji 的回归测试。不生成上游没有提供的 function call、searchQueries、URL 抓取状态或隐藏思考/缓存计数，不泄露 thought 正文、assistToken 或 sessionInfo。输入与可见输出的本地 Token 统计另见下节；计数不可用时仍发布宿主请求数。
 
 JSON 请求的流式输出先完整缓冲并校验，再发出可见内容。最终 JSON 输出仅包含通过校验的 JSON 文本，不夹带中间代码块或引用；需要观察代码、执行结果和引用时使用普通文本输出。
 
@@ -146,6 +146,20 @@ requests:
 
 规则之后只做只读校验、序列化和传输封装。删除的字段不会被恢复，override 不会被内建逻辑覆盖。删除必需的 `generationSpec.modelId` 或产生无效 JSON/字段会明确报错，不自动修复。禁止通过规则注入可复用的上游 session/assist token。
 
+## 本地 Token 统计与缺失分项（2026-10-23）
+
+Enterprise 上游没有提供本次执行的完整 usage。当前实现使用随程序内嵌的 Gemma 3 SentencePiece 模型，对最终发送的 `query.text` 和合并后的可见输出进行本地分词。模型来源及 SHA256 与 [Google Go Gen AI SDK 的本地 tokenizer 配置](https://github.com/googleapis/go-genai/blob/main/tokenizer/tokenizer.go) 一致，固定在 `google/gemma_pytorch` 的提交 `014acb7ac4563a5f77c76d7ff98f31b568c16508`，解压后 SHA256 为 `1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c`。来源和 Apache 2.0 许可随模型保留，运行时不下载模型或调用远程计数接口。
+
+这些数值是本机对可见业务文本的计数，不能视为 Argon 的官方 tokenizer、上游实际消耗或 Google 账单。Google SDK 的模型映射没有为 Argon 提供此保证；上游隐藏提示、思考和缓存也不在本机可观测范围内。
+
+- 输入在所有内建转换和用户 payload 规则完成后读取，不修改最终请求。输出从合并后的文本、代码和执行结果 parts 读取，在 JSON 清理及 OpenAI Markdown 呈现之前计数，因此文本分片不改变结果，也不会把呈现包装重复计入。
+- 普通 OpenAI 响应填充已知的 `usage.prompt_tokens`、`completion_tokens` 和 `total_tokens`；SSE 仅在请求 `stream_options.include_usage: true` 时追加 `choices: []` 的 usage 尾包。Gemini 响应及正常 SSE 终包填充相应的 `usageMetadata` 字段。失败流不发送成功终态或成功 usage 尾包。
+- 隐藏思考、缓存读取和缓存创建保持未知，不用零代替。分词初始化或校验失败时，不能确定的输入、输出及总量不出现在协议 usage 中；宿主仍记录请求结果和耗时。连接前失败没有可用计数；生成中途失败只能记录已观察到的业务内容。
+- 宿主 `TokenPresence` 按字段保留可用性，缺省为 `nil` 的旧生产者沿用原有行为。管理用量及快照导入/导出把未知字段序列化为 `null`，保留明确的零；有显式可用性标记时，不从分项重算未知或明确为零的总量。快照不会共享可变的可用性指针，去重区分未知值与零值。
+- 队列及插件适配保留分项可用性。缺少思考或缓存信息时，规范化的 v2 细分标为 `unclassified`，不宣称完整分解。前端明细、汇总和分类图按已有计数展示；费用按配置单价和可用分项计算，也不能据此确定真实账单。JSON 明细导出保留 `null`，CSV 对应字段为空。
+
+本地统计不开放 `countTokens` API，不更改目录声明或模型限制。前文及下文历史真实 Google/Argon 验收发生于该统计改动之前；这些历史记录保持原结论，不能证明新增计数等同真实上游用量。本轮回归及 Windows 策略限制另见 [前端与用量联调记录](GEMINI_ENTERPRISE_FRONTEND_CN.md)。
+
 ## 未支持与验收
 
 仅限制本 provider：Responses、旧 Completions、Claude Messages、Interactions、countTokens、媒体及函数调用不支持；同名模型可继续由支持这些操作的其他 provider 执行。Chat 入口自动转换 Responses body 的兼容分支也不开放给 Enterprise。
@@ -168,7 +182,7 @@ python -m pip install openai google-genai
 python test/gemini_enterprise_sdk_smoke.py
 ```
 
-该脚本测试两个 SDK 的模型列表、普通响应、SSE、JSON、代码/执行 parts、引用以及缺失 usage，不能替代真实 Google 资源验收。真实验收必须先设置 client secret 环境变量并完成上面的新 OAuth 授权，确认目录发布 Argon，然后仅用必要的 Argon 请求检查 Search 引用、指定 URL 字段、不可访问 URL 对照、文本历史、JSON 和实际代码结果。不要自动遍历全部模型生成测试。历史旧网关的成功记录不算本融合版本通过。
+该脚本测试两个 SDK 的模型列表、普通响应、SSE、JSON、代码/执行 parts、引用以及本地 Token 字段，并检查未填充隐藏思考/缓存分项，不能替代真实 Google 资源验收。真实验收必须先设置 client secret 环境变量并完成上面的新 OAuth 授权，确认目录发布 Argon，然后仅用必要的 Argon 请求检查 Search 引用、指定 URL 字段、不可访问 URL 对照、文本历史、JSON 和实际代码结果。不要自动遍历全部模型生成测试。历史旧网关的成功记录不算本融合版本通过。
 
 ## 本次验证记录（2026-10-22）
 
