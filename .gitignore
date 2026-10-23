@@ -74,3 +74,9 @@ docker-compose.override.yml
 
 # Local LLM Wiki vault
 .llm-wiki
+
+# Keep the Enterprise source integration tests alongside the tracked test suite.
+!/test/
+/test/*
+!/test/gemini_enterprise_test.go
+!/test/gemini_enterprise_sdk_smoke.py

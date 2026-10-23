@@ -64,6 +64,9 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 	}
 
 	if m.store == nil {
+		if post, ok := auth.(PostLoginAuthenticator); ok {
+			post.PostLogin(ctx, cfg, record)
+		}
 		return record, "", nil
 	}
 
@@ -110,6 +113,9 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 		if errDelete := m.store.Delete(ctx, legacyID); errDelete != nil {
 			return record, savedPath, fmt.Errorf("cliproxy auth: canonical Claude credential saved but legacy credential cleanup failed: %w", errDelete)
 		}
+	}
+	if post, ok := auth.(PostLoginAuthenticator); ok {
+		post.PostLogin(ctx, cfg, record)
 	}
 	return record, savedPath, nil
 }

@@ -6,6 +6,8 @@ package config
 
 // Config represents the application's configuration, loaded from a YAML file.
 type Config struct {
+	// OAuth configures application-owned OAuth clients. Secrets are resolved only at use time.
+	OAuth OAuthConfig `yaml:"oauth,omitempty" json:"oauth,omitempty"`
 	// Models selects optional catalog sources independently for each catalog.
 	Models ModelCatalogs `yaml:"models" json:"models"`
 

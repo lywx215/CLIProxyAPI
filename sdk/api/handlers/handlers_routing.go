@@ -58,7 +58,17 @@ func preferExecutionProvider(providers []string, preferred string) []string {
 	return out
 }
 
-func adjustExecutionProvidersForEntryProtocol(entryProtocol string, providers []string) []string {
+func adjustExecutionProvidersForEntryProtocol(entryProtocol string, providers []string, details ...string) []string {
+	response, operation := entryProtocol, ""
+	if len(details) > 0 {
+		response = details[0]
+	}
+	if len(details) > 1 {
+		operation = details[1]
+	}
+	if !coreexecutor.GeminiEnterpriseOperationAllowed(entryProtocol, response, operation) {
+		providers = excludeExecutionProvider(providers, "gemini-enterprise")
+	}
 	if entryProtocol == Interactions {
 		return preferExecutionProvider(providers, GeminiInteractions)
 	}
@@ -389,4 +399,23 @@ func (h *BaseAPIHandler) applyModelRouter(ctx context.Context, handlerType, mode
 		decision.Model = strings.TrimSpace(resp.TargetModel)
 	}
 	return decision
+}
+
+func operationNotSupportedError() *interfaces.ErrorMessage {
+	return &interfaces.ErrorMessage{StatusCode: http.StatusBadRequest, Error: fmt.Errorf(`{"error":{"type":"invalid_request_error","code":"operation_not_supported","message":"no provider supports this native operation"}}`)}
+}
+func nilOperationErrorChannel() <-chan *interfaces.ErrorMessage {
+	ch := make(chan *interfaces.ErrorMessage, 1)
+	ch <- operationNotSupportedError()
+	close(ch)
+	return ch
+}
+
+func hasEnterpriseExecutionProvider(providers []string) bool {
+	for _, provider := range providers {
+		if strings.EqualFold(strings.TrimSpace(provider), "gemini-enterprise") {
+			return true
+		}
+	}
+	return false
 }

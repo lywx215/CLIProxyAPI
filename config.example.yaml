@@ -1066,6 +1066,16 @@ oauth:
   # Provider options below apply to OAuth/file-backed credentials.
   # API-key credentials use their own group/key options.
   providers:
+    # Optional application-owned Gemini Enterprise OAuth client.
+    # See GEMINI_ENTERPRISE_CN.md. Saved accounts keep their own client/resource binding.
+    # gemini-enterprise:
+    #   client-id: "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com"
+    #   client-secret-env: "GEMINI_ENTERPRISE_CLIENT_SECRET"
+    #   project-id: "YOUR_PROJECT_ID_OR_NUMBER"
+    #   location: "global"
+    #   collection-id: "default_collection"
+    #   engine-id: "YOUR_ENGINE_ID"
+    #   assistant-id: "default_assistant"
     aistudio:
       # When true, enable authentication for the WebSocket API (/v1/ws).
       ws-auth: true

@@ -135,6 +135,10 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
+	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
+	if errOperation != nil {
+		return cliproxyexecutor.Response{}, errOperation
+	}
 	if len(normalized) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
@@ -198,6 +202,10 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
+	normalized, errOperation := filterEnterpriseProviders(normalized, opts, true, m.HomeEnabled())
+	if errOperation != nil {
+		return cliproxyexecutor.Response{}, errOperation
+	}
 	if len(normalized) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
@@ -265,6 +273,10 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 		}
 	}
 	normalized := m.normalizeProviders(providers)
+	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
+	if errOperation != nil {
+		return nil, errOperation
+	}
 	if len(normalized) == 0 {
 		return nil, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}

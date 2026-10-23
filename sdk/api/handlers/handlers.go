@@ -328,6 +328,11 @@ func requestExecutionMetadata(ctx context.Context) map[string]any {
 	}
 
 	meta := make(map[string]any)
+	if ginCtx != nil {
+		if op := ginCtx.GetString(coreexecutor.OperationMetadataKey); op != "" {
+			meta[coreexecutor.OperationMetadataKey] = op
+		}
+	}
 	if key != "" {
 		meta[idempotencyKeyMetadataKey] = key
 	}

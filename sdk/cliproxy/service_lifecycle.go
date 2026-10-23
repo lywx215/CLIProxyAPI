@@ -215,6 +215,7 @@ func (s *Service) Run(ctx context.Context) error {
 	s.registerModelRefreshCallback()
 	if !homeEnabled {
 		go s.runAntigravityModelRefresh(ctx)
+		go s.runEnterpriseModelRefresh(ctx)
 	}
 
 	select {
@@ -245,6 +246,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			ctx = context.Background()
 		}
 		s.stopGeminiBudgetWorker()
+		s.cancelEnterpriseProbes("")
 
 		s.homeMu.Lock()
 		runCancel := s.runCancel
@@ -252,6 +254,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		if runCancel != nil {
 			runCancel()
 		}
+		s.stopEnterpriseDiscovery(ctx)
 
 		s.homeLifecycleMu.Lock()
 		if supervisor := s.homeSupervisor; supervisor != nil {

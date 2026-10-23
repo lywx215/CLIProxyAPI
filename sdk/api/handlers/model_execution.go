@@ -18,6 +18,7 @@ const (
 )
 
 type modelExecutionOptions struct {
+	Operation               string
 	Headers                 http.Header
 	Query                   url.Values
 	InternalSource          bool
@@ -32,6 +33,7 @@ type modelExecutionOptions struct {
 
 // ProtocolExecutionRequest describes a route-level model execution request with explicit protocols.
 type ProtocolExecutionRequest struct {
+	Operation          string
 	EntryProtocol      string
 	ExitProtocol       string
 	ForcedProvider     string
@@ -47,6 +49,7 @@ type ProtocolExecutionRequest struct {
 
 // ModelExecutionRequest describes an internal model execution request.
 type ModelExecutionRequest struct {
+	Operation               string
 	EntryProtocol           string
 	ExitProtocol            string
 	Model                   string
@@ -119,6 +122,7 @@ func (h *BaseAPIHandler) ExecuteModel(ctx context.Context, req ModelExecutionReq
 	}
 	allowImageModel := isModelExecutionImageProtocol(req.EntryProtocol) || isModelExecutionImageProtocol(req.ExitProtocol)
 	body, headers, errMsg := h.executeWithAuthManagerFormats(ctx, req.EntryProtocol, req.ExitProtocol, req.Model, cloneBytes(req.Body), req.Alt, allowImageModel, modelExecutionOptions{
+		Operation:               req.Operation,
 		Headers:                 req.Headers,
 		Query:                   req.Query,
 		InternalSource:          true,
@@ -156,6 +160,7 @@ func (h *BaseAPIHandler) ExecuteModelStream(ctx context.Context, req ModelExecut
 	}
 	allowImageModel := isModelExecutionImageProtocol(req.EntryProtocol) || isModelExecutionImageProtocol(req.ExitProtocol)
 	dataChan, headers, errChan := h.executeStreamWithAuthManagerFormats(ctx, req.EntryProtocol, req.ExitProtocol, req.Model, cloneBytes(req.Body), req.Alt, allowImageModel, modelExecutionOptions{
+		Operation:               req.Operation,
 		Headers:                 req.Headers,
 		Query:                   req.Query,
 		InternalSource:          true,
@@ -183,6 +188,7 @@ func (h *BaseAPIHandler) ExecuteProtocolWithAuthManager(ctx context.Context, req
 	}
 	allowImageModel := isModelExecutionImageProtocol(req.EntryProtocol) || isModelExecutionImageProtocol(req.ExitProtocol)
 	body, headers, errMsg := h.executeWithAuthManagerFormats(ctx, req.EntryProtocol, req.ExitProtocol, req.Model, cloneBytes(req.Body), req.Alt, allowImageModel, modelExecutionOptions{
+		Operation:          req.Operation,
 		Headers:            req.Headers,
 		Query:              req.Query,
 		ForcedProvider:     req.ForcedProvider,
@@ -206,6 +212,7 @@ func (h *BaseAPIHandler) ExecuteProtocolStreamWithAuthManager(ctx context.Contex
 	}
 	allowImageModel := isModelExecutionImageProtocol(req.EntryProtocol) || isModelExecutionImageProtocol(req.ExitProtocol)
 	dataChan, headers, errChan := h.executeStreamWithAuthManagerFormats(ctx, req.EntryProtocol, req.ExitProtocol, req.Model, cloneBytes(req.Body), req.Alt, allowImageModel, modelExecutionOptions{
+		Operation:          req.Operation,
 		Headers:            req.Headers,
 		Query:              req.Query,
 		ForcedProvider:     req.ForcedProvider,

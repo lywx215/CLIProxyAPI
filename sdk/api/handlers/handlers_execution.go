@@ -59,8 +59,18 @@ func (h *BaseAPIHandler) executeWithAuthManagerFormats(ctx context.Context, entr
 	if errMsg != nil {
 		return nil, nil, errMsg
 	}
-	providers = adjustExecutionProvidersForEntryProtocol(entryProtocol, providers)
 	reqMeta := requestExecutionMetadata(ctx)
+	if execOptions.InternalSource {
+		delete(reqMeta, coreexecutor.OperationMetadataKey)
+	}
+	if execOptions.Operation != "" {
+		reqMeta[coreexecutor.OperationMetadataKey] = execOptions.Operation
+	}
+	enterpriseCandidate := hasEnterpriseExecutionProvider(providers)
+	providers = adjustExecutionProvidersForEntryProtocol(entryProtocol, providers, responseProtocol, coreexecutor.Operation(coreexecutor.Options{Metadata: reqMeta}))
+	if len(providers) == 0 && enterpriseCandidate {
+		return nil, nil, operationNotSupportedError()
+	}
 	if execOptions.Path != "" {
 		reqMeta[coreexecutor.RequestPathMetadataKey] = execOptions.Path
 	}
@@ -142,8 +152,18 @@ func (h *BaseAPIHandler) executeCountWithAuthManager(ctx context.Context, handle
 	if errMsg != nil {
 		return nil, nil, errMsg
 	}
-	providers = adjustExecutionProvidersForEntryProtocol(handlerType, providers)
+	enterpriseCandidate := hasEnterpriseExecutionProvider(providers)
+	providers = adjustExecutionProvidersForEntryProtocol(handlerType, providers, handlerType, "count_tokens")
+	if len(providers) == 0 && enterpriseCandidate {
+		return nil, nil, operationNotSupportedError()
+	}
 	reqMeta := requestExecutionMetadata(ctx)
+	if execOptions.InternalSource {
+		delete(reqMeta, coreexecutor.OperationMetadataKey)
+	}
+	if execOptions.Operation != "" {
+		reqMeta[coreexecutor.OperationMetadataKey] = execOptions.Operation
+	}
 	reqMeta[coreexecutor.RequestedModelMetadataKey] = originalRequestedModel
 	addAuthSelectionModelMetadata(reqMeta, execOptions.AuthSelectionModel)
 	setReasoningEffortMetadata(reqMeta, handlerType, normalizedModel, rawJSON)
@@ -284,6 +304,12 @@ func (h *BaseAPIHandler) countWithPluginExecutor(ctx context.Context, handlerTyp
 
 func (h *BaseAPIHandler) pluginExecutorRequest(ctx context.Context, entryProtocol, responseProtocol, modelName, originalRequestedModel string, rawJSON []byte, alt string, stream bool, execOptions modelExecutionOptions) (coreexecutor.Request, coreexecutor.Options) {
 	reqMeta := requestExecutionMetadata(ctx)
+	if execOptions.InternalSource {
+		delete(reqMeta, coreexecutor.OperationMetadataKey)
+	}
+	if execOptions.Operation != "" {
+		reqMeta[coreexecutor.OperationMetadataKey] = execOptions.Operation
+	}
 	if execOptions.Path != "" {
 		reqMeta[coreexecutor.RequestPathMetadataKey] = execOptions.Path
 	}

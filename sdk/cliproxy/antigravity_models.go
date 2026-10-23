@@ -403,7 +403,7 @@ func (s *Service) reconcileRegisteredModelStates(ctx context.Context, auth *core
 	if auth == nil || s.coreManager == nil {
 		return
 	}
-	if strings.EqualFold(auth.Provider, "antigravity") && !s.antigravityHomeEnabled() {
+	if (strings.EqualFold(auth.Provider, "antigravity") || strings.EqualFold(auth.Provider, "gemini-enterprise")) && !s.antigravityHomeEnabled() {
 		return
 	}
 	s.coreManager.ReconcileRegistryModelStates(ctx, auth.ID)

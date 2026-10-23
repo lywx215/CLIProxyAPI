@@ -93,6 +93,12 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	if errValidate := validateTrustedProxies(cfg.TrustedProxies); errValidate != nil {
 		return nil, errValidate
 	}
+	if enterprise := cfg.OAuth.Providers.GeminiEnterprise; enterprise != nil {
+		*enterprise = enterprise.WithDefaults()
+		if errValidate := enterprise.Validate(); errValidate != nil {
+			return nil, errValidate
+		}
+	}
 
 	cfg.CredentialConcurrency = cfg.CredentialConcurrency.WithDefaults()
 	if errValidate := cfg.CredentialInFlight.Validate(); errValidate != nil {

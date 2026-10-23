@@ -27,3 +27,9 @@ type Authenticator interface {
 	Login(ctx context.Context, cfg *config.Config, opts *LoginOptions) (*coreauth.Auth, error)
 	RefreshLead() *time.Duration
 }
+
+// PostLoginAuthenticator performs optional read-only work after credentials have
+// been saved. Discovery failures must not invalidate a completed OAuth login.
+type PostLoginAuthenticator interface {
+	PostLogin(context.Context, *config.Config, *coreauth.Auth)
+}

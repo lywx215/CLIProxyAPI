@@ -70,3 +70,8 @@ func SaveConfigPreserveCommentsUpdateNestedScalar(configFile string, path []stri
 func NormalizeCommentIndentation(data []byte) []byte {
 	return internalconfig.NormalizeCommentIndentation(data)
 }
+
+// Application-owned OAuth provider configuration.
+type OAuthConfig = internalconfig.OAuthConfig
+type OAuthProviders = internalconfig.OAuthProviders
+type GeminiEnterpriseOAuth = internalconfig.GeminiEnterpriseOAuth

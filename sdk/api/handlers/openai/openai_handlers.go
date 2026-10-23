@@ -134,11 +134,15 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 	// Some clients send OpenAI Responses-format payloads to /v1/chat/completions.
 	// Convert them to Chat Completions so downstream translators preserve tool metadata.
 	if shouldTreatAsResponsesFormat(rawJSON) {
+		c.Set("operation", "responses")
 		modelName := gjson.GetBytes(rawJSON, "model").String()
 		rawJSON, _ = responsesconverter.ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName, rawJSON, stream)
 		stream = gjson.GetBytes(rawJSON, "stream").Bool()
 	}
 
+	if c.GetString("operation") != "responses" {
+		c.Set("operation", "chat_completions")
+	}
 	if stream {
 		h.handleStreamingResponse(c, rawJSON)
 	} else {

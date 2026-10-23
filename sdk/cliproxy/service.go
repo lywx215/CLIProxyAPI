@@ -132,6 +132,8 @@ type Service struct {
 	homePluginSyncKey            string
 	homePluginSyncFetch          func(context.Context, sdkpluginstore.PluginSyncRequest) (sdkpluginstore.PluginSyncResponse, error)
 	homePluginDeleteTask         func(context.Context, *config.Config, home.PluginTask) homeplugins.SyncReport
+	enterpriseMu                 sync.Mutex
+	enterpriseDiscovery          *enterpriseDiscovery
 	antigravityProbeWg           sync.WaitGroup
 	// antigravityContext is protected by cfgMu and owns background model probes.
 	antigravityContext       context.Context

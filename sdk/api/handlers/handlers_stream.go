@@ -306,8 +306,18 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		close(errChan)
 		return nil, nil, errChan
 	}
-	providers = adjustExecutionProvidersForEntryProtocol(entryProtocol, providers)
 	reqMeta := requestExecutionMetadata(ctx)
+	if execOptions.InternalSource {
+		delete(reqMeta, coreexecutor.OperationMetadataKey)
+	}
+	if execOptions.Operation != "" {
+		reqMeta[coreexecutor.OperationMetadataKey] = execOptions.Operation
+	}
+	enterpriseCandidate := hasEnterpriseExecutionProvider(providers)
+	providers = adjustExecutionProvidersForEntryProtocol(entryProtocol, providers, responseProtocol, coreexecutor.Operation(coreexecutor.Options{Metadata: reqMeta}))
+	if len(providers) == 0 && enterpriseCandidate {
+		return nil, nil, nilOperationErrorChannel()
+	}
 	if execOptions.Path != "" {
 		reqMeta[coreexecutor.RequestPathMetadataKey] = execOptions.Path
 	}
@@ -537,6 +547,10 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	}
 
 	bootstrapEligible := func(err error) bool {
+		var scoped coreexecutor.RequestScopedError
+		if errors.As(err, &scoped) && scoped.IsRequestScoped() {
+			return false
+		}
 		status := statusFromError(err)
 		if status == 0 {
 			return true

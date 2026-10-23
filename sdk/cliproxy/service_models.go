@@ -30,6 +30,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	}
 	s.cancelStaleAntigravityProbes(a.ID)
 	if a.Disabled {
+		s.cancelEnterpriseProbes(a.ID)
 		if s != nil && s.coreManager != nil {
 			if current, ok := s.coreManager.GetByID(a.ID); ok && current != nil && !current.Disabled {
 				return
@@ -114,6 +115,9 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	case "aistudio":
 		models = registry.GetAIStudioModels()
 		models = applyExcludedModels(models, excluded)
+	case "gemini-enterprise":
+		s.registerEnterpriseModels(ctx, a)
+		return
 	case "antigravity":
 		if !s.antigravityHomeEnabled() {
 			expectedRegEpoch := GlobalModelRegistry().ClientRegistrationEpoch(a.ID)

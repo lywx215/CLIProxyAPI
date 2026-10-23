@@ -155,10 +155,13 @@ func (h *GeminiAPIHandler) GeminiHandler(c *gin.Context) {
 
 	switch method {
 	case "generateContent":
+		c.Set("operation", "generate_content")
 		h.handleGenerateContent(c, action[0], rawJSON)
 	case "streamGenerateContent":
+		c.Set("operation", "stream_generate_content")
 		h.handleStreamGenerateContent(c, action[0], rawJSON)
 	case "countTokens":
+		c.Set("operation", "count_tokens")
 		h.handleCountTokens(c, action[0], rawJSON)
 	}
 }
