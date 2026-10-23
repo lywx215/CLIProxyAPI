@@ -160,7 +160,8 @@ func TestFinalizeStreamingWritesAPIWebsocketTimeline(t *testing.T) {
 }
 
 type testRequestLogger struct {
-	enabled bool
+	enabled      bool
+	streamWriter logging.StreamingLogWriter
 }
 
 func (l *testRequestLogger) LogRequest(string, string, map[string][]string, []byte, int, map[string][]string, []byte, []byte, []byte, []byte, []byte, []*interfaces.ErrorMessage, string, time.Time, time.Time) error {
@@ -168,6 +169,9 @@ func (l *testRequestLogger) LogRequest(string, string, map[string][]string, []by
 }
 
 func (l *testRequestLogger) LogStreamingRequest(string, string, map[string][]string, []byte, string) (logging.StreamingLogWriter, error) {
+	if l.streamWriter != nil {
+		return l.streamWriter, nil
+	}
 	return &testStreamingLogWriter{}, nil
 }
 
@@ -204,6 +208,91 @@ func (w *testStreamingLogWriter) SetFirstChunkTimestamp(time.Time) {}
 func (w *testStreamingLogWriter) Close() error {
 	w.closed = true
 	return nil
+}
+
+func TestStreamingChunkProcessorDrainsCapturedQueueAfterWrapperRelease(t *testing.T) {
+	writer := &orderedStreamingLogWriter{}
+	chunks := make(chan []byte, 2)
+	chunks <- []byte("first")
+	chunks <- []byte("second")
+	close(chunks)
+	done := make(chan struct{})
+	wrapper := &ResponseWriterWrapper{streamWriter: writer, chunkChannel: chunks, streamDone: done}
+
+	// Model Finalize releasing its producer handle before the processor starts.
+	wrapper.chunkChannel = nil
+	wrapper.processStreamingChunks(writer, chunks, done)
+	<-done
+	if len(writer.chunks) != 2 || string(writer.chunks[0]) != "first" || string(writer.chunks[1]) != "second" {
+		t.Fatalf("queued chunks were lost or reordered: %q", writer.chunks)
+	}
+}
+
+func TestFinalizeStreamingDrainsQueuedChunksBeforeClosingWriter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	writer := &orderedStreamingLogWriter{firstChunkStarted: make(chan struct{}), releaseFirstChunk: make(chan struct{}), closeCalled: make(chan struct{})}
+	defer close(writer.releaseFirstChunk)
+	wrapper := NewResponseWriterWrapper(c.Writer, &testRequestLogger{enabled: true, streamWriter: writer}, &RequestInfo{})
+	wrapper.Header().Set("Content-Type", "text/event-stream")
+	wrapper.WriteHeader(http.StatusOK)
+	if _, errWrite := wrapper.Write([]byte("first")); errWrite != nil {
+		t.Fatal(errWrite)
+	}
+	if _, errWrite := wrapper.WriteString("second"); errWrite != nil {
+		t.Fatal(errWrite)
+	}
+	<-writer.firstChunkStarted
+	finalized := make(chan error, 1)
+	go func() { finalized <- wrapper.Finalize(c) }()
+	select {
+	case <-writer.closeCalled:
+		t.Fatal("writer closed while a queued chunk was still being processed")
+	default:
+	}
+	writer.releaseFirstChunk <- struct{}{}
+	if errFinalize := <-finalized; errFinalize != nil {
+		t.Fatal(errFinalize)
+	}
+	if !writer.closed || writer.chunksAtClose != 2 || len(writer.chunks) != 2 || string(writer.chunks[0]) != "first" || string(writer.chunks[1]) != "second" {
+		t.Fatalf("finalized before ordered chunk delivery: closed=%v chunksAtClose=%d chunks=%q", writer.closed, writer.chunksAtClose, writer.chunks)
+	}
+	if writer.firstChunkTimestamp.IsZero() || writer.firstChunkTimestamp != wrapper.firstChunkTimestamp {
+		t.Fatal("finalization lost the first chunk timestamp")
+	}
+	if wrapper.chunkChannel != nil || wrapper.streamDone != nil || wrapper.streamWriter != nil {
+		t.Fatal("finalization retained streaming resources")
+	}
+}
+
+type orderedStreamingLogWriter struct {
+	testStreamingLogWriter
+	chunks              [][]byte
+	chunksAtClose       int
+	firstChunkStarted   chan struct{}
+	releaseFirstChunk   chan struct{}
+	closeCalled         chan struct{}
+	firstChunkTimestamp time.Time
+}
+
+func (w *orderedStreamingLogWriter) WriteChunkAsync(chunk []byte) {
+	if len(w.chunks) == 0 && w.firstChunkStarted != nil {
+		close(w.firstChunkStarted)
+		<-w.releaseFirstChunk
+	}
+	w.chunks = append(w.chunks, bytes.Clone(chunk))
+}
+
+func (w *orderedStreamingLogWriter) SetFirstChunkTimestamp(timestamp time.Time) {
+	w.firstChunkTimestamp = timestamp
+}
+
+func (w *orderedStreamingLogWriter) Close() error {
+	w.chunksAtClose = len(w.chunks)
+	if w.closeCalled != nil {
+		close(w.closeCalled)
+	}
+	return w.testStreamingLogWriter.Close()
 }
 
 func TestHasActionableError(t *testing.T) {

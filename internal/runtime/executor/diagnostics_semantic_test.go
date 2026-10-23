@@ -18,6 +18,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	"github.com/tidwall/gjson"
 )
@@ -103,6 +104,11 @@ func TestDIAG05RealSemanticBoundaries(t *testing.T) {
 						if observed {
 							ctx, span = engine.StartServer(ctx, nil, "fixture-request")
 						}
+						var finishDelivery func(error)
+						if stream {
+							ctx, finishDelivery = usage.WithStreamDelivery(ctx)
+							defer finishDelivery(nil)
+						}
 						ctx = cliproxyexecutor.WithUpstreamAttemptTracker(ctx)
 						req := cliproxyexecutor.Request{Model: model, Payload: []byte(tc.request)}
 						opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatGemini, Stream: stream}
@@ -134,6 +140,11 @@ func TestDIAG05RealSemanticBoundaries(t *testing.T) {
 							span.Finish(diagnostics.ServerData{EndReason: "finished", DeliveryState: "unknown"})
 						} else {
 							baseline, baselineErr = payloads, fmt.Sprint(err)
+						}
+						// EOF must settle observations before sealing, independently of
+						// the later delivery acknowledgment required by Usage accounting.
+						if finishDelivery != nil {
+							finishDelivery(nil)
 						}
 					}
 					mu.Lock()

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -26,6 +27,28 @@ import (
 
 type nonStreamingThrottleExecutor struct {
 	response string
+}
+
+// The pre-delay assertion must synchronize with writes after virtual time advances.
+type nonStreamingThrottleRecorder struct {
+	*httptest.ResponseRecorder
+	bodyMu sync.Mutex
+}
+
+func (r *nonStreamingThrottleRecorder) Write(payload []byte) (int, error) {
+	r.bodyMu.Lock()
+	defer r.bodyMu.Unlock()
+	return r.ResponseRecorder.Write(payload)
+}
+
+func (r *nonStreamingThrottleRecorder) WriteString(payload string) (int, error) {
+	return r.Write([]byte(payload))
+}
+
+func (r *nonStreamingThrottleRecorder) bodyLen() int {
+	r.bodyMu.Lock()
+	defer r.bodyMu.Unlock()
+	return r.Body.Len()
 }
 
 func (*nonStreamingThrottleExecutor) Identifier() string { return "nonstream-throttle-test" }
@@ -114,7 +137,7 @@ func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
 					defer cancel()
 					request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.request)).WithContext(ctx)
 					request.Header.Set("Content-Type", "application/json")
-					recorder := httptest.NewRecorder()
+					recorder := &nonStreamingThrottleRecorder{ResponseRecorder: httptest.NewRecorder()}
 					start := time.Now()
 					done := make(chan struct{})
 					go func() {
@@ -122,7 +145,7 @@ func TestNonStreamingHandlersThrottleReportedOutput(t *testing.T) {
 						router.ServeHTTP(recorder, request)
 					}()
 					synctest.Wait()
-					if mode != "disabled" && recorder.Body.Len() != 0 {
+					if mode != "disabled" && recorder.bodyLen() != 0 {
 						t.Fatal("response body emitted before throttle delay")
 					}
 					if mode == "cancelled" {
