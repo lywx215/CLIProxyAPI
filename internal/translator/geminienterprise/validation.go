@@ -19,16 +19,25 @@ func safeFieldPath(path string) string {
 	if len(path) > 192 || !fieldPathPattern.MatchString(path) {
 		return "body"
 	}
+	identifier := strings.ToLower(path)
+	for _, separator := range []string{"_", "-", " "} {
+		identifier = strings.ReplaceAll(identifier, separator, "")
+	}
+	for _, internal := range []string{"geminienterprise", "streamassist", "discoveryengine"} {
+		if strings.Contains(identifier, internal) {
+			return "body"
+		}
+	}
 	return path
 }
 
 func invalidField(path, reason string, payload bool) error {
 	path = safeFieldPath(path)
-	message := "Gemini Enterprise: " + path + " " + reason + "."
+	message := path + " " + reason + "."
 	if payload {
-		message += " Check requests.payload rules for protocol gemini-enterprise; native Gemini fields require protocol gemini."
+		message += " Check the server request payload configuration."
 	}
-	return &Error{Status: 400, Kind: "gemini_enterprise_invalid_field", Message: message, Scoped: true, clientMessage: message, param: path}
+	return &Error{Status: 400, Kind: "invalid_field", Message: message, Scoped: true, clientMessage: message, param: path}
 }
 
 // PublicErrorDetail returns only locally constructed diagnostics, never an upstream message.
@@ -95,7 +104,7 @@ func validateFields(object map[string]any, fields map[string]fieldSpec, prefix s
 		path := prefix + key
 		spec, supported := fields[key]
 		if !supported {
-			return invalidField(path, "is not supported by the Enterprise text/grounding streamAssist schema", true)
+			return invalidField(path, "is not supported by the request schema", true)
 		}
 		value, exists := object[key]
 		if !exists {
@@ -216,7 +225,7 @@ func ValidateFinal(body []byte) error {
 
 // UpstreamHTTPError classifies a bounded Google error body without echoing its values.
 func UpstreamHTTPError(status int, raw []byte) error {
-	code, message := "gemini_enterprise_upstream_error", fmt.Sprintf("Google Gemini Enterprise returned HTTP %d; retry later or inspect the server diagnostics.", status)
+	code, message := "upstream_error", fmt.Sprintf("The upstream service returned HTTP %d; retry later or contact the server administrator.", status)
 	param := ""
 	var envelope struct {
 		Error struct {
@@ -234,7 +243,7 @@ func UpstreamHTTPError(status int, raw []byte) error {
 	}
 	switch status {
 	case 400, 422:
-		code, message = "gemini_enterprise_upstream_invalid_request", "Google rejected the Gemini Enterprise request; check the model's availability and the supported streamAssist fields."
+		code, message = "upstream_invalid_request", "The upstream service rejected the request; check model availability and supported request fields."
 		for _, detail := range envelope.Error.Details {
 			if detail.Type != "type.googleapis.com/google.rpc.BadRequest" {
 				continue
@@ -242,23 +251,23 @@ func UpstreamHTTPError(status int, raw []byte) error {
 			for _, violation := range detail.FieldViolations {
 				if path := safeFieldPath(violation.Field); path != "body" {
 					param = path
-					message = "Google rejected Gemini Enterprise field " + path + "; check its type and value."
+					message = "The upstream service rejected field " + path + "; check its type and value."
 					break
 				}
 			}
 		}
 		lower := strings.ToLower(envelope.Error.Message)
 		if param == "" && strings.Contains(lower, "model") && (strings.Contains(lower, "permission") || strings.Contains(lower, "not allowed") || strings.Contains(lower, "not authorized") || strings.Contains(lower, "not have access")) {
-			code, message, param = "gemini_enterprise_model_access_denied", "The Google account cannot access the requested Enterprise model; check the account's model permissions.", "model"
+			code, message, param = "model_access_denied", "The account cannot access the requested model; check the account's model permissions.", "model"
 		}
 	case 401:
-		code, message = "gemini_enterprise_authentication_required", "Google rejected the Enterprise authorization; refresh or authorize the account again."
+		code, message = "upstream_authentication_required", "The upstream service rejected the authorization; refresh or authorize the account again."
 	case 403:
-		code, message = "gemini_enterprise_permission_denied", "Google denied access to the Enterprise resource or model; check the account's resource and model permissions."
+		code, message = "permission_denied", "Access to the requested resource or model was denied; check the account's resource and model permissions."
 	case 404:
-		code, message = "gemini_enterprise_resource_not_found", "The Enterprise resource or model is unavailable to this account; check the saved resource binding and model availability."
+		code, message = "resource_not_found", "The requested resource or model is unavailable; check the saved resource settings and model availability."
 	case 429:
-		code, message = "gemini_enterprise_rate_limit_exceeded", "Google Enterprise quota or rate limit was reached; check usage and retry after the limit resets."
+		code, message = "rate_limit_exceeded", "The quota or rate limit was reached; check usage and retry after the limit resets."
 	}
 	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param}
 }

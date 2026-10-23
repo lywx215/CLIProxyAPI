@@ -88,6 +88,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	}
 	input, err := enterprise.Normalize(req.Payload, opts.SourceFormat.String(), req.Model)
 	if err != nil {
+		if fields := helps.EnterpriseValidationFields("input", err); fields != nil {
+			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
+		}
 		return nil, input, err
 	}
 	if len(input.Ignored) > 0 {
@@ -96,6 +99,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
 	body := finalize(input.Body)
 	if err := enterprise.ValidateFinal(body); err != nil {
+		if fields := helps.EnterpriseValidationFields("final_payload", err); fields != nil {
+			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
+		}
 		return nil, input, err
 	}
 	input.Body = body

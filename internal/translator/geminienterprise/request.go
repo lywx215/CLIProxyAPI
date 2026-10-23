@@ -72,8 +72,10 @@ func (n *normalizer) object(v any, path string) map[string]any {
 }
 func (n *normalizer) array(v any, path string, nonempty bool) []any {
 	a, ok := v.([]any)
-	if !ok || (nonempty && len(a) == 0) || len(a) > 256 {
-		n.failField(path, "must be an array with at most 256 entries")
+	if !ok {
+		n.failField(path, "must be an array")
+	} else if nonempty && len(a) == 0 {
+		n.failField(path, "must contain at least one entry")
 	}
 	return a
 }
@@ -135,7 +137,7 @@ func (n *normalizer) tools(v any, path string) {
 			switch key {
 			case "googleSearch", "google_search", "urlContext", "url_context", "codeExecution", "code_execution":
 			default:
-				n.failField(itemPath, "supports Google Search, URL context and code execution hints only; function tools are not supported")
+				n.failField(itemPath, "supports web search, URL context and code execution hints only; function tools are not supported")
 			}
 		}
 		for key, value := range m {
@@ -187,7 +189,7 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 			}
 			for _, key := range []string{"tool_calls", "function_call", "audio", "refusal", "tool_call_id"} {
 				if v, ok := m[key]; ok && v != nil {
-					n.failField(path+"."+key, "is not supported by Gemini Enterprise text requests")
+					n.failField(path+"."+key, "is not supported by text requests")
 				}
 			}
 			text := n.parts(m["content"], path+".content", true)
@@ -264,11 +266,11 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 					n.failField(path, "supports role and parts fields only")
 				}
 			}
-			history = append(history, map[string]string{"role": role, "text": n.parts(m["parts"], path+".parts", false)})
+			history = append(history, map[string]string{"role": role, "text": n.geminiParts(m["parts"], path+".parts", role == "assistant")})
 		}
 		if v := n.alias(b, "systemInstruction", "system_instruction", ""); v != nil {
 			m := n.object(v, "systemInstruction")
-			systems = append(systems, n.parts(m["parts"], "systemInstruction.parts", false))
+			systems = append(systems, n.geminiParts(m["parts"], "systemInstruction.parts", false))
 			n.unknown(m, "role|parts", "systemInstruction.")
 		}
 		if v, exists := b["tools"]; exists {

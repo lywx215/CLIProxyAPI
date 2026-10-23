@@ -4,7 +4,22 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
+	log "github.com/sirupsen/logrus"
 )
+
+// EnterpriseValidationFields records structural diagnostics without request values.
+func EnterpriseValidationFields(stage string, err error) log.Fields {
+	message, code, field := enterprise.PublicErrorDetail(err, http.StatusBadRequest)
+	if message == "" {
+		return nil
+	}
+	if stage != "input" && stage != "final_payload" {
+		stage = "request"
+	}
+	return log.Fields{"provider": "gemini-enterprise", "stage": stage, "code": code, "field": field}
+}
 
 // EnterpriseResponseHeaders exposes names of ignored options without values or credentials.
 func EnterpriseResponseHeaders(ignored []string) http.Header {

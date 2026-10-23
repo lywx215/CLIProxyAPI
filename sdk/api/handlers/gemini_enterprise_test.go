@@ -27,10 +27,10 @@ func TestEnterpriseSafeFieldErrorSurvivesWrapping(t *testing.T) {
 	if errDecode := json.Unmarshal(body, &response); errDecode != nil {
 		t.Fatal(errDecode)
 	}
-	if response.Error.Type != "invalid_request_error" || response.Error.Code != "gemini_enterprise_invalid_field" || response.Error.Param != "generationSpec.temperature" {
+	if response.Error.Type != "invalid_request_error" || response.Error.Code != "invalid_field" || response.Error.Param != "generationSpec.temperature" {
 		t.Fatalf("safe field classification lost: %s", body)
 	}
-	for _, expected := range []string{"Gemini Enterprise", "generationSpec.temperature", "is not supported", "requests.payload", "protocol gemini"} {
+	for _, expected := range []string{"generationSpec.temperature", "is not supported", "Check the server request payload configuration."} {
 		if !strings.Contains(response.Error.Message, expected) {
 			t.Fatalf("safe error lacks %q: %s", expected, body)
 		}
@@ -39,6 +39,90 @@ func TestEnterpriseSafeFieldErrorSurvivesWrapping(t *testing.T) {
 		if strings.Contains(string(body), private) {
 			t.Fatalf("safe error leaked %q: %s", private, body)
 		}
+	}
+	assertEnterprisePublicErrorChannelNeutral(t, body)
+}
+
+func assertEnterprisePublicErrorChannelNeutral(t *testing.T, body []byte) {
+	t.Helper()
+	lower := strings.ToLower(string(body))
+	for _, private := range []string{"gemini enterprise", "gemini-enterprise", "gemini_enterprise", "geminienterprise", "streamassist", "discoveryengine"} {
+		if strings.Contains(lower, private) {
+			t.Fatalf("public error exposed internal channel detail %q: %s", private, body)
+		}
+	}
+}
+
+func TestEnterpriseErrorIdentifiersCannotExposeChannel(t *testing.T) {
+	for _, identifier := range []string{
+		"gemini_enterprise_invalid_field", "GeMiNi_EnTeRpRiSe_invalid_field", "gemini-enterprise.permission_denied",
+		"GeminiEnterprise.Authentication", "streamAssist", "discoveryengine.googleapis.com",
+	} {
+		for _, wrapper := range []string{"direct", "error", "response"} {
+			t.Run(identifier+"/"+wrapper, func(t *testing.T) {
+				payload := map[string]any{"message": "private diagnostic", "type": identifier, "code": identifier, "param": identifier}
+				if wrapper == "error" {
+					payload = map[string]any{"error": payload}
+				} else if wrapper == "response" {
+					payload = map[string]any{"response": map[string]any{"error": payload}}
+				}
+				encoded, err := json.Marshal(payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, wrapped := range []error{nil, fmt.Errorf("private wrapper: %w", errors.New(string(encoded)))} {
+					body := BuildErrorResponseBodyWithError(http.StatusBadRequest, string(encoded), wrapped)
+					var response ErrorResponse
+					if errDecode := json.Unmarshal(body, &response); errDecode != nil {
+						t.Fatal(errDecode)
+					}
+					if response.Error.Type != "invalid_request_error" || response.Error.Code != "" || response.Error.Param != nil || response.Error.Message != FixedErrorMessage(http.StatusBadRequest) {
+						t.Fatalf("untrusted channel classification was preserved: %s", body)
+					}
+					assertEnterprisePublicErrorChannelNeutral(t, body)
+				}
+			})
+		}
+	}
+}
+
+func TestEnterpriseErrorFilteringPreservesOtherIdentifiers(t *testing.T) {
+	for _, identifier := range []string{"anthropic_error", "codex_rate_limit", "gemini_generation_limit", "messages[0].content"} {
+		encoded, err := json.Marshal(map[string]any{"error": map[string]any{"type": identifier, "code": identifier, "param": identifier}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := BuildErrorResponseBody(http.StatusBadRequest, string(encoded))
+		var response ErrorResponse
+		if errDecode := json.Unmarshal(body, &response); errDecode != nil {
+			t.Fatal(errDecode)
+		}
+		if response.Error.Type != identifier || response.Error.Code != identifier || response.Error.Param != identifier {
+			t.Fatalf("unrelated safe identifier %q changed: %s", identifier, body)
+		}
+	}
+}
+
+func TestEnterpriseTrustedFieldPathsCannotExposeChannel(t *testing.T) {
+	for _, field := range []string{"gemini_enterprise_private", "GeminiEnterprise", "streamAssist", "discoveryengine"} {
+		raw, err := json.Marshal(map[string]any{"query": map[string]any{"text": "hi"}, "generationSpec": map[string]any{"modelId": "gemini-4-argon"}, field: "private-value"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fieldErr := enterprise.ValidateFinal(raw)
+		if fieldErr == nil {
+			t.Fatal("unknown final payload field was accepted")
+		}
+		wrapped := fmt.Errorf("private wrapper: %w", fieldErr)
+		body := BuildErrorResponseBodyWithError(http.StatusBadRequest, wrapped.Error(), wrapped)
+		var response ErrorResponse
+		if errDecode := json.Unmarshal(body, &response); errDecode != nil {
+			t.Fatal(errDecode)
+		}
+		if response.Error.Code != "invalid_field" || response.Error.Param != "body" || !strings.Contains(response.Error.Message, "is not supported") {
+			t.Fatalf("unsafe field path was not generalized: %s", body)
+		}
+		assertEnterprisePublicErrorChannelNeutral(t, body)
 	}
 }
 
@@ -70,6 +154,7 @@ func TestEnterpriseErrorTextCannotClaimTrustedMessage(t *testing.T) {
 			if response.Error.Message != FixedErrorMessage(scenario.status) || strings.Contains(string(body), "synthetic-private-token") {
 				t.Fatalf("untrusted text became a public diagnostic: %s", body)
 			}
+			assertEnterprisePublicErrorChannelNeutral(t, body)
 		})
 	}
 }
@@ -79,14 +164,14 @@ func TestEnterpriseSafeUpstreamClassifications(t *testing.T) {
 		name, raw, code, param, message string
 		status                          int
 	}{
-		{"bad field", `{"error":{"message":"Bearer synthetic-private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"generationSpec.modelId","description":"synthetic-private-upstream-value"}]}]}}`, "gemini_enterprise_upstream_invalid_request", "generationSpec.modelId", "Google rejected Gemini Enterprise field generationSpec.modelId", http.StatusBadRequest},
-		{"model permission", `{"error":{"message":"Account does not have access to model synthetic-private-upstream-value"}}`, "gemini_enterprise_model_access_denied", "model", "account cannot access the requested Enterprise model", http.StatusBadRequest},
-		{"malicious field name", `{"error":{"message":"synthetic-private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"Bearer synthetic-private-upstream-value"}]}]}}`, "gemini_enterprise_upstream_invalid_request", "", "Google rejected the Gemini Enterprise request", http.StatusBadRequest},
-		{"authorization", `{"error":{"message":"synthetic-private-upstream-value"}}`, "gemini_enterprise_authentication_required", "", "authorize the account again", http.StatusUnauthorized},
-		{"permission", `{"error":{"message":"synthetic-private-upstream-value"}}`, "gemini_enterprise_permission_denied", "", "resource and model permissions", http.StatusForbidden},
-		{"missing resource", `{"error":{"message":"synthetic-private-upstream-value"}}`, "gemini_enterprise_resource_not_found", "", "saved resource binding", http.StatusNotFound},
-		{"quota", `{"error":{"message":"synthetic-private-upstream-value"}}`, "gemini_enterprise_rate_limit_exceeded", "", "quota or rate limit", http.StatusTooManyRequests},
-		{"server failure", `{"error":{"message":"synthetic-private-upstream-value"}}`, "gemini_enterprise_upstream_error", "", "HTTP 503", http.StatusServiceUnavailable},
+		{"bad field", `{"error":{"message":"Bearer synthetic-private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"generationSpec.modelId","description":"synthetic-private-upstream-value"}]}]}}`, "upstream_invalid_request", "generationSpec.modelId", "generationSpec.modelId", http.StatusBadRequest},
+		{"model permission", `{"error":{"message":"Account does not have access to model synthetic-private-upstream-value"}}`, "model_access_denied", "model", "requested model", http.StatusBadRequest},
+		{"malicious field name", `{"error":{"message":"synthetic-private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"Bearer synthetic-private-upstream-value"}]}]}}`, "upstream_invalid_request", "", "request", http.StatusBadRequest},
+		{"authorization", `{"error":{"message":"synthetic-private-upstream-value"}}`, "upstream_authentication_required", "", "authorize the account again", http.StatusUnauthorized},
+		{"permission", `{"error":{"message":"synthetic-private-upstream-value"}}`, "permission_denied", "", "resource and model permissions", http.StatusForbidden},
+		{"missing resource", `{"error":{"message":"synthetic-private-upstream-value"}}`, "resource_not_found", "", "saved resource settings", http.StatusNotFound},
+		{"quota", `{"error":{"message":"synthetic-private-upstream-value"}}`, "rate_limit_exceeded", "", "quota or rate limit", http.StatusTooManyRequests},
+		{"server failure", `{"error":{"message":"synthetic-private-upstream-value"}}`, "upstream_error", "", "HTTP 503", http.StatusServiceUnavailable},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			err := enterprise.UpstreamHTTPError(scenario.status, []byte(scenario.raw))
@@ -105,6 +190,7 @@ func TestEnterpriseSafeUpstreamClassifications(t *testing.T) {
 			if strings.Contains(string(body), "synthetic-private-upstream-value") || strings.Contains(string(body), "private upstream context") {
 				t.Fatalf("upstream message leaked: %s", body)
 			}
+			assertEnterprisePublicErrorChannelNeutral(t, body)
 		})
 	}
 }
@@ -118,7 +204,7 @@ func TestEnterpriseTypedErrorOverridesUntrustedWrapper(t *testing.T) {
 	if err := json.Unmarshal(body, &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Error.Type != "permission_error" || response.Error.Code != "gemini_enterprise_permission_denied" || response.Error.Param != nil || response.Error.Retryable != nil {
+	if response.Error.Type != "permission_error" || response.Error.Code != "permission_denied" || response.Error.Param != nil || response.Error.Retryable != nil {
 		t.Fatalf("untrusted wrapper overrode trusted classification: %s", body)
 	}
 	if !strings.Contains(response.Error.Message, "resource and model permissions") {
@@ -129,6 +215,7 @@ func TestEnterpriseTypedErrorOverridesUntrustedWrapper(t *testing.T) {
 			t.Fatalf("untrusted wrapper leaked %q: %s", forbidden, body)
 		}
 	}
+	assertEnterprisePublicErrorChannelNeutral(t, body)
 }
 
 func TestEnterpriseEntryOperationProviderFiltering(t *testing.T) {

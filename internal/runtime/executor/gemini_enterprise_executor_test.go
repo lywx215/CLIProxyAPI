@@ -312,7 +312,7 @@ func TestEnterprisePayloadValidationBeforeTransportAcrossModels(t *testing.T) {
 					}))
 					err := executeEnterpriseTestRequest(t, NewGeminiEnterpriseExecutor(cfg), ctx, model, format, stream)
 					message, code, param := enterprise.PublicErrorDetail(err, 400)
-					if calls != 0 || code != "gemini_enterprise_invalid_field" || param != "generationConfig" || !strings.Contains(message, "protocol gemini") {
+					if calls != 0 || code != "invalid_field" || param != "generationConfig" || !strings.Contains(message, "server request payload configuration") {
 						t.Fatalf("calls=%d message=%q code=%q param=%q", calls, message, code, param)
 					}
 				})
@@ -380,7 +380,7 @@ func TestEnterpriseRejectsInvalidUserOverridesWithoutRepair(t *testing.T) {
 					}))
 					err := executeEnterpriseTestRequest(t, NewGeminiEnterpriseExecutor(&config.Config{Payload: test.payload}), ctx, "gemini-4-argon", format, stream)
 					message, code, param := enterprise.PublicErrorDetail(err, 400)
-					if calls != 0 || code != "gemini_enterprise_invalid_field" || param != test.path || strings.Contains(message, "private-") {
+					if calls != 0 || code != "invalid_field" || param != test.path || strings.Contains(message, "private-") {
 						t.Fatalf("calls=%d message=%q code=%q param=%q", calls, message, code, param)
 					}
 				})

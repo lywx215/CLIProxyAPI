@@ -168,34 +168,50 @@ requests:
 
 原生 Gemini 的 `generationConfig`、`systemInstruction`、`contents` 不属于最终 `streamAssist` 请求。为原生 Gemini 模型设置的规则必须声明 `protocol: gemini`；Enterprise 的规则声明 `protocol: gemini-enterprise`。只匹配同名模型且省略 `protocol` 的规则会同时匹配其他协议，可能再次把原生字段注入 Enterprise；现在这类不兼容最终字段会被本地拦截，不能靠删除校验来规避。
 
-### 明确且不暴露原始正文的错误
+### 明确且不暴露渠道或原始正文的错误
 
-本地字段错误使用 `error.type=invalid_request_error`、`error.code=gemini_enterprise_invalid_field`，`error.param` 指向安全的字段路径，`error.message` 说明原因；由最终 Payload 产生的错误还提示检查规则协议。示例：
+公开模型接口的普通和流式错误使用通用提示与错误码，不在 `error.message` 或 `error.code` 中标识 Gemini Enterprise、Google、`streamAssist`、渠道协议或上游地址。渠道名称只用于服务端诊断；本节文档中的名称用于说明实现，不会作为响应前缀发送给调用方。本地字段错误使用 `error.type=invalid_request_error`、`error.code=invalid_field`，`error.param` 指向安全的字段路径，`error.message` 说明原因；由最终 Payload 产生的错误仅提示检查 `server request payload configuration`，不向客户端披露规则协议。示例：
 
 ```json
-{"error":{"type":"invalid_request_error","code":"gemini_enterprise_invalid_field","param":"generationConfig","message":"Gemini Enterprise: generationConfig is not supported by the Enterprise text/grounding streamAssist schema. Check requests.payload rules for protocol gemini-enterprise; native Gemini fields require protocol gemini."}}
+{"error":{"type":"invalid_request_error","code":"invalid_field","param":"generationConfig","message":"generationConfig is not supported by the request schema. Check the server request payload configuration."}}
 ```
 
-Google 非成功 HTTP 响应只返回本地构造的提示，不回显上游原始 message、字段值、资源路径、Token 或会话信息。读取的错误正文有大小上限；可信的 `google.rpc.BadRequest` 字段路径经过限制后可用于 `param`。仅凭其他 provider 的错误文本或伪造同名 JSON 标记，不能启用 Enterprise 的详细提示。
+Google 非成功 HTTP 响应只返回本地构造的通用提示，不回显上游原始 message、字段值、资源路径、Token 或会话信息。读取的错误正文有大小上限；可信的 `google.rpc.BadRequest` 字段路径经过限制后可用于 `param`。仅凭其他 provider 的错误文本或伪造同名 JSON 标记，不能启用本渠道的详细提示；历史带 `gemini_enterprise_` 前缀的错误标记也不应穿透公共错误处理。
 
 | Google HTTP 状态 | 对外 `error.code` |
 | --- | --- |
-| 400 / 422 | `gemini_enterprise_upstream_invalid_request`；有明确模型权限证据时使用 `gemini_enterprise_model_access_denied` |
-| 401 | `gemini_enterprise_authentication_required` |
-| 403 | `gemini_enterprise_permission_denied` |
-| 404 | `gemini_enterprise_resource_not_found` |
-| 429 | `gemini_enterprise_rate_limit_exceeded` |
-| 其他非成功状态 | `gemini_enterprise_upstream_error` |
+| 400 / 422 | `upstream_invalid_request`；有明确模型权限证据时使用 `model_access_denied` |
+| 401 | `upstream_authentication_required` |
+| 403 | `permission_denied` |
+| 404 | `resource_not_found` |
+| 429 | `rate_limit_exceeded` |
+| 其他非成功状态 | `upstream_error` |
 
 HTTP 400 本身不能证明没有模型权限；没有明确证据时保留参数或可用性提示。Argon 应用相同的字段校验和错误分类；当前账号的 Argon 权限限制仍是独立验收条件，不能把 Pro 的成功、目录包含 Argon 或离线夹具通过记为该账号的真实 Argon 验收成功。历史授权、Windows 策略拦截及各阶段测试结果继续按原记录保留。
 
-### 字段兼容回归记录（2026-10-23）
+### 字段兼容回归记录（2026-10-23，历史发布阶段）
+
+以下保留此前字段校验发布阶段的测试结论；后续 new-api 历史兼容与公开错误去渠道标识调整不改变该阶段的成功、失败或 Windows 策略拦截记录。
 
 本轮公开接口夹具覆盖 7 个模型的 OpenAI/Gemini 普通与流式请求：168 组非法最终 Payload、84 组媒体或函数输入均返回明确字段错误且不调用上游；28 组正常可选参数请求通过。执行器另覆盖未来模型 ID、Payload 单次应用、覆盖值保留、过滤不恢复，以及有界错误读取、关闭和取消；错误处理覆盖安全提示来源、恶意包装和敏感值隐藏。
 
 `go build -o <artifact>/cli-proxy-api.exe ./cmd/server` 通过。离线双 SDK 验收使用 OpenAI 3.36.1 与 Google GenAI 2.32.0，9 项功能通过；首次与全量编译并行时遇到测试进程收尾及日志文件占用，保留首次记录，单独复核后正常退出并通过，没有修改系统策略或测试脚本。
 
 `go test ./... -count=1` 本轮 105 个测试包通过；`internal/api`、`internal/auth/kimi`、`internal/misc`、`internal/pluginhost`、`internal/translator` 的测试二进制被 Windows Application Control 拦截，不能记为全量通过。本轮涉及的 Enterprise translator、executor、公共 handlers、管理 handlers、auth manager 及跨模块 `test` 包均已执行通过，历史 Windows 拦截记录保持原状。
+
+### new-api 多轮历史兼容（2026-10-23）
+
+new-api 启用相应的 Gemini 思考签名选项时，会给助手历史的首个文本 part 添加 `thoughtSignature`，包括 `context_engineering_is_the_way_to_go` 占位值。此前本代理将文本附带的元数据一并判为非文本，能复现 `contents[1].parts[0] supports text parts only`。这里的复现依据是 [new-api 固定版本的签名转换逻辑](https://github.com/QuantumNous/new-api/blob/33c61a24234aa20cb10e8a644304322c476361de/relaykit/relayconvert/internal/shared/gemini/request.go) 和本机合成请求；未采集用户的原始请求正文，不能据此断言其具体开关状态。
+
+- Gemini 文本 part 接受 `thoughtSignature` / `thought_signature` 字符串或 `null`，以及布尔或 `null` 的 `thought`。签名属于原生 Gemini 的不透明状态，字段名列入忽略参数提示，值不写入 Enterprise 请求、上下文或诊断日志。模型历史中 `thought: true` 的隐藏文本不会混入可见对话；用户及系统输入不能标记为隐藏思考。
+- 本代理返回的 `executableCode` / `codeExecutionResult` 可作为可见的模型历史回传，转换为标注为先前代码及执行结果的文本上下文；不触发本地执行，也不将自定义 `functionCall` / `functionResponse` 当作内置执行结果。非空媒体和自定义函数内容继续返回明确的具体字段路径；已知可选字段为 `null` 时按缺省处理。
+- 文本会话取消原先固定的 256 条数组限制，保留规范化历史的 1 MiB 总大小限制和 JSON 深度校验。不会截断或静默丢弃超过 256 条的历史；数组类型错误和空数组分别返回 `must be an array`、`must contain at least one entry`。
+- 执行器在上游调用前的输入或最终 Payload 校验失败时记录 `provider`、`stage`、`code`、`field`，便于定位哪种字段不兼容；不记录正文、签名、Token 或字段值。Payload 规则仍在内建历史转换完成后仅应用一次，后续校验不会恢复被过滤的字段或覆盖配置值。
+- 字段错误不再带 `Gemini Enterprise:` 前缀，错误码不再包含 `gemini_enterprise_`；例如 `contents` 类型错误会提示 `contents must be an array.`，实际超过文本大小限制时提示对应大小错误，不泄露渠道名称。服务端日志仍可按 `provider` 和校验阶段排查。
+
+公开错误去渠道标识调整前，本地历史兼容回归覆盖全部 7 个渠道模型的文本签名历史、513 条历史的双协议普通及流式入口、原生代码响应回传，以及错误内容拒绝和最终 Payload 顺序。离线 OpenAI 3.36.1 / Google GenAI 2.32.0 的 12 项 SDK 验收通过，其中新增真实 SDK 的签名、代码结果回传和长历史测试；这些使用本机合成上游，不构成 Google 或 Argon 权限验收。该阶段全量回归中 `internal/githubauth`、`internal/translator/gemini/interactions`、`sdk/cliproxy/executionregistry` 被 Windows Application Control 拦截，保留记录且未更改系统策略；此前各轮拦截记录继续保留。
+
+本次热修复只涉及后端协议转换、错误处理和测试，未改变管理前端接口契约或页面逻辑，无需重建前端产物；`static/management.html` 保持原版本。新增公开错误去渠道标识改动仍需在最终源码下完成回归，以上本地结果不表示热修复已经上线。
 
 ## 本地 Token 统计与缺失分项（2026-10-23）
 
