@@ -208,6 +208,40 @@ Missing, disabled, and non-Enterprise credentials do not trigger upstream reads.
 An expiring token is refreshed only in memory for the optional query; stored
 credentials, resource bindings, and routing health remain unchanged.
 
+## Gemini Enterprise shared quota retry
+
+`POST /v8/management/routing/cooldown/reset` retains the existing credential reset
+when `reset_scope` is omitted or `credential`. A credential reset does not clear a
+shared pool. The explicit shared operation requires membership and a current version:
+
+```json
+{"auth_index":"selected-index","reset_scope":"shared_pool","pool_id":"opaque-pool-id","pool_version":7}
+```
+
+A successful shared response includes `reset_scope`, `pool_id`, `pool_version`,
+`phase: "probe_pending"`, and `affected_auth_indexes`. Stale versions or mismatched
+membership return HTTP 409 and require a list refresh. This operation only allows
+the next normal request to verify recovery. It makes no Google request, does not
+restore official quota, and leaves unrelated auth/model restrictions unchanged.
+Home mode does not support local shared quota authority.
+
+Credential list `cooldowns[]` keeps `scope: "credential"` and
+`reason: "credential_quota"`. Optional fields are `origin: "shared_pool"`, `feature`,
+`pool_id`, `pool_version`, `related_auth_count`, `restriction_kind`,
+`restriction_scope`, `time_source`, and `shared_reset_supported`. The `phase` is
+`cooling`, `probe_pending`, or `probing`; the last two use zero remaining seconds,
+not a future timer. Clients must display verification separately from time estimates.
+Only expose the shared operation when `shared_reset_supported` is explicitly true.
+Refresh all affected cards after a successful operation and fence responses across
+connection changes. Old clients continue to receive credential timers while cooling;
+clients that reject zero-second records will display their existing unknown state
+for verification phases.
+
+This is single-instance coordination with optional independent file/PostgreSQL
+persistence. PostgreSQL is not a cross-process broadcast or lease service. Read-only
+quota observations (including zero or `no_permission`) never establish a routing
+restriction. Only supported, resource-matching structured generation rejections do.
+
 ## v0 compatibility
 
 The `/v0/management` endpoints keep their original paths and payloads, including

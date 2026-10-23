@@ -1257,7 +1257,12 @@ func (m *modelScheduler) demoteExpiredTokensLocked(now time.Time) bool {
 		if entry == nil || entry.auth == nil || entry.state != scheduledStateReady {
 			continue
 		}
-		if exp, ok := entry.auth.AccessTokenExpirationTime(); ok && !exp.IsZero() && !exp.After(now) {
+		sharedBlocked := false
+		if entry.auth.enterpriseQuota != nil {
+			sharedBlocked, _ = entry.auth.enterpriseQuota.blocked(now)
+		}
+		exp, hasExpiry := entry.auth.AccessTokenExpirationTime()
+		if sharedBlocked || (hasExpiry && !exp.IsZero() && !exp.After(now)) {
 			blocked, reason, next := isAuthBlockedForModel(entry.auth, m.modelKey, now)
 			if blocked {
 				switch {

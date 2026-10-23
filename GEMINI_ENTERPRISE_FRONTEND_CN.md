@@ -158,3 +158,14 @@
 系统策略保持强制模式 `1`，策略文件哈希未变，没有修改或绕过安全策略；本轮未重现 4551，但测试程序与历史受阻程序的哈希不同，放行原因尚未确定。前文受阻结果和全量回归记录继续按原阶段保留。本次只补齐上述后端与离线 SDK 检查，没有重新执行前端构建、浏览器联调或真实 Google/Argon 请求。
 
 固定源码、命令、各包计数、证据目录及验收边界见 [后端补测记录](GEMINI_ENTERPRISE_CN.md#后端-9ab28a2f-补测记录2026-10-23)。其他无关改动及历史诊断均保留，暂不推送。
+
+
+## 共享额度投影与显式重试（2026-10-23）
+
+共享状态继续使用 `cooldowns[].scope=credential` 和 `reason=credential_quota`，可选新增 `origin=shared_pool`、`feature`、`pool_id`、`pool_version`、`related_auth_count`、`restriction_kind`、`restriction_scope`、`time_source` 和 `shared_reset_supported`。`phase` 独立表示 `cooling`、`probe_pending`、`probing`；后两者允许 `remaining_seconds=0`，不伪造未来倒计时。新前端保留旧字段降级，不依赖 v0。
+
+卡片显示 Assistant and Search 共享额度、全部文字模型与关联数量。用户额度和技术项目分钟限制使用不同标题。倒计时结束显示“等待下次请求验证恢复”，完整请求成功前不称已恢复；验证中禁用共享重试按钮。普通单凭证重置保留共享投影。共享操作只在后端明确返回支持标记时显示，确认弹窗说明影响数量、不会恢复官方额度或清除其他限制，并发送当前池版本。成功后刷新整个凭证列表，因此所有 affected cards 一致更新；连接切换和退出仍以 API connection revision 隔离异步响应。
+
+六种语言均包含提示与确认文案，沿用共享时钟、原生 details/summary、主题 token 和窄屏换行。额度只读查询的无权限/未知/零值继续仅影响展示。旧前端看到新后端的正常冷却时仍显示凭证计时器；对不认识的验证阶段按其既有未知状态逻辑降级。
+
+本轮离线与浏览器检查、固定前端构建及哈希见 [验收记录](docs/enterprise-shared-quota-validation.md)，真实 Google 耗尽仍未实测。

@@ -32,6 +32,7 @@ auths/*
 # Documentation
 docs/*
 !docs/management-api-v8.md
+!docs/enterprise-shared-quota-validation.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md
@@ -80,3 +81,4 @@ docker-compose.override.yml
 /test/*
 !/test/gemini_enterprise_test.go
 !/test/gemini_enterprise_sdk_smoke.py
+!/test/gemini_enterprise_shared_quota_test.go

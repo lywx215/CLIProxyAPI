@@ -338,3 +338,26 @@ python test/gemini_enterprise_sdk_smoke.py
 - **Testing 续期边界：** 本次取得了 refresh token，没有等待其自然过期或触发真实轮换。Google 对 External + Testing 且请求超出基本身份 scopes 的授权，默认使 refresh token 在七天后过期；本 provider 请求的 `cloud-platform` 不属于基本身份例外，见 [Google token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration)。Google Workspace 的 Trusted 管理状态可能覆盖这一默认限制，见 [OAuth app state overview](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview)；本次未核验该管理状态，不能把收到 refresh token 描述为无限期自动续期保证。
 - **代理浏览器访问 localhost 被拒绝：** 先确认登录进程仍在等待、端口未冲突，且浏览器与 CLI 位于同一台机器。可以在同机直连浏览器中，将当前回调地址的 `localhost` 临时替换成 `127.0.0.1`，保留端口、`/oauth-callback` 和完整原查询参数。该操作只改变本机浏览器到 loopback 监听器的访问方式，不改变 OAuth 流使用的已登记 redirect URI。不要把包含授权码的完整回调 URL 粘贴到聊天、文档或日志中。
 - **跨机器访问：** `localhost` 和 `127.0.0.1` 都指向浏览器所在机器，不能用于访问另一台机器上的 CLI。远程场景应按前述方式建立安全的本地端口转发，并保持回调端口和登记地址一致。
+
+
+## Assistant and Search 共享额度冷却（2026-10-23，本地开发）
+
+此功能适用于普通 CLIProxyAPI **单服务实例**。额度展示与路由健康分开：Monitoring 显示零余额、数据延迟、`no_permission` 或查询失败均不会禁止生成；只有生成接口的结构化额度拒绝会建立共享限制。Overages 允许生成成功时不会冷却。CLIProxyAPIHome 不启用本地权威池；PostgreSQL 持久化不代表跨进程传播或互斥。
+
+已确认的共享池按 provider、Google 项目编号、location、subscription edition 和 `assistant_search` 区分，Flash/Pro/Argon 及后续文字模型共用 gate；engine、assistant、模型、OAuth client 和 LicenseConfig ID 不分池。用户额度按同一项目/区域下已确认的 OAuth 用户隔离，技术项目分钟限流另设作用域。身份未确认时只影响当前凭证的全部文字模型，其他账户不受传播。
+
+归属查询使用 OAuth userinfo、Cloud Resource Manager 项目规范名，以及 `projects/{number}/locations/{location}/userStores/default_user_store/userLicenses` 中该用户的已分配 `licenseConfig`，再读取对应订阅版本。推理参数或导入文件的任意 email 不能建立归属。缓存以资源绑定和凭证生命周期隔离，正常请求准备时至多每小时刷新；临时只读故障保留已验证缓存，明确撤销许可证会使其失效。可选权限包括 `discoveryengine.userStores.listUserLicenses`、对应 LicenseConfig 和项目的读取能力；缺少这些权限仍可正常推理，不修改 IAM。
+
+错误解析只接受资源匹配的 `google.rpc.Status` / `ErrorInfo` / `QuotaFailure`，支持 `RetryInfo`、`Retry-After` 及明确 reset 时间。已支持的 Assistant/Search 指标为 `text_answer_gen_tier_{edition}_regional`，日/分钟周期须由结构化 quota unit 或 quota ID 说明；泛化的 daily/quota 描述不能建立日池。未知 429 保留原有短时退避，授权、网络和取消沿用各自处理。HTTP 非 2xx、200 内错误、JSON/NDJSON/SSE、分片与流尾共享分类；思考已经开始也不更换凭证重放，但确定的拒绝仍更新池。原始错误、assistToken、sessionInfo、HelpToken 和密钥不会写入池快照。
+
+池状态为正常、冷却、待验证、验证中。优先使用 Google 明确时间；仅确定日额度且没有时间提示时估算 America/Los_Angeles 次日午夜，使用时区日历处理 DST。到期只允许一个正常用户请求验证，不额外探测 Google；完整终态成功才解除。网络或取消释放验证资格，旧成功、重置前旧拒绝和重绑前旧响应受 epoch/version fencing 限制。共享投影不替换独立模型/授权错误，也不会给兄弟凭证制造失败统计。
+
+`disable-cooling` 沿用现有全局、provider、credential 优先级。凭证 opt-out 只绕过自身 gate；真实拒绝仍更新池，绕过成功不解除共享限制。原单凭证重置不清共享池。新增 v8 显式共享重试，要求当前 opaque pool ID 和版本；它转为待验证，不恢复 Google 额度、不清无关限制、不主动调用 Google。
+
+开启 `routing.cooldown.save-cooldown-status` 时，文件后端使用独立的版本化 `shared-quota-state.sqs` 原子快照，原 `.cds` 格式不变；PostgreSQL 使用 `{cooldown_table}_shared` 独立表与事务版本检查。保存失败保留内存限制并记录安全日志，损坏或未来版本不会静默覆盖。关闭保存时使用内存状态。重启时过期/验证中状态回到待验证，新同池凭证继承限制，删除单个成员不解除其他成员的限制。
+
+管理界面区分本凭证重置与共享重试，显示关联数量、全部文字模型、估算重试时间和待验证/验证中状态；支持六语言、暗色、窄屏与原生键盘 disclosure。新前端可降级到旧后端冷却字段；旧前端在冷却阶段仍看到 credential timer，无法理解零秒验证阶段时会按其原有逻辑显示未知状态，不会据此声称官方额度恢复。
+
+本轮验收为脱敏离线 fixtures 和本机合成联调，**未取得真实 Google 共享日额度自然耗尽样本，未故意耗尽额度，未新增真实 Google/模型调用、IAM 写入、推送或部署**。测试结果及环境限制见 [本轮验收记录](docs/enterprise-shared-quota-validation.md)。历史 Windows 拦截证据保持原阶段记录。
+
+依据：[Google quota/overages](https://docs.cloud.google.com/gemini/enterprise/docs/quotas-and-overages)、[UserLicense list](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1/projects.locations.userStores.userLicenses/list)、[UserLicense](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1/UserLicense)、[AIP-193](https://google.aip.dev/193)、[google.rpc error details](https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto)。

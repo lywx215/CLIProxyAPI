@@ -28,17 +28,26 @@ type Event struct {
 }
 
 type Parser struct {
-	Started  bool
-	terminal string
-	emit     func(Event) error
-	text     strings.Builder
+	// Error decodes sanitized structured generation errors at any stream boundary.
+	Error     func([]byte, bool) error
+	ReadError func(error, bool) error
+	Started   bool
+	terminal  string
+	emit      func(Event) error
+	text      strings.Builder
 }
 
 // Parse accepts JSON arrays, consecutive JSON/NDJSON, and SSE using one event parser.
 // Network read boundaries never define protocol frames, and trailing corruption is fatal.
-func (p *Parser) Parse(reader io.Reader, emit func(Event) error) error {
+func (p *Parser) Parse(reader io.Reader, emit func(Event) error) (parseErr error) {
+	tracked := &streamReadTracker{Reader: reader}
+	defer func() {
+		if parseErr != nil && tracked.err != nil && p.ReadError != nil {
+			parseErr = p.ReadError(tracked.err, p.Started)
+		}
+	}()
 	p.emit = emit
-	limited := &io.LimitedReader{R: reader, N: 32*1024*1024 + 1}
+	limited := &io.LimitedReader{R: tracked, N: 32*1024*1024 + 1}
 	r := bufio.NewReader(limited)
 	for {
 		ch, err := r.Peek(1)
@@ -68,6 +77,19 @@ func (p *Parser) Parse(reader io.Reader, emit func(Event) error) error {
 		return p.wrap("incomplete_upstream", "stream ended without a successful terminal answer")
 	}
 	return emit(Event{Type: "done"})
+}
+
+type streamReadTracker struct {
+	io.Reader
+	err error
+}
+
+func (r *streamReadTracker) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err != nil && err != io.EOF {
+		r.err = err
+	}
+	return n, err
 }
 
 func (p *Parser) wrap(kind, message string) error { return Failure(kind, message, p.Started) }
@@ -120,6 +142,9 @@ func (p *Parser) sse(r io.Reader) error {
 			var item map[string]json.RawMessage
 			_ = json.Unmarshal([]byte(strings.Join(data, "\n")), &item)
 			p.observeAnswerActivity(item["answer"])
+			if p.Error != nil {
+				return p.Error([]byte(strings.Join(data, "\n")), p.Started)
+			}
 			return p.wrap("upstream_error", "Google returned an SSE error event")
 		}
 		if len(data) == 0 {
@@ -181,11 +206,24 @@ func (p *Parser) item(raw []byte) error {
 	}
 	if value, ok := item["error"]; ok && string(value) != "null" {
 		p.observeAnswerActivity(item["answer"])
+		if p.Error != nil {
+			return p.Error(raw, p.Started)
+		}
 		return p.wrap("upstream_error", "Google returned an error inside the generation stream")
 	}
 	answerRaw, ok := item["answer"]
+	if code := item["code"]; len(code) > 0 && string(code) != "0" && p.Error != nil {
+		return p.Error(raw, p.Started)
+	}
 	if !ok {
 		return nil
+	}
+	var answerStatus struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal(answerRaw, &answerStatus) == nil && len(answerStatus.Error) > 0 && string(answerStatus.Error) != "null" && p.Error != nil {
+		p.observeAnswerActivity(answerRaw)
+		return p.Error(answerStatus.Error, p.Started)
 	}
 	if p.terminal != "" {
 		return p.wrap("invalid_upstream_stream", "answer received after terminal state")

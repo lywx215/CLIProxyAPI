@@ -3,7 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +28,30 @@ func NewGeminiEnterpriseExecutor(cfg *config.Config) *GeminiEnterpriseExecutor {
 func (*GeminiEnterpriseExecutor) Identifier() string { return ge.Provider }
 func (*GeminiEnterpriseExecutor) RequestToFormat(coreexec.Request, coreexec.Options) translator.Format {
 	return translator.FormatGeminiEnterprise
+}
+
+func (e *GeminiEnterpriseExecutor) ShouldPrepareRequestAuth(auth *coreauth.Auth) bool {
+	if auth == nil || auth.Provider != ge.Provider || (e.cfg != nil && e.cfg.Home.Enabled) {
+		return false
+	}
+	i := auth.EnterpriseQuotaIdentity
+	return i == nil || i.Binding != ge.Binding(ge.FromMetadata(auth.Metadata)) || time.Since(i.CheckedAt) >= time.Hour
+}
+
+func (e *GeminiEnterpriseExecutor) PrepareRequestAuth(ctx context.Context, auth *coreauth.Auth) (*coreauth.Auth, error) {
+	updated := auth.Clone()
+	client := newHTTPClient(ctx, e.cfg, auth, 0)
+	identity := ge.ResolveQuotaIdentity(ctx, client, ge.FromMetadata(auth.Metadata), ge.String(auth.Metadata, "access_token"), time.Now())
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if !identity.Verified && !identity.Invalidated && auth.EnterpriseQuotaIdentity != nil && auth.EnterpriseQuotaIdentity.Verified && auth.EnterpriseQuotaIdentity.Binding == identity.Binding {
+		copyIdentity := *auth.EnterpriseQuotaIdentity
+		copyIdentity.CheckedAt = identity.CheckedAt
+		identity = &copyIdentity
+	}
+	updated.EnterpriseQuotaIdentity = identity
+	return updated, nil
 }
 
 func (e *GeminiEnterpriseExecutor) validate(opts coreexec.Options) error {
@@ -125,12 +149,19 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		if ctx.Err() != nil {
 			return nil, input, ctx.Err()
 		}
-		return nil, input, enterprise.Failure("upstream_unavailable", "cannot reach the Google Enterprise endpoint", false)
+		return nil, input, &ge.TransportError{Cause: err}
 	}
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		raw, errRead := io.ReadAll(io.LimitReader(response.Body, 1024*1024+1))
 		_ = response.Body.Close()
-		return nil, input, statusErr{code: response.StatusCode, msg: fmt.Sprintf("gemini-enterprise: Google returned HTTP %d", response.StatusCode)}
+		if ctx.Err() != nil {
+			return nil, input, ctx.Err()
+		}
+		if errRead != nil {
+			return nil, input, &ge.TransportError{Cause: errRead}
+		}
+		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, false)
 	}
 	return response, input, nil
 }
@@ -166,7 +197,9 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 			reporter.Publish(ctx, detail)
 		}
 	}()
-	parser := &enterprise.Parser{}
+	parser := &enterprise.Parser{ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+		return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
+	}}
 	err = parser.Parse(response.Body, func(event enterprise.Event) error {
 		reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
 		_, _, errAdd := output.Add(event)
@@ -239,7 +272,9 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 				reporter.Publish(ctx, detail)
 			}
 		}()
-		parser := &enterprise.Parser{}
+		parser := &enterprise.Parser{ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+			return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
+		}}
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
 			reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
 			previousAnnotations := len(output.Annotations)

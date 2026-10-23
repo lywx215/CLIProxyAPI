@@ -240,6 +240,9 @@ func (m *Manager) clientModelProjectionForAuth(auth *Auth, routeModel string, no
 
 	state := existingModelState(auth, targetKey)
 	isSuspended := auth.Disabled || auth.Status == StatusDisabled
+	if blocked, _ := auth.enterpriseQuota.blocked(now); blocked {
+		return registry.ClientModelProjection{ModelID: targetModel, Suspended: true, SuspendReason: "quota", QuotaExceeded: true}
+	}
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
 		isSuspended = true
 	}

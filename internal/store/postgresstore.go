@@ -161,6 +161,11 @@ func (s *PostgresStore) EnsureSchema(ctx context.Context) error {
 	`, cooldownTable)); err != nil {
 		return fmt.Errorf("postgres store: create cooldown table: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		id TEXT PRIMARY KEY, version BIGINT NOT NULL, content JSONB NOT NULL
+	)`, s.fullTableName(s.cfg.CooldownTable+"_shared"))); err != nil {
+		return fmt.Errorf("postgres store: create shared quota table: %w", err)
+	}
 	return nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	baseauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 )
 
 // PostAuthHook defines a function that is called after an Auth record is created
@@ -46,6 +47,9 @@ func GetRequestInfo(ctx context.Context) *RequestInfo {
 
 // Auth encapsulates the runtime state and metadata associated with a single credential.
 type Auth struct {
+	// EnterpriseQuotaIdentity is verified independently of user-supplied metadata.
+	EnterpriseQuotaIdentity *ge.QuotaIdentity `json:"-"`
+	enterpriseQuota         *enterpriseQuotaGate
 	// ID uniquely identifies the auth record across restarts.
 	ID string `json:"id"`
 	// RegistrationEpoch tracks monotonic registration cycles across unregister/re-register.
@@ -297,6 +301,10 @@ func (a *Auth) Clone() *Auth {
 		return nil
 	}
 	copyAuth := *a
+	if a.EnterpriseQuotaIdentity != nil {
+		identity := *a.EnterpriseQuotaIdentity
+		copyAuth.EnterpriseQuotaIdentity = &identity
+	}
 	copyAuth.Quota = a.Quota.Clone()
 	if a.Attributes != nil {
 		copyAuth.Attributes = make(map[string]string, len(a.Attributes))

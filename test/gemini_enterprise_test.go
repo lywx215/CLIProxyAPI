@@ -32,10 +32,10 @@ type enterpriseFixtureTransport struct{ calls atomic.Int32 }
 
 func (f *enterpriseFixtureTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper { return f }
 func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	f.calls.Add(1)
 	if req.URL.Host != "discoveryengine.googleapis.com" {
 		return nil, io.ErrUnexpectedEOF
 	}
+	f.calls.Add(1)
 	body, _ := io.ReadAll(req.Body)
 	text := "offline 前🙂引用"
 	if strings.Contains(gjson.GetBytes(body, "query.text").String(), "ONLY valid JSON") {
