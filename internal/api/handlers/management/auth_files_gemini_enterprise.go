@@ -27,19 +27,53 @@ var newGeminiEnterpriseOAuthClient = ge.Client
 // RequestGeminiEnterpriseToken is registered only by the v8 management API.
 func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 	h.mu.Lock()
-	if h.cfg == nil || h.cfg.OAuth.Providers.GeminiEnterprise == nil {
+	if h.cfg == nil {
 		h.mu.Unlock()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "configure oauth.providers.gemini-enterprise before login"})
 		return
 	}
-	binding := h.cfg.OAuth.Providers.GeminiEnterprise.WithDefaults()
+	var binding config.GeminiEnterpriseOAuth
+	if h.cfg.OAuth.Providers.GeminiEnterprise != nil {
+		binding = h.cfg.OAuth.Providers.GeminiEnterprise.WithDefaults()
+	}
 	proxy, authDir, home := h.cfg.ProxyURL, h.cfg.AuthDir, h.cfg.Home.Enabled
 	h.mu.Unlock()
 	if home {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "gemini-enterprise OAuth is not supported in CLIProxyAPIHome mode"})
 		return
 	}
-	oauth, err := ge.OAuth(binding, geminiEnterpriseCallbackURL)
+	discover := false
+	var oauth *oauth2.Config
+	var err error
+	if mode, specified := c.GetQuery("auto_discover_resources"); specified {
+		if mode != "true" && mode != "false" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid resource discovery mode"})
+			return
+		}
+		discover = mode == "true"
+		// Session inputs are independent of the global binding and other accounts.
+		binding = (config.GeminiEnterpriseOAuth{
+			ClientID: strings.TrimSpace(c.Query("client_id")), ClientSecretEnv: strings.TrimSpace(c.Query("client_secret_env")),
+			EngineID: strings.TrimSpace(c.Query("engine_id")), AssistantID: strings.TrimSpace(c.Query("assistant_id")),
+		}).WithDefaults()
+		if discover {
+			err = binding.ValidateDiscovery()
+		} else {
+			binding.ProjectID = strings.TrimSpace(c.Query("project_id"))
+			if location := strings.TrimSpace(c.Query("location")); location != "" {
+				binding.Location = location
+			}
+			if collection := strings.TrimSpace(c.Query("collection_id")); collection != "" {
+				binding.CollectionID = collection
+			}
+			err = binding.Validate()
+		}
+		if err == nil {
+			oauth, err = ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
+		}
+	} else {
+		oauth, err = ge.OAuth(binding, geminiEnterpriseCallbackURL)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -76,12 +110,13 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 			SetOAuthSessionError(state, "Invalid Gemini Enterprise OAuth callback")
 			return
 		}
-		h.finishGeminiEnterpriseLogin(ctx, state, binding, oauth, verifier, result.Code, proxy)
+		h.finishGeminiEnterpriseLoginWithDiscovery(ctx, state, binding, oauth, verifier, result.Code, proxy, discover)
 	}()
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok", "url": ge.AuthorizationURL(oauth, state, verifier), "state": state,
 		"callback_url": geminiEnterpriseCallbackURL, "manual_callback_required": !automatic,
+		"resource_inputs_supported": true,
 	})
 }
 
@@ -112,6 +147,10 @@ func waitEnterpriseCallback(ctx context.Context, state, path string) (oauthCallb
 }
 
 func (h *Handler) finishGeminiEnterpriseLogin(ctx context.Context, state string, binding config.GeminiEnterpriseOAuth, oauth *oauth2.Config, verifier, code, proxy string) {
+	h.finishGeminiEnterpriseLoginWithDiscovery(ctx, state, binding, oauth, verifier, code, proxy, false)
+}
+
+func (h *Handler) finishGeminiEnterpriseLoginWithDiscovery(ctx context.Context, state string, binding config.GeminiEnterpriseOAuth, oauth *oauth2.Config, verifier, code, proxy string, discover bool) {
 	if !IsOAuthSessionPending(state, ge.Provider) {
 		return
 	}
@@ -141,6 +180,19 @@ func (h *Handler) finishGeminiEnterpriseLogin(ctx context.Context, state string,
 	if err != nil {
 		SetOAuthSessionError(state, "Failed to read the authorized Google account")
 		return
+	}
+	if discover {
+		// Resource reads have no deadline; cancellation still invalidates this login.
+		resourceCtx, cancelResources := context.WithCancel(ctx)
+		defer cancelResources()
+		go watchOAuthSessionCancel(resourceCtx, cancelResources, state, ge.Provider)
+		binding, err = ge.ResolveResources(resourceCtx, client, binding, token.AccessToken)
+		if err != nil {
+			if IsOAuthSessionPending(state, ge.Provider) {
+				SetOAuthSessionError(state, err.Error())
+			}
+			return
+		}
 	}
 	var existing []*coreauth.Auth
 	if token.RefreshToken == "" {

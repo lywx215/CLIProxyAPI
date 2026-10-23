@@ -29,6 +29,15 @@ func OAuth(c config.GeminiEnterpriseOAuth, redirect string) (*oauth2.Config, err
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
+	return ApplicationOAuth(c, redirect)
+}
+
+// ApplicationOAuth acquires credentials without guessing the account's resource.
+func ApplicationOAuth(c config.GeminiEnterpriseOAuth, redirect string) (*oauth2.Config, error) {
+	c = c.WithDefaults()
+	if err := c.ValidateApplication(); err != nil {
+		return nil, err
+	}
 	secret := ""
 	if c.ClientSecretEnv != "" {
 		secret = os.Getenv(c.ClientSecretEnv)

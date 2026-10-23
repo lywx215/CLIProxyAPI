@@ -36,7 +36,7 @@ go build -o cli-proxy-api.exe ./cmd/server
 
 登录输出会明确说明自动续期是否就绪。Google 没有返回 refresh token 时，仅可保留同一账号、client 和资源绑定的已有 refresh token；没有匹配 token 则只能保存短期访问凭据，不会宣称可自动续期。`invalid_grant` 表示需要重新授权。
 
-登录先按宿主选定的存储契约保存认证记录，再发现模型。发现失败或用户中止目录读取不会丢失已完成并保存的 OAuth 授权。
+完整资源绑定的登录先按宿主选定的存储契约保存认证记录，再发现模型。管理页面的自动资源模式会先识别唯一的资源绑定，成功后才保存凭据；资源识别失败或取消时不保存新记录。之后的模型目录发现失败或被中止，不会丢失已经保存的 OAuth 授权。
 
 认证记录的 provider/type 都是 `gemini-enterprise`，文件名包含账号和应用/资源绑定哈希。同一账号的不同应用不会互相覆盖。记录保存应用 ID、secret 环境变量名、资源绑定和 token；已有记录不会因 YAML 的应用配置变化而被重新绑定。修改应用或资源后重新登录，会建立相应绑定的记录。环境变量名对应的 secret 必须一直可用于该账号刷新。
 
@@ -44,11 +44,11 @@ go build -o cli-proxy-api.exe ./cmd/server
 
 ## 管理页面与 v8 接口
 
-管理页面提供 Gemini Enterprise 授权入口，填写项目、区域、集合、引擎和助手这五个资源字段。当前页面内置已确认的公开 OAuth 应用 ID，Secret 由后端的 `GEMINI_ENTERPRISE_CLIENT_SECRET` 环境变量提供，不在页面输入或保存。需要使用其他 OAuth 应用时，使用上述配置和 CLI 登录；已有账号继续使用各自保存的应用与资源绑定。
+管理页面提供 Gemini Enterprise 授权入口，默认填写引擎 ID 和可编辑的助手 ID；助手留空时使用 `default_assistant`。Google 授权后，后端搜索当前账号可见的项目，再通过 `Engine.Get` 查找手填引擎对应的唯一资源。自动模式使用 `default_collection` 和已知候选区域；项目不可见、匹配不唯一或使用其他集合/区域时，可打开手动模式补填项目、区域和集合，再重新授权。
 
-页面通过 `/v8/management/config/oauth/providers/gemini-enterprise` 保存资源配置，并使用 `/v8/management/config` 返回的 ETag 执行 `If-Match` 并发校验。即使表单没有修改，也会在开始授权前重新核对当前绑定；其他窗口修改配置时，先重新加载再授权。
+当前页面内置已确认的公开 OAuth 应用 ID，Secret 由后端的 `GEMINI_ENTERPRISE_CLIENT_SECRET` 环境变量提供，不在页面输入或保存。表单只向启动接口提交本次会话参数，不修改全局配置，也不复用其他账号的资源绑定。CLI 和不带新模式参数的管理调用仍使用配置中的默认绑定；该默认配置的 PATCH/ETag 契约保持不变。需要使用其他 OAuth 应用时，可使用配置与 CLI，或按 v8 接口提交相应会话参数。
 
-登录使用 `GET /v8/management/oauth/auth-url?provider=gemini-enterprise&is_webui=true`。返回的 `callback_url` 固定为 `http://localhost:8788/oauth-callback`；端口可用时由后端自动接收回调，否则支持把完整回调地址提交到 `/v8/management/oauth/callback`。收到回调后仍需等待 `/v8/management/oauth/status` 返回 `ok`，才表示凭据已交换并保存；取消通过 `DELETE /v8/management/oauth/session` 完成。此入口仅在普通模式的 v8 管理 API 提供。
+登录使用 `GET /v8/management/oauth/auth-url?provider=gemini-enterprise&is_webui=true`，新表单同时传入 `auto_discover_resources` 和公开会话参数，并检查响应的 `resource_inputs_supported: true`。旧后端缺少该标记时提示升级，并尽力取消刚创建的会话。返回的 `callback_url` 固定为 `http://localhost:8788/oauth-callback`；端口可用时由后端自动接收回调，否则支持把完整回调地址提交到 `/v8/management/oauth/callback`。收到回调后仍需等待 `/v8/management/oauth/status` 返回 `ok`，才表示资源绑定及凭据已保存；取消通过 `DELETE /v8/management/oauth/session` 完成。此入口仅在普通模式的 v8 管理 API 提供。
 
 认证文件列表显示账号实际保存的应用和资源标识，并提示是否具有 refresh token。没有 refresh token 的账号不会显示单账号手动续期按钮。账号列表不公开 Secret 或 Token，不宣称支持尚未实现的 Enterprise 配额查询。接口字段见 [v8 Management API](docs/management-api-v8.md#gemini-enterprise)。
 
@@ -56,7 +56,7 @@ go build -o cli-proxy-api.exe ./cmd/server
 
 ## 模型发现与调度
 
-登录会尝试只读发现。服务启动、账号新增/重绑时异步发现，运行期间约每五分钟刷新每个账号的目录：
+以下是模型目录发现，与授权期间的资源识别分开。登录会尝试只读发现；服务启动、账号新增/重绑时异步发现，运行期间约每五分钟刷新每个账号的目录：
 
 ```text
 GET https://discoveryengine.googleapis.com/v1alpha/projects/{project}/locations/{location}/collections/{collection}/engines/{engine}/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en

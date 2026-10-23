@@ -142,24 +142,39 @@ query parameter is required; Vertex is currently the supported import provider.
 
 ### Gemini Enterprise
 
-Configure `oauth.providers.gemini-enterprise` before starting login. The binding
-contains `client-id`, optional `client-secret-env`, `project-id`, `location`,
-`collection-id`, `engine-id`, and `assistant-id`. The secret value is resolved
-only from the named backend environment variable. Client and resource query
-parameters cannot override this configured binding.
+Without `auto_discover_resources`, login uses the configured
+`oauth.providers.gemini-enterprise` binding: `client-id`, optional
+`client-secret-env`, `project-id`, `location`, `collection-id`, `engine-id`,
+and `assistant-id`. Other client and resource query parameters are ignored in
+this legacy mode. Secret values are resolved only from the named backend
+environment variable.
 
 `GET /oauth/auth-url?provider=gemini-enterprise&is_webui=true` returns a PKCE
-authorization URL, `state`, `callback_url`, and `manual_callback_required`.
+authorization URL, `state`, `callback_url`, `manual_callback_required`, and
+`resource_inputs_supported: true`.
 Register the exact callback URL `http://localhost:8788/oauth-callback` in Google.
 The backend listens on loopback when the port is available; otherwise submit
 the complete redirect URL through `POST /oauth/callback`. Status polling and
 cancellation use the shared endpoints above. Enterprise login is available only
 under the v8 management API and outside Home mode.
 
-The management page saves the binding through
-`PATCH /config/oauth/providers/gemini-enterprise`, using the current `/config`
-ETag as `If-Match`. A changed revision returns HTTP 409. Re-read the binding
-before authorization even when the form has no edits.
+The management page passes session-specific public inputs without changing the
+global configuration. `auto_discover_resources=true` requires `client_id`,
+`engine_id`, optional `client_secret_env`, and optional `assistant_id` (defaults
+to `default_assistant`). After Google authorization, the backend searches visible
+projects and probes the supplied engine ID using `Engine.Get`, with the candidate
+resource project as `X-Goog-User-Project`. It checks known locations under
+`default_collection`, saving credentials only after finding one readable match.
+It does not use engine/assistant list APIs or infer the assistant ID. Missing,
+ambiguous, or incomplete results return a session error without saving credentials.
+
+For manual resource input, pass `auto_discover_resources=false` and include
+`project_id`, optional `location` (defaults to `global`), and optional
+`collection_id` (defaults to `default_collection`). Both modes keep inputs local
+to the OAuth session. Clients must check `resource_inputs_supported` before
+offering the returned authorization link. The global binding PATCH endpoint
+remains available for default configuration, with the existing `If-Match`/409
+contract; the current authorization form does not call it.
 
 `GET /credentials` includes a `gemini_enterprise` summary for these accounts:
 public client and resource identifiers, optional `expiry`, and
