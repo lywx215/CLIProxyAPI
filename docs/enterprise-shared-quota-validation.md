@@ -7,6 +7,10 @@ external Claude/Antigravity review, or real Google/model request was authorized 
 performed for acceptance. Fixtures do not establish the format of a real natural
 Google shared daily quota exhaustion event.
 
+Latest merged-branch full run (2026-10-23): 107 packages passed, 33 had no test files,
+and three test executables were blocked by Windows Application Control. No test
+assertion failed. The full suite remains non-green; see the post-merge run below.
+
 ## Implementation and regression coverage
 
 | Area | Local evidence |
@@ -141,8 +145,7 @@ source was frozen; no application code or built artifact changed during that req
 
 | Item | Current evidence | Remaining action |
 | --- | --- | --- |
-| Full Go suite | Final run: 89 packages passed, 19 test executables blocked by Windows Application Control, one Home assertion failed | Run `go test -timeout 240s ./...` in an execution environment that permits the test executables; retain the existing policy evidence and do not bypass policy |
-| Home publisher timing | The failed test and entire `sdk/cliproxy` package passed on separate reruns | Investigate the original timeout and repeat under comparable suite load; the suspected heartbeat timing cause is not confirmed |
+| Full Go suite | Fresh merged-branch run: 107 packages passed, 33 had no tests, three policy blocks, zero assertion failures | Execute `internal/translator/gemini/interactions`, `internal/watcher` and `internal/watcher/synthesizer` where policy permits, then complete a green full suite; preserve prior policy evidence and do not bypass policy |
 | Race detection | Attempt refused because `CGO_ENABLED=0` | Run the affected concurrency suites with a compatible Go/C toolchain and race support |
 | Live PostgreSQL | Deterministic SQL-driver transaction/version tests passed | Exercise schema creation, restart/restore, stale version rejection and state-store transition against a permitted test database |
 | Real Google behavior | All generation/error scenarios are synthetic; no real model call was made | With separate authorization and a suitable natural event, validate structured shared-quota signals, identity permission behavior, recovery hints and one-request recovery probing |
@@ -211,7 +214,73 @@ fast-forward. The target frontend artifact and backend management asset have ide
 Git blob `532e86c2156777f033d08639e4f60a12c8da128d` and the previously recorded
 SHA-256 `99c0ab3703c5282306e3ab7e55d0159b16b2c273e9d94425dd4e5ee6474310f4`.
 
-The full Go suite was not rerun during this merge. This focused success does not
-replace the earlier full-suite failure/policy evidence or resolve the remaining
-Home timing, race, live PostgreSQL or real Google validation items above. No policy
-setting, credential, IAM resource or deployment was changed.
+No full Go suite was rerun as part of the merge itself. The later full run is
+recorded below. The merge-only focused success did not resolve the earlier Home
+timing, race, live PostgreSQL or real Google validation gaps. No policy setting,
+credential, IAM resource or deployment was changed.
+
+## Post-merge full Go suite (2026-10-23)
+
+A fresh complete backend run was performed on branch
+`codex/gemini-enterprise-20261023` at application commit
+`93d7faef29cacf9d7eae7e5eaa7ab10fa7782e55`. The worktree was clean before and after
+the test command. Only this validation document was updated afterward.
+
+```text
+go test -json -timeout 240s -count=1 ./...
+```
+
+The run used Go 1.26.0 on Windows/amd64 with `CGO_ENABLED=0`, from 23:33:45 to
+23:35:18 Asia/Shanghai (93.06 seconds). `-count=1` forced fresh test execution.
+Results across 143 packages:
+
+| Result | Packages |
+| --- | --- |
+| Passed | 107 |
+| No test files | 33 |
+| Windows Application Control execution block | 3 |
+| Test assertion failures | 0 |
+
+The command exited with status 1 because Windows prevented these test executables
+from starting:
+
+```text
+internal/translator/gemini/interactions
+internal/watcher
+internal/watcher/synthesizer
+```
+
+Each failure reports `An Application Control policy has blocked this file.` There
+was no policy change, alternate executable packaging or execution workaround, and no
+automatic retry of the blocked packages. Their tests remain unverified by this run.
+
+The previously failing
+`TestServiceReplacementWaitsForPublisherExitAndPinsACKedLifetimeDependencies` passed
+in this full-suite run (0.13 seconds), as did its entire `sdk/cliproxy` package
+(20.273 seconds). The earlier failure was not reproduced, so it is no longer listed
+as a currently failing check. Its original cause is still unconfirmed; the original
+failure and rerun logs remain preserved.
+
+Nine top-level tests were skipped, covering opt-in live/native-fixture checks,
+TLS capture and the optional Enterprise SDK harness. Their exact names are retained
+in the run summary. These skips are not counted as passed tests, and no live Google
+or model exercise was enabled. Race detection, live PostgreSQL and real Google
+behavior remain separate outstanding validation items in the table above.
+
+Full JSON events, stderr, execution metadata, exit status and parsed summary are
+stored in this subdirectory of the evidence directory:
+
+```text
+merged-full-go-20261023T153345Z/
+  run.json
+  events.jsonl
+  stderr.log
+  completion.json
+  summary.json
+```
+
+Earlier full-suite and merge-only evidence is historical and has not been replaced.
+This latest run narrows the current full-suite execution gap from the earlier 19
+policy blocks to the three packages above. `current-validation-status.json` in the
+evidence directory records the current remaining items and the documentation commit
+separately from the tested application commit. Nothing was pushed or deployed.
