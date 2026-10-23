@@ -221,7 +221,6 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 		claudeInputTokens := helps.NewClaudeInputTokenState(from, to, responseFormat, originalPayload)
 		var streamUsage helps.StreamUsageBuffer
 		var streamErr error
-		defer func() { diag.Finish(streamErr) }()
 		var pendingJSON []byte
 		var replayCommitted bool
 		var terminalDelivered bool
@@ -243,6 +242,9 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 			if terminalDelivered {
 				commitReplay()
 			}
+			// The consumer may seal diagnostics as soon as it sees EOF, before
+			// acknowledging delivery for the independent usage settlement below.
+			diag.Finish(streamErr)
 			close(out)
 			if streamErr == nil {
 				streamErr = ctx.Err()
@@ -315,6 +317,7 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 				streamErr = newAntigravityStatusErr(statusCode, payload)
 				stopDeliverySupport()
 				helps.RecordAPIResponseError(ctx, e.cfg, streamErr)
+				diag.Finish(streamErr)
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Err: streamErr}:
 				case <-ctx.Done():

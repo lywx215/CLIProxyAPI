@@ -2,8 +2,10 @@ package util
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -18,20 +20,57 @@ var inPlaceSJSONTokens = []string{"ReplaceInPlace", "Optimistic"}
 // from the same buffer can still be alive at that point.
 var inPlaceSJSONAllowlist = map[string]struct{}{}
 
-// forEachSourceFile visits every non-test Go file in the repository.
+// forEachSourceFile audits tracked and non-ignored new repository source. Tracked
+// files remain in scope even if a later ignore rule matches them. A source archive
+// without Git metadata uses the filesystem fallback instead.
 func forEachSourceFile(t *testing.T, root string, visit func(rel string, data []byte)) {
 	t.Helper()
+	root = filepath.Clean(root)
+	if _, errStat := os.Stat(filepath.Join(root, ".git")); errStat == nil {
+		cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.go")
+		output, errList := cmd.Output()
+		if errList != nil {
+			t.Fatalf("list repository source: %v", errList)
+		}
+		paths := strings.Split(string(output), "\x00")
+		sort.Strings(paths)
+		previous := ""
+		for _, rel := range paths {
+			if rel == previous || !isAuditedSourceFile(rel) {
+				continue
+			}
+			previous = rel
+			data, errRead := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if os.IsNotExist(errRead) {
+				// git ls-files includes tracked files deleted in the working tree.
+				continue
+			}
+			if errRead != nil {
+				t.Fatalf("read repository source %s: %v", rel, errRead)
+			}
+			visit(rel, data)
+		}
+		return
+	} else if !os.IsNotExist(errStat) {
+		t.Fatalf("stat repository metadata: %v", errStat)
+	}
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") {
+			if path == root {
+				return nil
+			}
+			if excludedSourceDirectory(d.Name()) {
 				return filepath.SkipDir
 			}
-			switch d.Name() {
-			case "vendor", "node_modules", "testdata":
+			// Nested repositories/worktrees own their own source audit. Their .git
+			// marker may be a directory or a worktree pointer file.
+			if _, errGit := os.Stat(filepath.Join(path, ".git")); errGit == nil {
 				return filepath.SkipDir
+			} else if !os.IsNotExist(errGit) {
+				return errGit
 			}
 			return nil
 		}
@@ -52,6 +91,31 @@ func forEachSourceFile(t *testing.T, root string, visit func(rel string, data []
 	if err != nil {
 		t.Fatalf("walk repository: %v", err)
 	}
+}
+
+func excludedSourceDirectory(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	switch name {
+	case "vendor", "node_modules", "testdata":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAuditedSourceFile(rel string) bool {
+	if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for _, part := range parts[:len(parts)-1] {
+		if excludedSourceDirectory(part) {
+			return false
+		}
+	}
+	return true
 }
 
 // TestNoInPlaceSJSONWrites protects the invariant that request payload buffers
@@ -109,6 +173,7 @@ var reviewedInPlaceByteWrites = map[string]reviewedInPlaceByteWrite{
 	"internal/runtime/executor/claude_executor_cloaking.go": {1, "shifts []string headers to prepend a block; no byte of any payload is rewritten"},
 	"internal/runtime/executor/claude_executor_request.go":  {3, "shifts []string headers to insert a part; no byte of any payload is rewritten"},
 	"internal/runtime/executor/helps/claude_mcp_alias.go":   {1, "copies an HMAC sum into a local fixed-size digest array"},
+	"internal/runtime/budget/wal.go":                        {1, "copies json.Marshal output into a freshly allocated binary WAL frame before any reader can observe it; caller JSON bytes are never mutated"},
 	"internal/client/codex/live/tcp_proxy.go":               {1, "copies header and payload into a freshly allocated frame"},
 	"internal/home/client.go":                               {1, "zeroes a secret buffer after json.Unmarshal has copied every value out"},
 	"internal/pluginstore/auth.go":                          {1, "zeroes a locally built credential buffer after base64 encoding copied it out"},
