@@ -237,6 +237,31 @@ go test -json -count=1 -timeout 240s ./...
 
 本轮没有打开 Google 授权页、交换或保存真实 Token、追加模型请求、push 或部署。合成本机服务和临时浏览器会话已关闭；前述真实 Argon 验收仍以其原始阶段记录为准。
 
+## 资源自动发现流程的真实验收（2026-10-23 午后，北京时间）
+
+本轮重新编译并固定使用后端提交 `74fe54b7ad53adbd4863166b53937231974b7704`；配套前端已提交版本 `cd671427334346076b96c37e36d5a2e5ed22b142` 作为版本参考，随后并发产生的前端未提交改动不在本轮真实验收范围内。下述八项生成用例均运行在同一个已校验的 server 二进制下，其 SHA256 为 `101aa594b65e35fd2e97498df7bb9e842216edbb23c258b8b989fecf6f6342f8`。最终脱敏报告完成于 `2026-10-23T13:07:56+08:00`。
+
+复用此前确认的 OAuth 客户端及 Windows 当前用户 DPAPI 保存的 Secret，由用户完成新的 Google 授权。验收从空的隔离认证目录启动，全局 `oauth.providers.gemini-enterprise` 绑定为空；通过真实 v8 管理授权入口传入 `auto_discover_resources=true`、客户端 ID、Secret 环境变量名、引擎 ID 和助手 ID，没有随会话传入项目、区域或集合。
+
+后端完成授权码交换、Google 账号识别、可见项目搜索和 `Engine.Get` 唯一匹配，保存一条同时具有 access token 和 refresh token 的新记录。自动识别出的项目、`global` 区域和 `default_collection` 集合与已有资源一致，引擎及输入的 `default_assistant` 绑定匹配。助手 ID 来自本次输入，不能将它描述为自动发现助手。`GET /v8/management/credentials` 的公开摘要与保存的绑定一致，全局配置及其 ETag 保持不变，没有加载或覆盖旧账号记录。取得 refresh token 不等于已验证自然到期或真实轮换，本轮未增加这类验证。
+
+OpenAI Python SDK `3.36.1` 和 Google GenAI Python SDK `2.32.0` 的模型列表各返回七项，均包含 `gemini-4-argon`，且没有为该模型宣称 `countTokens` 能力。
+
+| 真实 Argon 用例 | OpenAI SDK | Google GenAI SDK |
+| --- | --- | --- |
+| 文本历史、随机口令回忆及 JSON 普通响应 | 通过 | 通过 |
+| Google Search SSE 与实际引用 | 通过 | 通过 |
+| 指定 URL 四字段 JSON 与不可访问 URL 负对照 | 通过 | 通过 |
+| Python 代码及带随机标记的真实执行结果 SSE | 通过 | 通过 |
+
+本轮累计发送八次真实 Argon 生成请求，八个独立用例全部通过，未启用自动重试，也未遍历其他模型生成。两套协议均校验正常终态及没有虚构 usage。独立引用校验确认 OpenAI 的四段引用范围有效，Gemini 的五段 grounding 支持范围与 UTF-8 文本一致；两条实际引用跳转均以 HTTP 200 落到 [Google 官方 Gemini Enterprise 配额文档](https://docs.cloud.google.com/gemini/enterprise/docs/quotas-and-overages)。目录、模型列表和引用落地检查不计入生成请求。
+
+首次会话因浏览器无法访问本机 loopback 而超时的记录继续保留。后续新会话已完成回调、交换和资源绑定保存；验收辅助脚本在读取账号摘要时曾误用旧列表路径而得到 404，修正为 `/v8/management/credentials` 后复用刚保存的凭据继续，没有为该辅助脚本问题再次授权或增加生成请求。这些中断记录没有作为通过结果覆盖。
+
+脱敏本机证据保留在任务目录 `enterprise-live-resources-20261023` 的 `FINAL_REPORT.json`、`resource-discovery-result.json` 和 `argon-live-results.json` 中；Secret、Token、授权码及凭据目录不随文档提交。验收服务已停止，本轮临时二进制已删除，原 DPAPI Secret 未改变，没有部署、推送或修改 Google IAM。
+
+本轮没有重跑完整 Go 测试，也没有修改或绕过 Windows Application Control。此前固定提交 `4a23c88b` 的隔离全量结果（91 包通过、17 包受策略拦截、33 包标记 skip）及十六份专项诊断文件继续保留；本轮真实授权与八项 SDK 成功不能替代该全量回归结果。此前各阶段的失败、拦截和成功记录均按原阶段保留。
+
 ## OAuth 切换与本机回调故障排查
 
 - **切换新旧 client：** 修改 `oauth.providers.gemini-enterprise` 只影响之后的登录，不会重写已保存账号的 client/resource 绑定。新 client 必须重新授权；原 client 的 refresh token 不能替换为新 client 的凭据。同一账号不同 client 的记录按绑定哈希共存。不同 client 建议使用不同的 `client-secret-env` 名称，避免覆盖旧环境变量后让旧记录使用新 client 的 secret。
