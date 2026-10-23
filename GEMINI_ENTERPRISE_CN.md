@@ -276,6 +276,45 @@ OpenAI Python SDK `3.36.1` 和 Google GenAI Python SDK `2.32.0` 的模型列表�
 
 本轮没有重跑完整 Go 测试，也没有修改或绕过 Windows Application Control。此前固定提交 `4a23c88b` 的隔离全量结果（91 包通过、17 包受策略拦截、33 包标记 skip）及十六份专项诊断文件继续保留；本轮真实授权与八项 SDK 成功不能替代该全量回归结果。此前各阶段的失败、拦截和成功记录均按原阶段保留。
 
+## 后端 9ab28a2f 补测记录（2026-10-23）
+
+本次固定后端提交 `9ab28a2f333dbc8dbdb240f84a3885105ad9cfaa`，在隔离源码快照中补跑此前被 Windows Application Control 阻止启动的四个 Go 包及离线双 SDK。执行前后均校验 2,564 个源码文件与提交内容一致，不包含并行工作区改动；快照没有 `.git` 元数据。最终脱敏报告完成于 `2026-10-23T18:06:02+08:00`。
+
+标准 Go 命令于北京时间 `17:59:34` 开始，`17:59:57` 完成，退出码为 `0`，耗时 `23.11` 秒：
+
+```powershell
+go test -work -json -count=1 -timeout 240s ./sdk/cliproxy/usage ./internal/runtime/executor/helps ./test ./internal/api/handlers/management
+```
+
+| Go 测试包 | 通过的测试及子测试数 | 结果 |
+| --- | ---: | --- |
+| `sdk/cliproxy/usage` | 34 | 通过 |
+| `internal/runtime/executor/helps` | 1,358 | 通过 |
+| `test` | 396 | 通过 |
+| `internal/api/handlers/management` | 503 | 通过 |
+| 合计 | 2,291 | 四包全部通过 |
+
+没有失败断言或受阻包。此前修正未知零总量后的 `TestEnsureTokenBreakdownPreservesPartialAvailability` 本次已实际执行并通过，补齐了上一阶段最终版本未能运行的断言。`-work` 仅保留 Go 默认临时目录中的文件供只读哈希及签名核对，没有改变编译与原生启动方式，也没有迁移、更名或重新执行测试程序来规避策略。
+
+同一固定快照在已安装 SDK 依赖的 Python 环境中执行：
+
+```powershell
+python test/gemini_enterprise_sdk_smoke.py
+```
+
+离线回归于 `18:02:43` 开始，`18:02:57` 完成，退出码为 `0`，耗时 `13.25` 秒。OpenAI Python SDK `3.36.1` 的五项检查和 Google GenAI Python SDK `2.32.0` 的四项检查全部通过，共九项：
+
+- OpenAI：普通响应、引用及 Token 用量；SSE 首个可见分片与终态；`include_usage` 末尾用量块；JSON 普通响应校验；JSON SSE 缓冲。
+- Google GenAI：普通响应、代码、执行结果、grounding 及 Token 用量；SSE 终态与用量；JSON 普通响应校验；JSON SSE 缓冲。
+
+两套真实 SDK 均只请求本机 Go 代理及其合成上游；该 Go 助手通过标准 `go test -count=1 -timeout 180s -run ^TestEnterpriseSDKHarness$ ./test` 启动。用量检查确认已知输入/输出为正数、合计一致，未提供的思考/缓存细分保持缺失。本次没有重新授权、调用 Google 或发送真实模型生成请求，不能将九项离线检查描述为新的真实 Argon 验收。结束后确认没有遗留 SDK 助手进程。
+
+历史 Code Integrity 事件及只读错误码映射确认，先前的 `VerifiedAndReputableDesktop` 拦截状态 `0xc0e90002` 对应 Windows 错误 `4551`。本次前后系统仍处于强制模式 `1`，策略文件 SHA256 均为 `2668895a5b233a80432d00d67251d7b7f52686a3fb13780f4b242c5a1f937a01`，四个测试程序仍未签名；回归时间窗口没有查到新的匹配拦截事件。没有修改系统策略、证书、信任或签名配置，也没有使用替代执行方式。
+
+本次测试程序的 SHA256 与已保存的历史受阻程序均不相同；源码路径和 Git 元数据条件也与此前工作区运行不同。现有证据尚不能确定放行决定变化的具体原因，不能据此认定原受阻程序已经获准，或保证未来构建不再被拦截。上述成功仅补齐固定提交的四包与离线双 SDK，不替代此前各阶段的 `go test ./...` 结果，不宣称重新完成全量回归；历史失败和拦截记录按原阶段保留。
+
+本机脱敏证据目录标识为 `windows4551-9ab28a2f-20261023`，包含 `FINAL_REPORT.json`、`go-four.log`、`go-four-summary.json`、`go-four-work-audit.json`、`sdk-offline.log`、`sdk-offline-summary.json`、策略前后快照、Code Integrity 事件及 `preservation-supplement.json`。既有 169 份受保护证据、另行核对的 61 份早期诊断以及 2,145 个旧源码快照文件均保持原哈希；这些计数分组记录，不合并为不重复文件总数。其他无关改动保留，补测期间并行产生的 `7b42e084` 未纳入固定快照。本节文档补录仅核对已有证据，没有追加测试、模型请求或修改静态产物，暂不推送。
+
 ## OAuth 切换与本机回调故障排查
 
 - **切换新旧 client：** 修改 `oauth.providers.gemini-enterprise` 只影响之后的登录，不会重写已保存账号的 client/resource 绑定。新 client 必须重新授权；原 client 的 refresh token 不能替换为新 client 的凭据。同一账号不同 client 的记录按绑定哈希共存。不同 client 建议使用不同的 `client-secret-env` 名称，避免覆盖旧环境变量后让旧记录使用新 client 的 secret。

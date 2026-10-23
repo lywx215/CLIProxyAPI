@@ -137,3 +137,11 @@
 系统策略仍为强制模式 `1`，既有策略文件 SHA256 仍为 `2668895a5b233a80432d00d67251d7b7f52686a3fb13780f4b242c5a1f937a01`；独立 server 仍未签名。本轮没有修改或绕过策略、证书和信任配置，也没有用其他执行方式替代受阻的测试。历史 4551、固定提交全量受阻及本轮拦截日志均保留，不因独立实例成功启动而宣称系统问题已经消除。
 
 本机脱敏证据目录标识为 `enterprise-token-statistics-20261023`，含回归日志、HTTP 两阶段结果、浏览器及导出核对、固定构建环境、产物哈希和清理记录。原诊断记录与其他无关改动保留，独立实例及浏览器验收会话已停止；两个仓库分别提交，暂不推送。
+
+## 后端 9ab28a2f 的补测结果（2026-10-23）
+
+后续固定后端 `9ab28a2f333dbc8dbdb240f84a3885105ad9cfaa` 补跑上一节四个受阻包，`sdk/cliproxy/usage`、`internal/runtime/executor/helps`、`test` 及 `internal/api/handlers/management` 全部通过，共 2,291 项测试及子测试；`TestEnsureTokenBreakdownPreservesPartialAvailability` 已在该固定版本执行通过。OpenAI Python SDK `3.36.1` 与 Google GenAI Python SDK `2.32.0` 对本机合成 Go 上游的九项离线检查也全部通过，包含普通/流式响应、JSON、引用或 grounding 及用量字段。
+
+系统策略保持强制模式 `1`，策略文件哈希未变，没有修改或绕过安全策略；本轮未重现 4551，但测试程序与历史受阻程序的哈希不同，放行原因尚未确定。前文受阻结果和全量回归记录继续按原阶段保留。本次只补齐上述后端与离线 SDK 检查，没有重新执行前端构建、浏览器联调或真实 Google/Argon 请求。
+
+固定源码、命令、各包计数、证据目录及验收边界见 [后端补测记录](GEMINI_ENTERPRISE_CN.md#后端-9ab28a2f-补测记录2026-10-23)。其他无关改动及历史诊断均保留，暂不推送。
