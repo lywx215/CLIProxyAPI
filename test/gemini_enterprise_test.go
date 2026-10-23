@@ -3,11 +3,13 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	runtimeexec "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	stats "github.com/router-for-me/CLIProxyAPI/v8/internal/usage"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	geminihandlers "github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers/gemini"
@@ -28,7 +31,22 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type enterpriseFixtureTransport struct{ calls atomic.Int32 }
+var enterpriseFixtureModels = []string{
+	"gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash",
+	"gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro",
+}
+
+type enterpriseFixtureTransport struct {
+	calls    atomic.Int32
+	mu       sync.Mutex
+	lastBody []byte
+}
+
+func (f *enterpriseFixtureTransport) requestBody() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]byte(nil), f.lastBody...)
+}
 
 func (f *enterpriseFixtureTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper { return f }
 func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -37,6 +55,9 @@ func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Respons
 		return nil, io.ErrUnexpectedEOF
 	}
 	body, _ := io.ReadAll(req.Body)
+	f.mu.Lock()
+	f.lastBody = append([]byte(nil), body...)
+	f.mu.Unlock()
 	text := "offline 前🙂引用"
 	if strings.Contains(gjson.GetBytes(body, "query.text").String(), "ONLY valid JSON") {
 		text = `{"ok":true}`
@@ -58,18 +79,26 @@ func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Respons
 
 func enterpriseFixtureRouter(t *testing.T) (*gin.Engine, *enterpriseFixtureTransport, *coreauth.Manager) {
 	t.Helper()
+	return enterpriseFixtureRouterWithConfig(t, &config.Config{})
+}
+
+func enterpriseFixtureRouterWithConfig(t *testing.T, cfg *config.Config) (*gin.Engine, *enterpriseFixtureTransport, *coreauth.Manager) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	manager := coreauth.NewManager(nil, &coreauth.RoundRobinSelector{}, nil)
 	transport := &enterpriseFixtureTransport{}
 	manager.SetRoundTripperProvider(transport)
-	cfg := &config.Config{}
 	manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(cfg))
 	id := "enterprise-wire-fixture"
 	_, err := manager.Register(context.Background(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "fixture-client", ProjectID: "fixture-project", EngineID: "fixture-engine"}, "fixture@example.com", &oauth2.Token{AccessToken: "fixture-access", RefreshToken: "fixture-refresh", Expiry: time.Now().Add(time.Hour)})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, []*registry.ModelInfo{{ID: "gemini-4-argon", Name: "models/gemini-4-argon", Type: "gemini", OwnedBy: ge.Provider, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}})
+	models := make([]*registry.ModelInfo, 0, len(enterpriseFixtureModels))
+	for _, model := range enterpriseFixtureModels {
+		models = append(models, &registry.ModelInfo{ID: model, Name: "models/" + model, Type: "gemini", OwnedBy: ge.Provider, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}})
+	}
+	registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, models)
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(id) })
 	base := handlers.NewBaseAPIHandlers(&cfg.SDKConfig, manager)
 	chat := openaihandlers.NewOpenAIAPIHandler(base)
@@ -81,6 +110,205 @@ func enterpriseFixtureRouter(t *testing.T) (*gin.Engine, *enterpriseFixtureTrans
 	router.GET("/v1beta/models", gemini.GeminiModels)
 	router.POST("/v1beta/models/*action", gemini.GeminiHandler)
 	return router, transport, manager
+}
+
+func enterprisePublicRequest(t *testing.T, model, protocol string, stream bool, fields map[string]any) (string, []byte) {
+	t.Helper()
+	path := "/v1/chat/completions"
+	request := map[string]any{"model": model, "messages": []map[string]any{{"role": "user", "content": "hi"}}, "stream": stream}
+	if protocol == "gemini" {
+		action := "generateContent"
+		if stream {
+			action = "streamGenerateContent?alt=sse"
+		}
+		path = "/v1beta/models/" + model + ":" + action
+		request = map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"text": "hi"}}}}}
+	}
+	for key, value := range fields {
+		request[key] = value
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path, body
+}
+
+func enterprisePublicCall(router *gin.Engine, path string, body []byte) *httptest.ResponseRecorder {
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func enterprisePublicText(body []byte, protocol string, stream bool) string {
+	packets := []string{string(body)}
+	if stream {
+		packets = nil
+		for _, line := range strings.Split(string(body), "\n") {
+			if strings.HasPrefix(line, "data:") {
+				packets = append(packets, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			}
+		}
+	}
+	var text strings.Builder
+	for _, packet := range packets {
+		root := gjson.Parse(packet)
+		if protocol == "gemini" {
+			for _, part := range root.Get("candidates.0.content.parts").Array() {
+				text.WriteString(part.Get("text").String())
+			}
+		} else if stream {
+			text.WriteString(root.Get("choices.0.delta.content").String())
+		} else {
+			text.WriteString(root.Get("choices.0.message.content").String())
+		}
+	}
+	return text.String()
+}
+
+func TestEnterprisePublicPayloadValidationAllModels(t *testing.T) {
+	const privateValue = "synthetic-private-payload-value"
+	modelRules := []config.PayloadModelRule{{Name: "gemini-*", Protocol: ge.Provider}}
+	for _, scenario := range []struct {
+		name, field, reason string
+		params              map[string]any
+		filter              []string
+	}{
+		{"native generation config", "generationConfig", "is not supported", map[string]any{"generationConfig.thinkingConfig.includeThoughts": true}, nil},
+		{"native system instruction", "systemInstruction", "is not supported", map[string]any{"systemInstruction.parts": []map[string]string{{"text": privateValue}}}, nil},
+		{"unknown nested field", "generationSpec.temperature", "is not supported", map[string]any{"generationSpec.temperature": privateValue}, nil},
+		{"wrong object type", "toolsSpec.webGroundingSpec", "must be an object", map[string]any{"toolsSpec.webGroundingSpec": []string{privateValue}}, nil},
+		{"null text", "languageCode", "must be text", map[string]any{"languageCode": nil}, nil},
+		{"filtered required field", "query.text", "is required", nil, []string{"query.text"}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			cfg := &config.Config{Payload: config.PayloadConfig{}}
+			if scenario.params != nil {
+				cfg.Payload.Override = []config.PayloadRule{{Models: modelRules, Params: scenario.params}}
+			}
+			if scenario.filter != nil {
+				cfg.Payload.Filter = []config.PayloadFilterRule{{Models: modelRules, Params: scenario.filter}}
+			}
+			router, transport, _ := enterpriseFixtureRouterWithConfig(t, cfg)
+			for _, model := range enterpriseFixtureModels {
+				for _, protocol := range []string{"openai", "gemini"} {
+					for _, stream := range []bool{false, true} {
+						t.Run(fmt.Sprintf("%s/%s/stream=%t", model, protocol, stream), func(t *testing.T) {
+							path, body := enterprisePublicRequest(t, model, protocol, stream, nil)
+							response := enterprisePublicCall(router, path, body)
+							wire := response.Body.Bytes()
+							if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "gemini_enterprise_invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || gjson.GetBytes(wire, "error.type").String() != "invalid_request_error" {
+								t.Fatalf("invalid field classification lost: status=%d body=%s", response.Code, wire)
+							}
+							message := gjson.GetBytes(wire, "error.message").String()
+							for _, expected := range []string{"Gemini Enterprise", scenario.field, scenario.reason, "requests.payload", "protocol gemini"} {
+								if !strings.Contains(message, expected) {
+									t.Fatalf("missing diagnostic %q: %s", expected, wire)
+								}
+							}
+							for _, forbidden := range []string{privateValue, "fixture-access", "fixture-refresh"} {
+								if strings.Contains(string(wire), forbidden) {
+									t.Fatalf("field error exposed %q: %s", forbidden, wire)
+								}
+							}
+							if transport.calls.Load() != 0 {
+								t.Fatal("invalid final payload reached upstream")
+							}
+						})
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestEnterprisePublicOptionalParametersAllModels(t *testing.T) {
+	const privateValue = "synthetic-private-optional-value"
+	cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{
+		Models: []config.PayloadModelRule{{Name: "gemini-*", Protocol: "gemini"}},
+		Params: map[string]any{"generationConfig.thinkingConfig.includeThoughts": true, "systemInstruction.parts": []map[string]string{{"text": privateValue}}},
+	}}}}
+	cfg.PassthroughHeaders = true
+	router, transport, _ := enterpriseFixtureRouterWithConfig(t, cfg)
+	for _, model := range enterpriseFixtureModels {
+		for _, protocol := range []string{"openai", "gemini"} {
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/stream=%t", model, protocol, stream), func(t *testing.T) {
+					fields := map[string]any{"temperature": 0.5, "top_p": 0.8, "max_tokens": 128, "metadata": map[string]string{"fixture": privateValue}}
+					wantIgnored := "temperature"
+					if protocol == "gemini" {
+						fields = map[string]any{"generationConfig": map[string]any{"temperature": 0.5, "topP": 0.8, "maxOutputTokens": 128, "thinkingConfig": map[string]any{"includeThoughts": true}}, "safetySettings": []map[string]string{{"category": privateValue}}}
+						wantIgnored = "generationConfig.temperature"
+					}
+					path, body := enterprisePublicRequest(t, model, protocol, stream, fields)
+					before := transport.calls.Load()
+					response := enterprisePublicCall(router, path, body)
+					if response.Code != http.StatusOK || !strings.Contains(enterprisePublicText(response.Body.Bytes(), protocol, stream), "offline 前🙂引用") || transport.calls.Load() != before+1 {
+						t.Fatalf("optional parameters broke text request: status=%d calls=%d body=%s", response.Code, transport.calls.Load()-before, response.Body.String())
+					}
+					terminal := `"finish_reason":"stop"`
+					if protocol == "gemini" {
+						terminal = `"finishReason":"STOP"`
+					}
+					if !strings.Contains(response.Body.String(), terminal) {
+						t.Fatalf("successful completion has no terminal status: %s", response.Body.String())
+					}
+					upstream := transport.requestBody()
+					if err := enterprise.ValidateFinal(upstream); err != nil {
+						t.Fatalf("invalid final payload: %v", err)
+					}
+					if got := gjson.GetBytes(upstream, "generationSpec.modelId").String(); got != model {
+						t.Fatalf("wrong upstream model: got %q want %q", got, model)
+					}
+					ignored := response.Header().Get("X-CLIProxyAPI-Ignored-Parameters")
+					if !strings.Contains(ignored, wantIgnored) {
+						t.Fatalf("ignored options are not reported: %q", ignored)
+					}
+					for _, wire := range []string{string(upstream), response.Body.String(), fmt.Sprint(response.Header())} {
+						if strings.Contains(wire, privateValue) {
+							t.Fatalf("ignored option value leaked: %s", wire)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
+	const privateValue = "synthetic-private-media-value"
+	for _, scenario := range []struct {
+		name, protocol, field, reason string
+		fields                        map[string]any
+	}{
+		{"chat image", "openai", "messages[0].content[0]", "text parts only", map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": privateValue}}}}}}},
+		{"chat tool input", "openai", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"type": "function", "function": map[string]string{"name": privateValue}}}}},
+		{"chat tool history", "openai", "messages[0].tool_calls", "is not supported", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
+		{"gemini inline data", "gemini", "contents[0].parts[0]", "text parts only", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
+		{"gemini function result", "gemini", "contents[0].parts[0]", "text parts only", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"functionResponse": map[string]any{"name": privateValue, "response": map[string]string{"result": privateValue}}}}}}}},
+		{"gemini function declaration", "gemini", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"functionDeclarations": []map[string]string{{"name": privateValue}}}}}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			router, transport, _ := enterpriseFixtureRouter(t)
+			for _, model := range enterpriseFixtureModels {
+				for _, stream := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/stream=%t", model, stream), func(t *testing.T) {
+						path, body := enterprisePublicRequest(t, model, scenario.protocol, stream, scenario.fields)
+						response := enterprisePublicCall(router, path, body)
+						wire := response.Body.Bytes()
+						if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "gemini_enterprise_invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
+							t.Fatalf("unsupported content diagnostic lost: status=%d body=%s", response.Code, wire)
+						}
+						if strings.Contains(string(wire), privateValue) || transport.calls.Load() != 0 {
+							t.Fatalf("unsupported content leaked a value or reached upstream: calls=%d body=%s", transport.calls.Load(), wire)
+						}
+					})
+				}
+			}
+		})
+	}
 }
 
 func TestEnterprisePublicRoutesBothProtocolsAndOperations(t *testing.T) {

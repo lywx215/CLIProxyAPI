@@ -3,7 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -129,8 +129,12 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	}
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
 		_ = response.Body.Close()
-		return nil, input, statusErr{code: response.StatusCode, msg: fmt.Sprintf("gemini-enterprise: Google returned HTTP %d", response.StatusCode)}
+		if ctx.Err() != nil {
+			return nil, input, ctx.Err()
+		}
+		return nil, input, enterprise.UpstreamHTTPError(response.StatusCode, body)
 	}
 	return response, input, nil
 }

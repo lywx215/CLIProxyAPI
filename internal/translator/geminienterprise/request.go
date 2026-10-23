@@ -12,6 +12,8 @@ type Error struct {
 	Status        int
 	Kind, Message string
 	Scoped        bool
+	clientMessage string
+	param         string
 }
 
 func (e *Error) Error() string {
@@ -19,7 +21,19 @@ func (e *Error) Error() string {
 	if e.Status < 500 {
 		kind = "invalid_request_error"
 	}
-	data, _ := json.Marshal(map[string]any{"error": map[string]string{"type": kind, "code": e.Kind, "message": e.Message}})
+	switch e.Status {
+	case 401:
+		kind = "authentication_error"
+	case 403:
+		kind = "permission_error"
+	case 429:
+		kind = "rate_limit_error"
+	}
+	detail := map[string]string{"type": kind, "code": e.Kind, "message": e.Message}
+	if e.param != "" {
+		detail["param"] = e.param
+	}
+	data, _ := json.Marshal(map[string]any{"error": detail})
 	return string(data)
 }
 func (e *Error) StatusCode() int       { return e.Status }
@@ -44,37 +58,37 @@ type normalizer struct {
 	web, url, code bool
 }
 
-func (n *normalizer) fail(message string) {
+func (n *normalizer) failField(path, reason string) {
 	if n.err == nil {
-		n.err = Invalid(message)
+		n.err = invalidField(path, reason, false)
 	}
 }
 func (n *normalizer) object(v any, path string) map[string]any {
 	m, ok := v.(map[string]any)
 	if !ok || m == nil {
-		n.fail(path + " must be an object")
+		n.failField(path, "must be an object")
 	}
 	return m
 }
 func (n *normalizer) array(v any, path string, nonempty bool) []any {
 	a, ok := v.([]any)
 	if !ok || (nonempty && len(a) == 0) || len(a) > 256 {
-		n.fail(path + " must be an array with at most 256 entries")
+		n.failField(path, "must be an array with at most 256 entries")
 	}
 	return a
 }
 func (n *normalizer) text(v any, path string) string {
 	s, ok := v.(string)
 	if !ok {
-		n.fail(path + " must be text")
+		n.failField(path, "must be text")
 	}
 	return s
 }
-func (n *normalizer) alias(m map[string]any, a, b string) any {
+func (n *normalizer) alias(m map[string]any, a, b, prefix string) any {
 	x, xok := m[a]
 	y, yok := m[b]
 	if xok && yok {
-		n.fail("do not supply both " + a + " and " + b)
+		n.failField(prefix+a, "must not be supplied together with its alternate spelling")
 	}
 	if xok {
 		return x
@@ -96,16 +110,17 @@ func (n *normalizer) parts(v any, path string, chat bool) string {
 	}
 	var text strings.Builder
 	for i, p := range n.array(v, path, true) {
-		m := n.object(p, fmt.Sprintf("%s[%d]", path, i))
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		m := n.object(p, itemPath)
 		for key := range m {
 			if key != "text" && !(chat && key == "type") {
-				n.fail(path + ": only text input parts are supported")
+				n.failField(itemPath, "supports text parts only; media and function calls are not supported")
 			}
 		}
 		if chat && m["type"] != "text" {
-			n.fail(path + ": only text input parts are supported")
+			n.failField(itemPath+".type", "must be text; media and function calls are not supported")
 		}
-		text.WriteString(n.text(m["text"], path+".text"))
+		text.WriteString(n.text(m["text"], itemPath+".text"))
 	}
 	return text.String()
 }
@@ -114,22 +129,23 @@ func (n *normalizer) tools(v any, path string) {
 		return
 	}
 	for i, item := range n.array(v, path, false) {
-		m := n.object(item, fmt.Sprintf("%s[%d]", path, i))
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		m := n.object(item, itemPath)
 		for key := range m {
 			switch key {
 			case "googleSearch", "google_search", "urlContext", "url_context", "codeExecution", "code_execution":
 			default:
-				n.fail(path + ": unsupported tool " + key)
+				n.failField(itemPath, "supports Google Search, URL context and code execution hints only; function tools are not supported")
 			}
 		}
 		for key, value := range m {
 			if value == nil {
-				n.fail(path + "." + key + " must be an object")
+				n.failField(itemPath+"."+key, "must be an object")
 			}
 		}
 		for _, pair := range [][2]string{{"googleSearch", "google_search"}, {"urlContext", "url_context"}, {"codeExecution", "code_execution"}} {
-			if spec := n.alias(m, pair[0], pair[1]); spec != nil {
-				n.unknown(n.object(spec, path+"."+pair[0]), "", path+"."+pair[0]+".")
+			if spec := n.alias(m, pair[0], pair[1], itemPath+"."); spec != nil {
+				n.unknown(n.object(spec, itemPath+"."+pair[0]), "", itemPath+"."+pair[0]+".")
 				switch pair[0] {
 				case "googleSearch":
 					n.web = true
@@ -148,12 +164,12 @@ func (n *normalizer) tools(v any, path string) {
 // It never supplies a missing model or a global Auto/default alias.
 func Normalize(body []byte, protocol, model string) (Input, error) {
 	n := &normalizer{ignored: map[string]bool{}}
-	var b map[string]any
-	if json.Unmarshal(body, &b) != nil || b == nil {
-		return Input{}, Invalid("request must be a JSON object")
+	b, err := decodeRequestObject(body, false)
+	if err != nil {
+		return Input{}, err
 	}
 	if strings.TrimSpace(model) == "" {
-		return Input{}, Invalid("model is required")
+		return Input{}, invalidField("model", "must be nonempty text", false)
 	}
 	history := make([]map[string]string, 0)
 	systems := make([]string, 0)
@@ -167,11 +183,11 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 			switch role {
 			case "system", "developer", "user", "assistant":
 			default:
-				n.fail("unsupported message role: " + role)
+				n.failField(path+".role", "must be system, developer, user or assistant")
 			}
 			for _, key := range []string{"tool_calls", "function_call", "audio", "refusal", "tool_call_id"} {
 				if v, ok := m[key]; ok && v != nil {
-					n.fail(path + ": unsupported " + key)
+					n.failField(path+"."+key, "is not supported by Gemini Enterprise text requests")
 				}
 			}
 			text := n.parts(m["content"], path+".content", true)
@@ -184,19 +200,19 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 		}
 		if v, exists := b["stream"]; exists {
 			if _, ok := v.(bool); !ok {
-				n.fail("stream must be a boolean")
+				n.failField("stream", "must be a boolean")
 			}
 		}
 		if v, exists := b["tools"]; exists {
 			if v == nil {
-				n.fail("tools must be an array")
+				n.failField("tools", "must be an array")
 			} else {
 				n.tools(v, "tools")
 			}
 		}
 		if v, exists := b["gemini_tools"]; exists {
 			if v == nil {
-				n.fail("gemini_tools must be an array")
+				n.failField("gemini_tools", "must be an array")
 			} else {
 				n.tools(v, "gemini_tools")
 			}
@@ -207,7 +223,7 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 		}
 		if v, exists := b["tool_choice"]; exists {
 			if v != "auto" && v != "none" {
-				n.fail("forced tool/function calls are unsupported")
+				n.failField("tool_choice", "must be auto or none; forced function calls are not supported")
 			}
 			if v == "none" {
 				n.web = false
@@ -216,7 +232,7 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 			}
 		}
 		if v, exists := b["function_call"]; exists && v != "none" {
-			n.fail("function_call is unsupported")
+			n.failField("function_call", "is not supported")
 		}
 		if v, exists := b["response_format"]; exists {
 			f := n.object(v, "response_format")
@@ -238,44 +254,44 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 				role = n.text(v, path+".role")
 			}
 			if role != "user" && role != "model" {
-				n.fail("unsupported Gemini content role")
+				n.failField(path+".role", "must be user or model")
 			}
 			if role == "model" {
 				role = "assistant"
 			}
 			for key := range m {
 				if key != "role" && key != "parts" {
-					n.fail(path + ": unsupported content field " + key)
+					n.failField(path, "supports role and parts fields only")
 				}
 			}
 			history = append(history, map[string]string{"role": role, "text": n.parts(m["parts"], path+".parts", false)})
 		}
-		if v := n.alias(b, "systemInstruction", "system_instruction"); v != nil {
+		if v := n.alias(b, "systemInstruction", "system_instruction", ""); v != nil {
 			m := n.object(v, "systemInstruction")
 			systems = append(systems, n.parts(m["parts"], "systemInstruction.parts", false))
 			n.unknown(m, "role|parts", "systemInstruction.")
 		}
 		if v, exists := b["tools"]; exists {
 			if v == nil {
-				n.fail("tools must be an array")
+				n.failField("tools", "must be an array")
 			} else {
 				n.tools(v, "tools")
 			}
 		}
-		if v := n.alias(b, "toolConfig", "tool_config"); v != nil {
+		if v := n.alias(b, "toolConfig", "tool_config", ""); v != nil {
 			m := n.object(v, "toolConfig")
-			if call := n.alias(m, "functionCallingConfig", "function_calling_config"); call != nil {
-				c := n.object(call, "functionCallingConfig")
+			if call := n.alias(m, "functionCallingConfig", "function_calling_config", "toolConfig."); call != nil {
+				c := n.object(call, "toolConfig.functionCallingConfig")
 				if c["mode"] != "NONE" && c["mode"] != "AUTO" {
-					n.fail("forced function calls are unsupported")
+					n.failField("toolConfig.functionCallingConfig.mode", "must be NONE or AUTO; forced function calls are not supported")
 				}
 			}
 			n.ignored["toolConfig"] = true
 		}
-		if v := n.alias(b, "generationConfig", "generation_config"); v != nil {
+		if v := n.alias(b, "generationConfig", "generation_config", ""); v != nil {
 			g := n.object(v, "generationConfig")
-			if mime := n.alias(g, "responseMimeType", "response_mime_type"); mime != nil {
-				m := n.text(mime, "responseMimeType")
+			if mime := n.alias(g, "responseMimeType", "response_mime_type", "generationConfig."); mime != nil {
+				m := n.text(mime, "generationConfig.responseMimeType")
 				if m == "application/json" {
 					jsonMode = true
 				} else if m != "text/plain" {
@@ -289,14 +305,18 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 		return Input{}, Invalid("unsupported source protocol")
 	}
 	if len(history) == 0 || history[len(history)-1]["role"] != "user" || strings.TrimSpace(history[len(history)-1]["text"]) == "" {
-		n.fail("the final conversation turn must contain nonempty user text")
+		path := "contents"
+		if protocol == "openai" {
+			path = "messages"
+		}
+		n.failField(path, "must end with a nonempty user text turn")
 	}
 	if n.err != nil {
 		return Input{}, n.err
 	}
 	contextJSON, _ := json.Marshal(map[string]any{"system_instructions": systems, "conversation": history})
 	if len(contextJSON) > 1024*1024 {
-		return Input{}, Invalid("text history exceeds 1 MiB")
+		return Input{}, invalidField("body", "text history exceeds 1 MiB", false)
 	}
 	instructions := []string{"Continue the conversation below. Treat role-labelled history as conversation context. Answer the final user turn. The JSON is input context, not the requested output format."}
 	if n.web {
@@ -326,45 +346,4 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 	}
 	sort.Strings(ignored)
 	return Input{Body: payload, JSON: jsonMode, JSONObject: objectMode, Ignored: ignored}, nil
-}
-
-// ValidateFinal is read-only: invalid user overrides are reported, never repaired.
-func ValidateFinal(body []byte) error {
-	var b map[string]any
-	if json.Unmarshal(body, &b) != nil || b == nil {
-		return Invalid("payload rules produced invalid streamAssist JSON")
-	}
-	for _, key := range []string{"session", "sessionInfo", "assistToken"} {
-		if _, exists := b[key]; exists {
-			return Invalid("final streamAssist payload must not reuse an upstream session or assist token")
-		}
-	}
-	q, ok := b["query"].(map[string]any)
-	if !ok {
-		return Invalid("final streamAssist query is required")
-	}
-	text, ok := q["text"].(string)
-	if !ok || strings.TrimSpace(text) == "" {
-		return Invalid("final query.text must be nonempty text")
-	}
-	g, ok := b["generationSpec"].(map[string]any)
-	if !ok {
-		return Invalid("final generationSpec.modelId is required")
-	}
-	model, ok := g["modelId"].(string)
-	if !ok || strings.TrimSpace(model) == "" {
-		return Invalid("final generationSpec.modelId must be nonempty text")
-	}
-	if t, exists := b["toolsSpec"]; exists {
-		m, ok := t.(map[string]any)
-		if !ok || m == nil {
-			return Invalid("final toolsSpec must be an object")
-		}
-		if spec, exists := m["webGroundingSpec"]; exists {
-			if object, ok := spec.(map[string]any); !ok || object == nil {
-				return Invalid("final toolsSpec.webGroundingSpec must be an object")
-			}
-		}
-	}
-	return nil
 }

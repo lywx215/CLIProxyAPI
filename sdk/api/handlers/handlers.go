@@ -22,6 +22,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
+	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -230,6 +231,24 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 		retryable = &r
 	} else if value, ok := source["retryable"].(bool); ok {
 		retryable = &value
+	}
+	if !coreauth.IsTerminalAuthError(err) {
+		if message, enterpriseCode, field := enterprise.PublicErrorDetail(err, status); message != "" {
+			fixedMessage, code, param = message, enterpriseCode, safeErrorParam(field)
+			errType, retryable = "invalid_request_error", nil
+			switch status {
+			case http.StatusUnauthorized:
+				errType = "authentication_error"
+			case http.StatusForbidden:
+				errType = "permission_error"
+			case http.StatusTooManyRequests:
+				errType = "rate_limit_error"
+			default:
+				if status >= http.StatusInternalServerError {
+					errType = "server_error"
+				}
+			}
+		}
 	}
 	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable}})
 	if errMarshal != nil {

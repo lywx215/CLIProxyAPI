@@ -146,6 +146,57 @@ requests:
 
 规则之后只做只读校验、序列化和传输封装。删除的字段不会被恢复，override 不会被内建逻辑覆盖。删除必需的 `generationSpec.modelId` 或产生无效 JSON/字段会明确报错，不自动修复。禁止通过规则注入可复用的上游 session/assist token。
 
+### 最终请求的严格支持子集
+
+字段校验对本渠道所有已发现模型统一生效，Argon 沿用 Pro 的同一规则。它检查最终的 `streamAssist` 请求；客户端的 Gemini `generateContent` 参数需先经过上述协议转换。以下是本代理支持的文本与 grounding 子集，依据 [Google streamAssist 定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 约束，不代表完整 Google API 能力。
+
+| 最终字段 | 允许的类型或取值 |
+| --- | --- |
+| `query.text`、`generationSpec.modelId` | 必需的非空字符串；`query.text` 不超过 1 MiB |
+| `toolsSpec.webGroundingSpec` | 空对象 |
+| `toolsSpec.vertexAiSearchSpec.disabled`、`actionSpec.actionDisabled` | 布尔值 |
+| `toolsSpec.vertexAiSearchSpec.filter` | 字符串 |
+| `userMetadata.timeZone`、`userMetadata.preferredLanguageCode` | 字符串；语义见 [Google 用户元数据定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/AssistUserMetadata) |
+| `isSessionLess`、`googleSearchGroundingEnabled`、`webGroundingEnabled` | 布尔值；后两项为 Google 已弃用字段，新规则优先使用 `toolsSpec.webGroundingSpec` |
+| `languageCode` | 字符串；Google 已弃用，新规则优先使用 `userMetadata.preferredLanguageCode` |
+| `answerGenerationMode` | `ANSWER_GENERATION_MODE_UNSPECIFIED` 或 `NORMAL` |
+| `assistSkippingMode` | `ASSIST_SKIPPING_MODE_UNSPECIFIED` 或 `REQUEST_ASSIST` |
+
+这些字段的父对象仅接受表内列出的子字段；`toolsSpec` 及其他可选父对象可以省略。未知字段、错误类型、无效枚举、重复 JSON 键、无效 JSON/UTF-8 和超过 64 层的嵌套在发送 Google 请求前返回 400。`null` 不作为删除字段的替代方式。校验不改写请求，也不恢复被规则删除的字段。IANA 时区、搜索过滤表达式等服务语义，以及模型和资源权限仍由 Google 判断；本地校验不能保证所有合法类型的值都会被 Google 接受。
+
+本代理不接受 `session`、`sessionInfo`、`assistToken`、`fileIds`、浏览器上下文、agents、媒体工具及 `RESEARCH` / `AGENT` 等超出该子集的最终字段或模式。Google API 支持某能力不等于本 provider 已支持对应输入和输出。
+
+原生 Gemini 的 `generationConfig`、`systemInstruction`、`contents` 不属于最终 `streamAssist` 请求。为原生 Gemini 模型设置的规则必须声明 `protocol: gemini`；Enterprise 的规则声明 `protocol: gemini-enterprise`。只匹配同名模型且省略 `protocol` 的规则会同时匹配其他协议，可能再次把原生字段注入 Enterprise；现在这类不兼容最终字段会被本地拦截，不能靠删除校验来规避。
+
+### 明确且不暴露原始正文的错误
+
+本地字段错误使用 `error.type=invalid_request_error`、`error.code=gemini_enterprise_invalid_field`，`error.param` 指向安全的字段路径，`error.message` 说明原因；由最终 Payload 产生的错误还提示检查规则协议。示例：
+
+```json
+{"error":{"type":"invalid_request_error","code":"gemini_enterprise_invalid_field","param":"generationConfig","message":"Gemini Enterprise: generationConfig is not supported by the Enterprise text/grounding streamAssist schema. Check requests.payload rules for protocol gemini-enterprise; native Gemini fields require protocol gemini."}}
+```
+
+Google 非成功 HTTP 响应只返回本地构造的提示，不回显上游原始 message、字段值、资源路径、Token 或会话信息。读取的错误正文有大小上限；可信的 `google.rpc.BadRequest` 字段路径经过限制后可用于 `param`。仅凭其他 provider 的错误文本或伪造同名 JSON 标记，不能启用 Enterprise 的详细提示。
+
+| Google HTTP 状态 | 对外 `error.code` |
+| --- | --- |
+| 400 / 422 | `gemini_enterprise_upstream_invalid_request`；有明确模型权限证据时使用 `gemini_enterprise_model_access_denied` |
+| 401 | `gemini_enterprise_authentication_required` |
+| 403 | `gemini_enterprise_permission_denied` |
+| 404 | `gemini_enterprise_resource_not_found` |
+| 429 | `gemini_enterprise_rate_limit_exceeded` |
+| 其他非成功状态 | `gemini_enterprise_upstream_error` |
+
+HTTP 400 本身不能证明没有模型权限；没有明确证据时保留参数或可用性提示。Argon 应用相同的字段校验和错误分类；当前账号的 Argon 权限限制仍是独立验收条件，不能把 Pro 的成功、目录包含 Argon 或离线夹具通过记为该账号的真实 Argon 验收成功。历史授权、Windows 策略拦截及各阶段测试结果继续按原记录保留。
+
+### 字段兼容回归记录（2026-10-23）
+
+本轮公开接口夹具覆盖 7 个模型的 OpenAI/Gemini 普通与流式请求：168 组非法最终 Payload、84 组媒体或函数输入均返回明确字段错误且不调用上游；28 组正常可选参数请求通过。执行器另覆盖未来模型 ID、Payload 单次应用、覆盖值保留、过滤不恢复，以及有界错误读取、关闭和取消；错误处理覆盖安全提示来源、恶意包装和敏感值隐藏。
+
+`go build -o <artifact>/cli-proxy-api.exe ./cmd/server` 通过。离线双 SDK 验收使用 OpenAI 3.36.1 与 Google GenAI 2.32.0，9 项功能通过；首次与全量编译并行时遇到测试进程收尾及日志文件占用，保留首次记录，单独复核后正常退出并通过，没有修改系统策略或测试脚本。
+
+`go test ./... -count=1` 本轮 105 个测试包通过；`internal/api`、`internal/auth/kimi`、`internal/misc`、`internal/pluginhost`、`internal/translator` 的测试二进制被 Windows Application Control 拦截，不能记为全量通过。本轮涉及的 Enterprise translator、executor、公共 handlers、管理 handlers、auth manager 及跨模块 `test` 包均已执行通过，历史 Windows 拦截记录保持原状。
+
 ## 本地 Token 统计与缺失分项（2026-10-23）
 
 Enterprise 上游没有提供本次执行的完整 usage。当前实现使用随程序内嵌的 Gemma 3 SentencePiece 模型，对最终发送的 `query.text` 和合并后的可见输出进行本地分词。模型来源及 SHA256 与 [Google Go Gen AI SDK 的本地 tokenizer 配置](https://github.com/googleapis/go-genai/blob/main/tokenizer/tokenizer.go) 一致，固定在 `google/gemma_pytorch` 的提交 `014acb7ac4563a5f77c76d7ff98f31b568c16508`，解压后 SHA256 为 `1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c`。来源和 Apache 2.0 许可随模型保留，运行时不下载模型或调用远程计数接口。
