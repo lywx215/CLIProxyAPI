@@ -97,21 +97,20 @@ func (GeminiEnterpriseAuthenticator) Login(ctx context.Context, cfg *config.Conf
 	if err != nil {
 		return nil, err
 	}
-	id := enterpriseRecordID(email, binding)
 	// Refresh credentials may be retained only for the exact same account/application/resource.
+	var existing []*coreauth.Auth
 	if token.RefreshToken == "" {
 		if store := GetTokenStore(); store != nil {
 			if setter, ok := store.(interface{ SetBaseDir(string) }); ok {
 				setter.SetBaseDir(cfg.AuthDir)
 			}
 			if records, errList := store.List(ctx); errList == nil {
-				token.RefreshToken = retainedEnterpriseRefresh(records, email, binding)
+				existing = records
 			}
 		}
 	}
-	now := time.Now().UTC()
-	record := &coreauth.Auth{ID: id, FileName: id, Provider: ge.Provider, Label: email, Status: coreauth.StatusActive, CreatedAt: now, UpdatedAt: now, LastRefreshedAt: now, Metadata: ge.Metadata(binding, email, token)}
-	if token.RefreshToken != "" {
+	record := NewGeminiEnterpriseRecord(binding, email, token, existing)
+	if ge.String(record.Metadata, "refresh_token") != "" {
 		fmt.Println("Gemini Enterprise automatic renewal is ready.")
 	} else {
 		fmt.Println("Google returned no refresh token; automatic renewal is unavailable. Authorize again to obtain offline access.")

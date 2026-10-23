@@ -38,6 +38,7 @@ type oauthSession struct {
 	Source    string
 	Metadata  map[string]any
 	Completed bool
+	Saving    bool
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -220,7 +221,7 @@ func (s *oauthSessionStore) IsPending(state, provider string) bool {
 	if !ok {
 		return false
 	}
-	if session.Completed || session.Status != "" {
+	if session.Completed || session.Saving || session.Status != "" {
 		return false
 	}
 	if provider == "" {
@@ -243,10 +244,25 @@ func (s *oauthSessionStore) Cancel(state string) bool {
 
 	s.purgeExpiredLocked(now)
 	session, ok := s.sessions[state]
-	if !ok || session.Completed || session.Status != "" {
+	if !ok || session.Completed || session.Saving || session.Status != "" {
 		return false
 	}
 	delete(s.sessions, state)
+	return true
+}
+
+// ClaimSave makes persistence and cancellation mutually exclusive. Once saving
+// starts, Cancel returns false and callers must poll the actual save outcome.
+func (s *oauthSessionStore) ClaimSave(state, provider string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.purgeExpiredLocked(time.Now())
+	session, ok := s.sessions[state]
+	if !ok || session.Completed || session.Saving || session.Status != "" || !strings.EqualFold(session.Provider, provider) {
+		return false
+	}
+	session.Saving = true
+	s.sessions[state] = session
 	return true
 }
 
