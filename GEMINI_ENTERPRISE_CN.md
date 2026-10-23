@@ -42,6 +42,18 @@ go build -o cli-proxy-api.exe ./cmd/server
 
 凭据按宿主选定的 File、Postgres、Git 或 ObjectStore 契约持久化，**不提供额外加密**，也不自动迁移 Manager 的 DPAPI 凭据。客户端使用原有宿主 API Key，不增加第二套 Key。
 
+## 管理页面与 v8 接口
+
+管理页面提供 Gemini Enterprise 授权入口，填写项目、区域、集合、引擎和助手这五个资源字段。当前页面内置已确认的公开 OAuth 应用 ID，Secret 由后端的 `GEMINI_ENTERPRISE_CLIENT_SECRET` 环境变量提供，不在页面输入或保存。需要使用其他 OAuth 应用时，使用上述配置和 CLI 登录；已有账号继续使用各自保存的应用与资源绑定。
+
+页面通过 `/v8/management/config/oauth/providers/gemini-enterprise` 保存资源配置，并使用 `/v8/management/config` 返回的 ETag 执行 `If-Match` 并发校验。即使表单没有修改，也会在开始授权前重新核对当前绑定；其他窗口修改配置时，先重新加载再授权。
+
+登录使用 `GET /v8/management/oauth/auth-url?provider=gemini-enterprise&is_webui=true`。返回的 `callback_url` 固定为 `http://localhost:8788/oauth-callback`；端口可用时由后端自动接收回调，否则支持把完整回调地址提交到 `/v8/management/oauth/callback`。收到回调后仍需等待 `/v8/management/oauth/status` 返回 `ok`，才表示凭据已交换并保存；取消通过 `DELETE /v8/management/oauth/session` 完成。此入口仅在普通模式的 v8 管理 API 提供。
+
+认证文件列表显示账号实际保存的应用和资源标识，并提示是否具有 refresh token。没有 refresh token 的账号不会显示单账号手动续期按钮。账号列表不公开 Secret 或 Token，不宣称支持尚未实现的 Enterprise 配额查询。接口字段见 [v8 Management API](docs/management-api-v8.md#gemini-enterprise)。
+
+后端跟踪的 `static/management.html` 应与已提交前端的 `dist/index.html` 一致；完成生产构建后复制单文件产物，并核对 SHA256，避免后端托管旧版页面。
+
 ## 模型发现与调度
 
 登录会尝试只读发现。服务启动、账号新增/重绑时异步发现，运行期间约每五分钟刷新每个账号的目录：
@@ -211,9 +223,19 @@ go test -json -count=1 -timeout 240s ./...
 
 结果为退出码 `0`，耗时 `69.172` 秒，**109 个包通过、34 个包标记 skip**，没有失败测试或执行拦截；这些是包级统计。`internal/runtime/executor`、`internal/util`、`cmd/diag-analyze` 和 `sdk/cliproxy/session` 等此前涉及失败或拦截的包均通过。早先单包复测确实受到 `VerifiedAndReputableDesktop` 策略拦截；最终全量在相同的正常安全策略下运行未被拦截，未修改或绕过系统策略。
 
-当前准备提交的分支为 `codex/gemini-enterprise-20261023`，尚未 commit、push、合并或部署。本轮没有追加模型生成请求；真实验收仍采用前述八个独立成功用例、总计十二次生成请求的历史证据，并保留各用例的执行阶段限制。
+该阶段准备提交的分支为 `codex/gemini-enterprise-20261023`，当时尚未 commit、push、合并或部署。本轮没有追加模型生成请求；真实验收仍采用前述八个独立成功用例、总计十二次生成请求的历史证据，并保留各用例的执行阶段限制。
 
 提交前补充验证：原 `TestDIAG05RealSemanticBoundaries` 与新增 `TestAntigravityStreamDiagnosticsSettleBeforeDeliveryCompletion` 连续运行二十轮全部通过；最终 server 编译通过，临时验证二进制已删除。该轮没有新增真实模型调用，先前真实 Argon 双 SDK 八项证据继续保留。
+
+## 前后端最终联调（2026-10-23，北京时间）
+
+后端 provider、协议与相关文档已分别提交，管理 OAuth 和账号记录包含在 `a524f539`；管理前端提交为 `6b85096`。本轮补齐后端 `static/management.html` 的 Enterprise 页面装配及 v8 接口说明。固定原产物的 `VERSION` 和 `BUILD_TIME` 后，从已提交前端重新构建得到相同字节；前后端页面 SHA256 均为 `93c3e4916a7406d0750e4b5d4936c233566c8a2117b0827eadb78e4cca81df58`。
+
+隔离后端直接托管上述管理页面，使用禁用的合成账号和占位 Secret。前端真实 API 模块对该后端的九项检查通过，覆盖读取、保存、ETag 冲突、账号绑定、PKCE 登录响应、手动拒绝回调和取消后旧回调拦截。浏览器另行确认五字段资源表单、保存后重读、未编辑表单的并发冲突、合成会话生成与取消、筛选和资源搜索、账号原绑定与续期提示；控制台无错误。
+
+`bun run verify` 的 1756 项测试、Lint、TypeScript 和生产构建通过；后端 server 编译通过。该轮标准 `go test -json ./...` 有 108 个包通过、34 个包标记 skip，`internal/cache` 的测试程序被 Windows Application Control 阻止执行，退出码为 1；没有失败测试用例，但不能将这轮称为全量全绿。未修改或绕过系统策略。
+
+本轮没有打开 Google 授权页、交换或保存真实 Token、追加模型请求、push 或部署。合成本机服务和临时浏览器会话已关闭；前述真实 Argon 验收仍以其原始阶段记录为准。
 
 ## OAuth 切换与本机回调故障排查
 

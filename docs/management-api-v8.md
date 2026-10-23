@@ -119,7 +119,7 @@ retain the corresponding business operation's fields.
 
 The login URL is shared by all providers. Set the required `provider` query
 parameter to `claude`, `codex`, `antigravity`, `kimi`, `kimi-ai`, `xai`, `devin`,
-`meta`, or a registered plugin provider ID. For example:
+`meta`, `gemini-enterprise`, or a registered plugin provider ID. For example:
 
 ```http
 GET /v8/management/oauth/auth-url?provider=codex
@@ -139,6 +139,34 @@ not mean credential exchange and persistence have completed.
 
 Import uses `POST /v8/management/oauth/import?provider=vertex`. The `provider`
 query parameter is required; Vertex is currently the supported import provider.
+
+### Gemini Enterprise
+
+Configure `oauth.providers.gemini-enterprise` before starting login. The binding
+contains `client-id`, optional `client-secret-env`, `project-id`, `location`,
+`collection-id`, `engine-id`, and `assistant-id`. The secret value is resolved
+only from the named backend environment variable. Client and resource query
+parameters cannot override this configured binding.
+
+`GET /oauth/auth-url?provider=gemini-enterprise&is_webui=true` returns a PKCE
+authorization URL, `state`, `callback_url`, and `manual_callback_required`.
+Register the exact callback URL `http://localhost:8788/oauth-callback` in Google.
+The backend listens on loopback when the port is available; otherwise submit
+the complete redirect URL through `POST /oauth/callback`. Status polling and
+cancellation use the shared endpoints above. Enterprise login is available only
+under the v8 management API and outside Home mode.
+
+The management page saves the binding through
+`PATCH /config/oauth/providers/gemini-enterprise`, using the current `/config`
+ETag as `If-Match`. A changed revision returns HTTP 409. Re-read the binding
+before authorization even when the form has no edits.
+
+`GET /credentials` includes a `gemini_enterprise` summary for these accounts:
+public client and resource identifiers, optional `expiry`, and
+`has_refresh_token`. It never includes token or client-secret values. Existing
+accounts retain their saved bindings when the default login configuration
+changes. See the [Enterprise guide](../GEMINI_ENTERPRISE_CN.md) for configuration
+and protocol details.
 
 ## v0 compatibility
 
