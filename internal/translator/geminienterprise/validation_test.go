@@ -146,7 +146,7 @@ func TestEnterpriseInputDiagnosticsIdentifyExactNestedFields(t *testing.T) {
 	}
 }
 
-func TestEnterpriseMalformedAndOversizePayloadsHaveSafeDiagnostics(t *testing.T) {
+func TestEnterpriseMalformedPayloadsHaveSafeDiagnostics(t *testing.T) {
 	for _, body := range [][]byte{
 		[]byte(`[]`), []byte(`null`), []byte(`{"query":`), []byte(`{"secret":"private-prompt"} {}`),
 		append([]byte(`{"query":{"text":"`), 0xff),
@@ -155,7 +155,13 @@ func TestEnterpriseMalformedAndOversizePayloadsHaveSafeDiagnostics(t *testing.T)
 		assertEnterpriseFieldError(t, ValidateFinal(body), "body", true)
 	}
 	body := []byte(`{"query":{"text":"` + strings.Repeat("x", 1024*1024+1) + `"},"generationSpec":{"modelId":"model"}}`)
-	assertEnterpriseFieldError(t, ValidateFinal(body), "query.text", true)
+	original := string(body)
+	if err := ValidateFinal(body); err != nil {
+		t.Fatalf("valid large final payload rejected: %v", err)
+	}
+	if string(body) != original {
+		t.Fatal("final validation mutated the configured payload")
+	}
 }
 
 func TestEnterpriseUpstreamStatusAndSafeDiagnostics(t *testing.T) {

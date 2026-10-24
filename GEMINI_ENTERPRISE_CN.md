@@ -152,7 +152,7 @@ requests:
 
 | 最终字段 | 允许的类型或取值 |
 | --- | --- |
-| `query.text`、`generationSpec.modelId` | 必需的非空字符串；`query.text` 不超过 1 MiB |
+| `query.text`、`generationSpec.modelId` | 必需的非空字符串；不再额外施加本地 1 MiB 文本上限，实际容量受上游与模型上下文约束 |
 | `toolsSpec.webGroundingSpec` | 空对象 |
 | `toolsSpec.vertexAiSearchSpec.disabled`、`actionSpec.actionDisabled` | 布尔值 |
 | `toolsSpec.vertexAiSearchSpec.filter` | 字符串 |
@@ -205,15 +205,27 @@ new-api 启用相应的 Gemini 思考签名选项时，会给助手历史的首�
 
 - Gemini 文本 part 接受 `thoughtSignature` / `thought_signature` 字符串或 `null`，以及布尔或 `null` 的 `thought`。签名属于原生 Gemini 的不透明状态，字段名列入忽略参数提示，值不写入 Enterprise 请求、上下文或诊断日志。模型历史中 `thought: true` 的隐藏文本不会混入可见对话；用户及系统输入不能标记为隐藏思考。
 - 本代理返回的 `executableCode` / `codeExecutionResult` 可作为可见的模型历史回传，转换为标注为先前代码及执行结果的文本上下文；不触发本地执行，也不将自定义 `functionCall` / `functionResponse` 当作内置执行结果。非空媒体和自定义函数内容继续返回明确的具体字段路径；已知可选字段为 `null` 时按缺省处理。
-- 文本会话取消原先固定的 256 条数组限制，保留规范化历史的 1 MiB 总大小限制和 JSON 深度校验。不会截断或静默丢弃超过 256 条的历史；数组类型错误和空数组分别返回 `must be an array`、`must contain at least one entry`。
+- 该阶段取消原先固定的 256 条数组限制，仍保留规范化历史的 1 MiB 总大小限制和 JSON 深度校验。不会截断或静默丢弃超过 256 条的历史；数组类型错误和空数组分别返回 `must be an array`、`must contain at least one entry`。后续 2026-10-24 调整另见下文，原阶段记录保留。
 - 执行器在上游调用前的输入或最终 Payload 校验失败时记录 `provider`、`stage`、`code`、`field`，便于定位哪种字段不兼容；不记录正文、签名、Token 或字段值。Payload 规则仍在内建历史转换完成后仅应用一次，后续校验不会恢复被过滤的字段或覆盖配置值。
-- 字段错误不再带 `Gemini Enterprise:` 前缀，错误码不再包含 `gemini_enterprise_`；例如 `contents` 类型错误会提示 `contents must be an array.`，实际超过文本大小限制时提示对应大小错误，不泄露渠道名称。服务端日志仍可按 `provider` 和校验阶段排查。
+- 字段错误不再带 `Gemini Enterprise:` 前缀，错误码不再包含 `gemini_enterprise_`；例如 `contents` 类型错误会提示 `contents must be an array.`。该阶段的文本大小错误随后由 2026-10-24 调整移除。服务端日志仍可按 `provider` 和校验阶段排查。
 
 公开错误去渠道标识调整前，本地历史兼容回归覆盖全部 7 个渠道模型的文本签名历史、513 条历史的双协议普通及流式入口、原生代码响应回传，以及错误内容拒绝和最终 Payload 顺序。离线 OpenAI 3.36.1 / Google GenAI 2.32.0 的 12 项 SDK 验收通过，其中新增真实 SDK 的签名、代码结果回传和长历史测试；这些使用本机合成上游，不构成 Google 或 Argon 权限验收。该阶段全量回归中 `internal/githubauth`、`internal/translator/gemini/interactions`、`sdk/cliproxy/executionregistry` 被 Windows Application Control 拦截，保留记录且未更改系统策略；此前各轮拦截记录继续保留。
 
 历史热修复提交 `8d168b45cfa3acff99a79c50d4ddfdd32fb6cc14` 已于北京时间 `2026-10-24 00:06` 部署。线上复核完成 6 个可用模型的 8 次真实生成调用及全部 7 个模型的 14 项公开错误检查，均通过；其中 `gemini-3.1-pro-preview` 的 513 条历史，以及 `gemini-3.1-pro-preview`、`gemini-2.5-pro` 的 SSE 请求通过。真实调用已核对本渠道凭证的用量记录，201 条既有用量历史恢复并核对保留。未对 Argon 发起真实生成调用；公开错误检查在本地校验阶段拒绝，不代表 Argon 权限验收。该次热修复只涉及后端协议转换、错误处理和测试，未改变管理前端接口契约或页面逻辑，发布时保留原静态页面。脱敏发布与线上核对证据见任务目录 `enterprise-newapi-history-20261023/FINAL_REPORT.json`。
 
 将该热修复与已有共享额度功能合并后，已另外通过相关 7 个 Go 测试包、离线双 SDK 的 12 项验收及服务构建。共享额度夹具的旧错误码断言已同步为通用错误码，并补充公开错误不暴露渠道的检查。首轮全量日志仍保留 5 个测试包的 Windows Application Control 拦截及旧断言造成的 4 例失败；其中本渠道 translator 和 Gemini handlers 已在相关回归中补跑通过，`internal/auth/claude`、`internal/cmd`、`internal/translator/gemini/interactions` 本轮尚不能记为通过。各阶段失败和前文历史拦截记录继续保留，未修改系统策略。本轮证据单独保存在任务目录 `enterprise-merge-main-20261024`。合并沿用前端 `110c204bd2055ccb165595e06e18d27ca82cd16d` 对应的共享额度页面产物，一致性证据见 [共享额度验收记录](docs/enterprise-shared-quota-validation.md)，无需为此后端合并重新构建前端。
+
+### new-api 长会话与末尾续写（2026-10-24）
+
+`contents must end with a nonempty user text turn` 和 `body text history exceeds 1 MiB` 均来自代理本地兼容层。现移除“必须以非空用户轮次结尾”的假设及规范化历史、最终 `query.text` 的两处 1 MiB 校验，不新增替代性的固定条数或字节上限，也不截断、压缩或摘要历史。系统指令、全部可见文本和空占位轮次按原有转换规则完整保留；签名和隐藏思考仍按前述规则处理。
+
+最后一个非空可见轮次为 assistant/model 时，提示上游继续该轮次，只返回新增内容；为空的尾部占位不改变判定，也不会通过追加虚构 user 消息修复请求。OpenAI assistant 的 `null` 或缺省 `content`、Gemini model 的空 `parts` 可作为占位；字段类型错误、整段请求没有非空文本或系统指令、真实媒体及自定义函数仍返回通用字段错误。OpenAI 仅包含非空系统指令的请求可以生成响应。
+
+该渠道通过 [streamAssist 的 `query` 字段](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 携带角色标注的完整文本上下文。续写是此文本适配层的提示语义，不是原生解码器预填充；JSON 模式仍要求输出完整、有效的 JSON。取消本地限制不代表上游或模型上下文无限，实际超限错误仍按安全错误规则返回。Argon 与其他模型使用相同规则，账号权限验收仍单独判断。
+
+Payload 规则仍是最后一次语义变更：完整历史转换之后仅应用一次，随后只读校验，不恢复过滤字段、不重写覆盖值。回归覆盖超过 1 MiB 的 514 轮历史、直到 4 MiB 的文本、末尾 assistant/model、空占位、双协议普通与流式入口及最终配置保留；逐项比较转发的角色、顺序和文本。所有历史 Windows 策略拦截与失败记录继续保留。
+
+本轮已通过上述新用例、全部 7 个模型的 JSON 续写契约检查、服务构建，以及离线 OpenAI 3.36.1 / Google GenAI 2.32.0 的 16 项 SDK 验收。相关的 translator、executor/helps、公共 handlers、Gemini handlers、OpenAI handlers 与跨模块 `test` 包已执行通过；executor 包的独立测试二进制仍被 Windows Application Control 阻止启动。全量回归 91 个测试包通过、18 个包被同一策略拦截，没有已执行测试的断言失败；首次日志和补跑记录单独保存在任务目录 `enterprise-long-history-continuation-20261024`，不记为全量通过，也未修改或绕过系统安全策略。
 
 ## 本地 Token 统计与缺失分项（2026-10-23）
 

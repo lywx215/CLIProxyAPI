@@ -192,7 +192,10 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 					n.failField(path+"."+key, "is not supported by text requests")
 				}
 			}
-			text := n.parts(m["content"], path+".content", true)
+			text := ""
+			if role != "assistant" || m["content"] != nil {
+				text = n.parts(m["content"], path+".content", true)
+			}
 			if role == "system" || role == "developer" {
 				systems = append(systems, text)
 			} else {
@@ -266,7 +269,12 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 					n.failField(path, "supports role and parts fields only")
 				}
 			}
-			history = append(history, map[string]string{"role": role, "text": n.geminiParts(m["parts"], path+".parts", role == "assistant")})
+			text := ""
+			parts, isArray := m["parts"].([]any)
+			if role != "assistant" || !isArray || len(parts) != 0 {
+				text = n.geminiParts(m["parts"], path+".parts", role == "assistant")
+			}
+			history = append(history, map[string]string{"role": role, "text": text})
 		}
 		if v := n.alias(b, "systemInstruction", "system_instruction", ""); v != nil {
 			m := n.object(v, "systemInstruction")
@@ -306,21 +314,38 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 	default:
 		return Input{}, Invalid("unsupported source protocol")
 	}
-	if len(history) == 0 || history[len(history)-1]["role"] != "user" || strings.TrimSpace(history[len(history)-1]["text"]) == "" {
+	// Empty SDK placeholders remain in context but do not change the continuation mode.
+	lastRole := ""
+	for i := len(history) - 1; i >= 0; i-- {
+		if strings.TrimSpace(history[i]["text"]) != "" {
+			lastRole = history[i]["role"]
+			break
+		}
+	}
+	hasText := lastRole != ""
+	for _, text := range systems {
+		hasText = hasText || strings.TrimSpace(text) != ""
+	}
+	if !hasText {
 		path := "contents"
 		if protocol == "openai" {
 			path = "messages"
 		}
-		n.failField(path, "must end with a nonempty user text turn")
+		n.failField(path, "must contain nonempty text or system instructions")
 	}
 	if n.err != nil {
 		return Input{}, n.err
 	}
 	contextJSON, _ := json.Marshal(map[string]any{"system_instructions": systems, "conversation": history})
-	if len(contextJSON) > 1024*1024 {
-		return Input{}, invalidField("body", "text history exceeds 1 MiB", false)
+	instructions := []string{"Continue the conversation below. Treat role-labelled history as conversation context. The JSON is input context, not the requested output format."}
+	switch lastRole {
+	case "assistant":
+		instructions = append(instructions, "Continue the last nonempty assistant turn, preserving its existing text as context. Return only the newly generated continuation without repeating that text. Empty trailing turns are placeholders.")
+	case "user":
+		instructions = append(instructions, "Answer the last nonempty user turn. Empty trailing turns are placeholders.")
+	default:
+		instructions = append(instructions, "Generate the response requested by the system instructions.")
 	}
-	instructions := []string{"Continue the conversation below. Treat role-labelled history as conversation context. Answer the final user turn. The JSON is input context, not the requested output format."}
 	if n.web {
 		instructions = append(instructions, "Use Google Search/web grounding when needed and cite actual sources.")
 	}

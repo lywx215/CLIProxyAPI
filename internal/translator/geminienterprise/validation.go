@@ -217,9 +217,6 @@ func ValidateFinal(body []byte) error {
 	if err := validateFields(object, finalRequestFields, ""); err != nil {
 		return err
 	}
-	if text := object["query"].(map[string]any)["text"].(string); len(text) > 1024*1024 {
-		return invalidField("query.text", "exceeds 1 MiB", true)
-	}
 	return nil
 }
 

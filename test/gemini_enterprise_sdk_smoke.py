@@ -71,6 +71,17 @@ def main():
                     assert json.loads(chunks[0].choices[0].delta.content) == {"ok": True}
                     assert chunks[-1].choices[0].finish_reason == "stop"
                     results.append("OpenAI JSON SSE buffering")
+                    long_messages = [{"role": "user" if i % 2 == 0 else "assistant",
+                        "content": f"history turn {i} start" + " " * 2200 + "end"} for i in range(514)]
+                    assert len(json.dumps(long_messages).encode()) > 1024 * 1024
+                    long_args = dict(model="gemini-4-argon", messages=long_messages)
+                    response = chat.chat.completions.create(**long_args)
+                    assert "offline" in response.choices[0].message.content
+                    results.append("OpenAI >1 MiB 514-turn assistant continuation")
+                    chunks = list(chat.chat.completions.create(**long_args, stream=True))
+                    assert "offline" in "".join(c.choices[0].delta.content or "" for c in chunks)
+                    assert chunks[-1].choices[0].finish_reason == "stop"
+                    results.append("OpenAI >1 MiB assistant continuation SSE")
                 gemini = genai.Client(api_key="offline-fixture-key", http_options=types.HttpOptions(
                     base_url=base, api_version="v1beta", client_args={"trust_env": False}))
                 try:
@@ -102,6 +113,16 @@ def main():
                     replay = gemini.models.generate_content(model="gemini-4-argon", contents=long_history)
                     assert "offline" in "".join(p.text or "" for p in replay.candidates[0].content.parts)
                     results.append("Google GenAI 513-turn history")
+                    long_history = [types.Content(role="user" if i % 2 == 0 else "model",
+                        parts=[types.Part(text=f"history turn {i} start" + " " * 2200 + "end")]) for i in range(514)]
+                    assert sum(len(c.parts[0].text.encode()) for c in long_history) > 1024 * 1024
+                    response = gemini.models.generate_content(model="gemini-4-argon", contents=long_history)
+                    assert "offline" in "".join(p.text or "" for p in response.candidates[0].content.parts)
+                    results.append("Google GenAI >1 MiB 514-turn model continuation")
+                    chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents=long_history))
+                    assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
+                    assert chunks[-1].candidates[0].finish_reason == "STOP"
+                    results.append("Google GenAI >1 MiB model continuation SSE")
                     chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="offline fixture"))
                     assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
                     assert chunks[-1].candidates[0].finish_reason == "STOP"

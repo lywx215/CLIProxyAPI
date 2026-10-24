@@ -45,7 +45,6 @@ func TestEnterpriseLongTextHistory(t *testing.T) {
 		{`{"contents":[]}`, "contents", "must contain at least one entry"},
 		{`{"contents":[{"parts":{}}]}`, "contents[0].parts", "must be an array"},
 		{`{"contents":[{"parts":[]}]}`, "contents[0].parts", "must contain at least one entry"},
-		{`{"contents":[{"parts":[{"text":"` + strings.Repeat("x", 1024*1024) + `"}]}]}`, "body", "exceeds 1 MiB"},
 	} {
 		_, err := Normalize([]byte(scenario.body), "gemini", "gemini-4-argon")
 		message, _, field := PublicErrorDetail(err, 400)
