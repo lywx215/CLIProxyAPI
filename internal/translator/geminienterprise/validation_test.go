@@ -258,7 +258,7 @@ func TestEnterprisePublicDiagnosticsDoNotIdentifyProvider(t *testing.T) {
 	}
 	for _, input := range []struct{ name, protocol, body string }{
 		{"message-field", "openai", `{"messages":[{"role":"assistant","content":"hi","tool_calls":[{}]},{"role":"user","content":"continue"}]}`},
-		{"tool-field", "gemini", `{"contents":[{"parts":[{"text":"hi"}]}],"tools":[{"functionDeclarations":[]}]}`},
+		{"tool-field", "gemini", `{"contents":[{"parts":[{"text":"hi"}]}],"tools":[{"functionDeclarations":{}}]}`},
 		{"history-field", "gemini", `{"contents":[{"parts":[{"functionCall":{"name":"private-function"}}]}]}`},
 	} {
 		_, err := Normalize([]byte(input.body), input.protocol, "private-model")

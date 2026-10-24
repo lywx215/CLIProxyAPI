@@ -120,6 +120,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if len(input.Ignored) > 0 {
 		log.WithField("fields", input.Ignored).Debug("gemini-enterprise ignored optional parameters")
 	}
+	if input.ClientFunctionsIgnored {
+		log.WithField("provider", e.Identifier()).Warn("client function fields ignored; continuing as text without client function execution")
+	}
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
 	body := finalize(input.Body)
 	if err := enterprise.ValidateFinal(body); err != nil {

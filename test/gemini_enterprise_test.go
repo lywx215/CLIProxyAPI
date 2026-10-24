@@ -341,11 +341,9 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 		fields                        map[string]any
 	}{
 		{"chat image", "openai", "messages[0].content[0]", "text parts only", map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": privateValue}}}}}}},
-		{"chat tool input", "openai", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"type": "function", "function": map[string]string{"name": privateValue}}}}},
-		{"chat tool history", "openai", "messages[0].tool_calls", "is not supported", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
+		{"chat malformed tool history", "openai", "messages[0].tool_calls[0].type", "must be function", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
 		{"gemini inline data", "gemini", "contents[0].parts[0].inlineData", "is not supported", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
-		{"gemini function result", "gemini", "contents[0].parts[0].functionResponse", "is not supported", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"functionResponse": map[string]any{"name": privateValue, "response": map[string]string{"result": privateValue}}}}}}}},
-		{"gemini function declaration", "gemini", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"functionDeclarations": []map[string]string{{"name": privateValue}}}}}},
+		{"gemini malformed function declaration", "gemini", "tools[0].functionDeclarations", "must be an array", map[string]any{"tools": []map[string]any{{"functionDeclarations": privateValue}}}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			router, transport, _ := enterpriseFixtureRouter(t)

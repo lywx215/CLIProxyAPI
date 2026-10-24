@@ -55,12 +55,8 @@ func TestEnterpriseNormalizeProtocols(t *testing.T) {
 
 func TestEnterpriseRejectLossyInputs(t *testing.T) {
 	for _, body := range []string{
-		`{"messages":[{"role":"tool","content":"result"}]}`,
 		`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"x"}}]}]}`,
 		`{"messages":[{"role":"user","content":"hi","audio":{}}]}`,
-		`{"messages":[{"role":"assistant","content":"hi","tool_calls":[]}]}`,
-		`{"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f"}}]}`,
-		`{"messages":[{"role":"user","content":"hi"}],"tool_choice":{"type":"function","function":{"name":"f"}}}`,
 		`{"messages":[{"role":"user","content":"hi"}],"tools":[{"googleSearch":{},"google_search":{}}]}`,
 		`{"messages":[{"role":"user","content":"hi"}],"tools":[{"google_search":true}]}`,
 		`{"messages":[{"role":"user","content":"hi"}],"web_search_options":[]}`,

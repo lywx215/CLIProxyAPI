@@ -117,10 +117,13 @@ for chunk in client.models.generate_content_stream(model="gemini-4-argon", conte
 | Gemini `codeExecution` / `code_execution` | 增加 Python 执行指令；只报告上游真实执行事件，不保证执行 |
 | OpenAI `tools:[{"google_search":{}},{"url_context":{}}]` | 相同工具归并；兼容 camelCase、`code_execution` |
 | OpenAI `gemini_tools`、`web_search_options` | 在本 provider 内兼容旧扩展；不会修改其他 provider |
+| OpenAI `tools[].type:function`、`functions`、函数选择与并行调用控制 | 当前接口不支持客户端函数；按用户确认的策略忽略并提示，继续文本请求 |
+| Gemini `functionDeclarations` / `function_declarations`、`functionCallingConfig` | 忽略函数声明及控制，保留同一对象中的受支持内置工具 |
+| 历史 `tool_calls`、`function_call`、tool/function 消息、`functionCall` / `functionResponse` | 保留为明确标注的客户端历史文本；不作为本代理新执行的动作，不返回新函数调用 |
 | Gemini `application/json` | 提示约束，加最终合法 JSON 校验 |
 | OpenAI `response_format:{"type":"json_object"}` | 提示约束，加顶层 JSON 对象校验 |
 
-同一对象不能同时提供某个 camelCase/snake_case 别名。工具类型错误、函数工具、强制函数调用、tool 消息、图片、音频、文件、函数结果等不能保真转换的内容返回 400，不能静默删除后发送。普通可选参数如 sampling、token 限额、thinking 或 JSON schema 可被忽略，不宣称 schema 强制约束。忽略的字段名记入诊断日志和 `X-CLIProxyAPI-Ignored-Parameters` 响应头；经公开 HTTP 接口获取此头需要启用宿主 `requests.passthrough-headers`。
+同一对象不能同时提供某个 camelCase/snake_case 别名。工具字段类型错误、无效历史结构，以及图片、音频、文件等不能保真转换的内容继续返回 400。客户端自定义函数按 2026-10-24 用户明确选择的忽略策略处理，具体边界见下文。普通可选参数如 sampling、token 限额、thinking 或 JSON schema 可被忽略，不宣称 schema 强制约束。忽略的字段名记入诊断日志和 `X-CLIProxyAPI-Ignored-Parameters` 响应头；经公开 HTTP 接口获取此头需要启用宿主 `requests.passthrough-headers`。忽略客户端函数时另记不含函数定义或参数值的服务端警告；部署不会为显示提示而修改现有透传配置。
 
 Gemini 输出保留文本、真实 executableCode、codeExecutionResult、grounding parts/metadata；OpenAI 输出正文、URL annotations，并将代码及结果呈现为文本块。上游 grounding 的 UTF-8 字节 offset 在 Gemini 中保留字节单位，在 OpenAI 中转换为 Unicode 字符索引，包含中文和 emoji 的回归测试。不生成上游没有提供的 function call、searchQueries、URL 抓取状态或隐藏思考/缓存计数，不泄露 thought 正文、assistToken 或 sessionInfo。输入与可见输出的本地 Token 统计另见下节；计数不可用时仍发布宿主请求数。
 
@@ -214,6 +217,18 @@ new-api 启用相应的 Gemini 思考签名选项时，会给助手历史的首�
 历史热修复提交 `8d168b45cfa3acff99a79c50d4ddfdd32fb6cc14` 已于北京时间 `2026-10-24 00:06` 部署。线上复核完成 6 个可用模型的 8 次真实生成调用及全部 7 个模型的 14 项公开错误检查，均通过；其中 `gemini-3.1-pro-preview` 的 513 条历史，以及 `gemini-3.1-pro-preview`、`gemini-2.5-pro` 的 SSE 请求通过。真实调用已核对本渠道凭证的用量记录，201 条既有用量历史恢复并核对保留。未对 Argon 发起真实生成调用；公开错误检查在本地校验阶段拒绝，不代表 Argon 权限验收。该次热修复只涉及后端协议转换、错误处理和测试，未改变管理前端接口契约或页面逻辑，发布时保留原静态页面。脱敏发布与线上核对证据见任务目录 `enterprise-newapi-history-20261023/FINAL_REPORT.json`。
 
 将该热修复与已有共享额度功能合并后，已另外通过相关 7 个 Go 测试包、离线双 SDK 的 12 项验收及服务构建。共享额度夹具的旧错误码断言已同步为通用错误码，并补充公开错误不暴露渠道的检查。首轮全量日志仍保留 5 个测试包的 Windows Application Control 拦截及旧断言造成的 4 例失败；其中本渠道 translator 和 Gemini handlers 已在相关回归中补跑通过，`internal/auth/claude`、`internal/cmd`、`internal/translator/gemini/interactions` 本轮尚不能记为通过。各阶段失败和前文历史拦截记录继续保留，未修改系统策略。本轮证据单独保存在任务目录 `enterprise-merge-main-20261024`。合并沿用前端 `110c204bd2055ccb165595e06e18d27ca82cd16d` 对应的共享额度页面产物，一致性证据见 [共享额度验收记录](docs/enterprise-shared-quota-validation.md)，无需为此后端合并重新构建前端。
+
+### 不受支持的客户端函数工具（2026-10-24）
+
+本次使用已保存的同一账号、资源和 Token 直接核对 Google：有效文本 `streamAssist` 请求返回 200；顶层添加 `tools` 返回 `400 INVALID_ARGUMENT`，明确提示找不到 `tools` 字段；添加 `toolsSpec.functionDeclarations` 也返回 400，明确提示找不到该字段。[官方 `ToolsSpec` 定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist#toolsspec) 提供工具注册表和内置能力，并非按请求注入客户端函数声明。另一个官方文档中的不透明 `streamGenerateContent` 方法在当前资源探测返回 `404 Method not found`，不能据此声称所有 Google 产品均不支持函数调用，也不能将其直接作为当前接入的替代路径。
+
+用户确认采用“忽略不支持的函数工具字段、继续普通文本请求、保留忽略提示”，而非完整函数协议桥接。OpenAI 现代函数工具及旧式 `functions`、`function_call`、`tool_choice` 的 required/指定函数、`parallel_tool_calls`，以及 Gemini 的函数声明和调用控制均不进入上游业务字段或可执行提示。忽略的是原函数协议语义；即使客户端指定 required/ANY，也返回普通回答而不生成 `tool_calls`。声明正文、说明和默认参数值不写入提示或忽略字段响应头。混合对象中的 Google Search、URL context、code execution 提示仍按原规则处理。
+
+已存在的函数调用、参数、关联 ID 和客户端提供的执行结果转换成标注为历史的文本，保留在完整会话上下文中；不执行函数、不伪造调用、不把历史结果说成本代理执行结果。没有函数能力却需要新外部动作时，提示上游明确说明无法执行。JSON 输出约束、普通与流式响应、所有已发现模型及 Argon 的转换规则保持一致；这不是 Argon 账号权限验收。无效类型、错误角色或损坏的历史结构仍返回具体字段错误。
+
+与其他内建转换一样，这些处理均在最终 Payload 规则之前完成。规则只应用一次，之后不会恢复已过滤字段，也不会重写配置覆盖值。此前函数字段拒绝、各轮测试失败与 Windows Application Control 拦截属于历史阶段记录，保留原结论，不以本次忽略策略改写历史。
+
+本轮相关 7 个 Go 测试包、服务构建及 OpenAI 3.36.1 / Google GenAI 2.32.0 的 22 项离线 SDK 验收通过。新增公开入口覆盖全部 7 个模型、双协议普通与 SSE 的 84 组声明忽略、历史保留和内置工具混合请求，以及 12 组最终 Payload 和 JSON 契约检查；历史长会话回归继续通过。全量 104 个测试包通过，5 个包被 Windows Application Control 阻止启动，没有已执行断言失败；初次 translator 二进制拦截和随后补跑通过的记录分别保留。证据位于本轮任务目录 `enterprise-function-ignore-release-20261024`，未修改或绕过系统策略。
 
 ### new-api 长会话与末尾续写（2026-10-24）
 

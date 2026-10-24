@@ -82,6 +82,22 @@ def main():
                     assert "offline" in "".join(c.choices[0].delta.content or "" for c in chunks)
                     assert chunks[-1].choices[0].finish_reason == "stop"
                     results.append("OpenAI >1 MiB assistant continuation SSE")
+                    function_args = dict(model="gemini-4-argon", messages=[{"role": "user", "content": "offline fixture"}],
+                        tools=[{"type": "function", "function": {"name": "unused_sdk_function", "parameters": {"type": "object", "properties": {}}}}],
+                        tool_choice="required", parallel_tool_calls=True)
+                    response = chat.chat.completions.create(**function_args)
+                    assert "offline" in response.choices[0].message.content and not response.choices[0].message.tool_calls
+                    results.append("OpenAI unsupported function declarations ignored as text")
+                    function_args["messages"] = [{"role": "user", "content": "old question"},
+                        {"role": "assistant", "content": None, "tool_calls": [{"id": "sdk-call-17", "type": "function", "function": {"name": "historical_add", "arguments": '{"a":2,"b":3}'}}]},
+                        {"role": "tool", "tool_call_id": "sdk-call-17", "content": '{"result":5}'}]
+                    response = chat.chat.completions.create(**function_args)
+                    assert "offline" in response.choices[0].message.content and not response.choices[0].message.tool_calls
+                    results.append("OpenAI historical tool call and result preserved as text")
+                    chunks = list(chat.chat.completions.create(**function_args, stream=True))
+                    assert "offline" in "".join(c.choices[0].delta.content or "" for c in chunks)
+                    assert all(not c.choices[0].delta.tool_calls for c in chunks) and chunks[-1].choices[0].finish_reason == "stop"
+                    results.append("OpenAI ignored function tools SSE without fabricated calls")
                 gemini = genai.Client(api_key="offline-fixture-key", http_options=types.HttpOptions(
                     base_url=base, api_version="v1beta", client_args={"trust_env": False}))
                 try:
@@ -123,6 +139,22 @@ def main():
                     assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
                     assert chunks[-1].candidates[0].finish_reason == "STOP"
                     results.append("Google GenAI >1 MiB model continuation SSE")
+                    function_config = types.GenerateContentConfig(
+                        tools=[types.Tool(function_declarations=[types.FunctionDeclaration(name="unused_sdk_function", parameters={"type": "OBJECT", "properties": {}})])],
+                        tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="ANY", allowed_function_names=["unused_sdk_function"])),
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
+                    response = gemini.models.generate_content(model="gemini-4-argon", contents="offline fixture", config=function_config)
+                    assert "offline" in "".join(p.text or "" for p in response.candidates[0].content.parts) and not response.function_calls
+                    results.append("Google GenAI unsupported function declarations ignored as text")
+                    function_history = [types.Content(role="model", parts=[types.Part.from_function_call(name="historical_add", args={"a": 2, "b": 3})]),
+                        types.Content(role="user", parts=[types.Part.from_function_response(name="historical_add", response={"result": 5})])]
+                    response = gemini.models.generate_content(model="gemini-4-argon", contents=function_history, config=function_config)
+                    assert "offline" in "".join(p.text or "" for p in response.candidates[0].content.parts) and not response.function_calls
+                    results.append("Google GenAI historical function call and result preserved as text")
+                    chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents=function_history, config=function_config))
+                    assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
+                    assert all(not c.function_calls for c in chunks) and chunks[-1].candidates[0].finish_reason == "STOP"
+                    results.append("Google GenAI ignored function tools SSE without fabricated calls")
                     chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="offline fixture"))
                     assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
                     assert chunks[-1].candidates[0].finish_reason == "STOP"

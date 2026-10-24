@@ -30,7 +30,7 @@ func (n *normalizer) optionalText(object map[string]any, key, path string) strin
 
 // Gemini clients replay response metadata and built-in code events with model history.
 // Signatures are opaque native-Gemini state, never streamAssist fields or prompt text.
-func (n *normalizer) geminiParts(value any, path string, modelHistory bool) string {
+func (n *normalizer) geminiParts(value any, path string, modelHistory, conversation bool) string {
 	var text strings.Builder
 	for i, item := range n.array(value, path, true) {
 		partPath := fmt.Sprintf("%s[%d]", path, i)
@@ -68,23 +68,35 @@ func (n *normalizer) geminiParts(value any, path string, modelHistory bool) stri
 				delete(part, key)
 			}
 		}
-		n.contentKeys(part, "text|thought|thoughtSignature|thought_signature|executableCode|executable_code|codeExecutionResult|code_execution_result", prefix)
+		n.contentKeys(part, "text|thought|thoughtSignature|thought_signature|executableCode|executable_code|codeExecutionResult|code_execution_result|functionCall|function_call|functionResponse|function_response", prefix)
 		code := n.alias(part, "executableCode", "executable_code", prefix)
 		result := n.alias(part, "codeExecutionResult", "code_execution_result", prefix)
+		call := n.alias(part, "functionCall", "function_call", prefix)
+		functionResult := n.alias(part, "functionResponse", "function_response", prefix)
 		_, hasText := part["text"]
 		kinds := 0
-		for _, present := range []bool{hasText && part["text"] != nil, code != nil, result != nil} {
+		for _, present := range []bool{hasText && part["text"] != nil, code != nil, result != nil, call != nil, functionResult != nil} {
 			if present {
 				kinds++
 			}
 		}
 		if kinds > 1 {
-			n.failField(partPath, "must contain only one of text, executableCode or codeExecutionResult")
+			n.failField(partPath, "must contain exactly one content kind")
 		}
 		if (code != nil || result != nil) && (!modelHistory || thought) {
 			n.failField(partPath, "built-in code events are accepted only as visible model history")
 		}
 		switch {
+		case call != nil:
+			if !conversation || !modelHistory || thought {
+				n.failField(prefix+"functionCall", "is accepted only as visible model history")
+			}
+			text.WriteString(n.historicalGeminiFunction(call, prefix+"functionCall", true))
+		case functionResult != nil:
+			if !conversation || modelHistory || thought {
+				n.failField(prefix+"functionResponse", "is accepted only as visible user history")
+			}
+			text.WriteString(n.historicalGeminiFunction(functionResult, prefix+"functionResponse", false))
 		case code != nil:
 			object := n.object(code, prefix+"executableCode")
 			n.contentKeys(object, "language|code", prefix+"executableCode.")
