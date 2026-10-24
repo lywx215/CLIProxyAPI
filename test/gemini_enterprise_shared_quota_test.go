@@ -95,9 +95,10 @@ func TestEnterpriseSharedQuotaPublicProtocolsSynthetic(t *testing.T) {
 				if strings.Contains(response.Body.String(), "sensitive") {
 					t.Fatal("raw generation error leaked")
 				}
-				if mode == "http" && !strings.Contains(response.Body.String(), "gemini_enterprise_rate_limit_exceeded") {
+				if mode == "http" && !strings.Contains(response.Body.String(), "rate_limit_exceeded") {
 					t.Fatalf("shared quota classification lost the safe public diagnostic: %s", response.Body.String())
 				}
+				enterpriseAssertPublicErrorChannelNeutral(t, response.Body.Bytes())
 				var pool auth.CooldownView
 				for _, id := range []string{"enterprise-wire-fixture", "enterprise-wire-sibling"} {
 					a, _ := manager.GetByID(id)

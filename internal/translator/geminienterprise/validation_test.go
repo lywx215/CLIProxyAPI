@@ -18,10 +18,10 @@ func assertEnterpriseFieldError(t *testing.T, err error, path string, payload bo
 		t.Fatalf("expected request-scoped HTTP 400, got %v", err)
 	}
 	message, code, param := PublicErrorDetail(fmt.Errorf("wrapped: %w", err), 400)
-	if code != "gemini_enterprise_invalid_field" || param != path || !strings.Contains(message, path) {
+	if code != "invalid_field" || param != path || !strings.Contains(message, path) {
 		t.Fatalf("incorrect field diagnostic: message=%q code=%q param=%q", message, code, param)
 	}
-	if strings.Contains(message, "requests.payload") != payload {
+	if strings.Contains(message, "Check the server request payload configuration.") != payload {
 		t.Fatalf("incorrect payload guidance for %q", message)
 	}
 	if !json.Valid([]byte(err.Error())) || gjson.Get(err.Error(), "error.param").String() != path {
@@ -76,6 +76,9 @@ func TestEnterpriseFinalValidationRejectsUnsupportedFieldsAndTypes(t *testing.T)
 		{"wrong-model-type", `{"query":{"text":"hi"},"generationSpec":{"modelId":7}}`, "generationSpec.modelId"},
 		{"tools-null", `{` + base + `,"toolsSpec":null}`, "toolsSpec"},
 		{"unsafe-field-name", `{` + base + `,"Bearer private-token":true}`, "body"},
+		{"provider-field-name", `{` + base + `,"GeMiNi_EnTeRpRiSe_Config":true}`, "body"},
+		{"endpoint-field-name", `{` + base + `,"stream_Assist":true}`, "body"},
+		{"service-field-name", `{` + base + `,"discoveryengine.googleapis.com":true}`, "body"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte(test.body)
@@ -160,10 +163,10 @@ func TestEnterpriseUpstreamStatusAndSafeDiagnostics(t *testing.T) {
 		status int
 		code   string
 	}{
-		{400, "gemini_enterprise_upstream_invalid_request"}, {422, "gemini_enterprise_upstream_invalid_request"},
-		{401, "gemini_enterprise_authentication_required"}, {403, "gemini_enterprise_permission_denied"},
-		{404, "gemini_enterprise_resource_not_found"}, {429, "gemini_enterprise_rate_limit_exceeded"},
-		{500, "gemini_enterprise_upstream_error"}, {503, "gemini_enterprise_upstream_error"},
+		{400, "upstream_invalid_request"}, {422, "upstream_invalid_request"},
+		{401, "upstream_authentication_required"}, {403, "permission_denied"},
+		{404, "resource_not_found"}, {429, "rate_limit_exceeded"},
+		{500, "upstream_error"}, {503, "upstream_error"},
 	} {
 		t.Run(fmt.Sprint(test.status), func(t *testing.T) {
 			err := UpstreamHTTPError(test.status, []byte(`{"error":{"message":"Bearer private-token; prompt private-prompt","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"private-reason"}]}}`))
@@ -191,6 +194,11 @@ func TestEnterpriseUpstreamFieldDiagnosticsUseOnlySafeBadRequestPaths(t *testing
 	for _, test := range []struct{ field, kind, want string }{
 		{"generationSpec.modelId", "type.googleapis.com/google.rpc.BadRequest", "generationSpec.modelId"},
 		{"query.text", "type.googleapis.com/google.rpc.BadRequest", "query.text"},
+		{"generationConfig.responseMimeType", "type.googleapis.com/google.rpc.BadRequest", "generationConfig.responseMimeType"},
+		{"gemini_enterprise_config", "type.googleapis.com/google.rpc.BadRequest", ""},
+		{"GeMiNiEnTeRpRiSe.config", "type.googleapis.com/google.rpc.BadRequest", ""},
+		{"stream_Assist.query", "type.googleapis.com/google.rpc.BadRequest", ""},
+		{"DiscoveryEngine.googleapis.com.request", "type.googleapis.com/google.rpc.BadRequest", ""},
 		{"Bearer private-token", "type.googleapis.com/google.rpc.BadRequest", ""},
 		{"query.text\r\nInjected: private-token", "type.googleapis.com/google.rpc.BadRequest", ""},
 		{"generationSpec.modelId", "type.googleapis.com/google.rpc.ErrorInfo", ""},
@@ -198,7 +206,7 @@ func TestEnterpriseUpstreamFieldDiagnosticsUseOnlySafeBadRequestPaths(t *testing
 		body, _ := json.Marshal(map[string]any{"error": map[string]any{"message": "private-prompt", "details": []any{map[string]any{"@type": test.kind, "fieldViolations": []any{map[string]string{"field": test.field, "description": "Bearer private-token"}}}}}})
 		err := UpstreamHTTPError(400, body)
 		message, code, param := PublicErrorDetail(err, 400)
-		if param != test.want || code != "gemini_enterprise_upstream_invalid_request" || strings.Contains(message, "private-") || strings.Contains(err.Error(), "private-") {
+		if param != test.want || code != "upstream_invalid_request" || strings.Contains(message, "private-") || strings.Contains(err.Error(), "private-") {
 			t.Fatalf("unsafe field diagnostic: %v", err)
 		}
 	}
@@ -213,10 +221,10 @@ func TestEnterpriseUpstreamFieldDiagnosticsUseOnlySafeBadRequestPaths(t *testing
 			t.Fatal("upstream message was copied")
 		}
 		if len(raw) <= 64*1024 && strings.Contains(raw, "not allowed") {
-			if code != "gemini_enterprise_model_access_denied" || param != "model" {
+			if code != "model_access_denied" || param != "model" {
 				t.Fatalf("model permission was not classified: %v", err)
 			}
-		} else if code != "gemini_enterprise_upstream_invalid_request" || param != "" {
+		} else if code != "upstream_invalid_request" || param != "" {
 			t.Fatalf("untrusted or oversize body affected classification: %v", err)
 		}
 	}
@@ -225,5 +233,60 @@ func TestEnterpriseUpstreamFieldDiagnosticsUseOnlySafeBadRequestPaths(t *testing
 		if message != "" || code != "" || param != "" {
 			t.Fatal("untrusted Error text became a public diagnostic")
 		}
+	}
+}
+
+func TestEnterprisePublicDiagnosticsDoNotIdentifyProvider(t *testing.T) {
+	type diagnosticTest struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}
+	tests := []diagnosticTest{
+		{"input-field", invalidField("contents[1].parts[0].functionCall", "is not supported in text history", false), 400, "invalid_field"},
+		{"payload-field", ValidateFinal([]byte(`{"query":{"text":"hi"},"generationSpec":{"modelId":"private-model"},"generationConfig":{}}`)), 400, "invalid_field"},
+		{"private-field-name", invalidField("GeMiNi_EnTeRpRiSe_config", "is not supported by the request schema", true), 400, "invalid_field"},
+		{"private-endpoint-name", invalidField("stream_Assist.request", "is not supported by the request schema", true), 400, "invalid_field"},
+		{"private-service-name", invalidField("DiscoveryEngine.googleapis.com.request", "is not supported by the request schema", true), 400, "invalid_field"},
+	}
+	for _, input := range []struct{ name, protocol, body string }{
+		{"message-field", "openai", `{"messages":[{"role":"assistant","content":"hi","tool_calls":[{}]},{"role":"user","content":"continue"}]}`},
+		{"tool-field", "gemini", `{"contents":[{"parts":[{"text":"hi"}]}],"tools":[{"functionDeclarations":[]}]}`},
+		{"history-field", "gemini", `{"contents":[{"parts":[{"functionCall":{"name":"private-function"}}]}]}`},
+	} {
+		_, err := Normalize([]byte(input.body), input.protocol, "private-model")
+		tests = append(tests, diagnosticTest{input.name, err, 400, "invalid_field"})
+	}
+	const raw = `{"error":{"message":"Google Gemini Enterprise streamAssist requests.payload protocol gemini-enterprise private-token","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"query.text"}]}]}}`
+	for _, upstream := range []struct {
+		status int
+		code   string
+	}{
+		{400, "upstream_invalid_request"}, {422, "upstream_invalid_request"},
+		{401, "upstream_authentication_required"}, {403, "permission_denied"},
+		{404, "resource_not_found"}, {429, "rate_limit_exceeded"}, {503, "upstream_error"},
+	} {
+		tests = append(tests, diagnosticTest{fmt.Sprintf("upstream-%d", upstream.status), UpstreamHTTPError(upstream.status, []byte(raw)), upstream.status, upstream.code})
+	}
+	tests = append(tests, diagnosticTest{"model-access", UpstreamHTTPError(400, []byte(`{"error":{"message":"Google Enterprise model private-model is not allowed for this account"}}`)), 400, "model_access_denied"})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			message, code, _ := PublicErrorDetail(test.err, test.status)
+			if message == "" || code != test.code {
+				t.Fatalf("missing generic public diagnostic: message=%q code=%q error=%v", message, code, test.err)
+			}
+			for _, forbidden := range []string{"gemini", "enterprise", "google", "streamassist", "requests.payload", "protocol", "private-token", "private-model", "private-function"} {
+				if strings.Contains(strings.ToLower(message), forbidden) || strings.Contains(strings.ToLower(code), forbidden) {
+					t.Fatalf("public diagnostic identifies the provider or echoes a private value: message=%q code=%q", message, code)
+				}
+			}
+			if actual := gjson.Get(test.err.Error(), "error.message").String(); actual != message {
+				t.Fatalf("serialized diagnostic differs: got %q, want %q", actual, message)
+			}
+			if actual := gjson.Get(test.err.Error(), "error.code").String(); actual != code {
+				t.Fatalf("serialized code differs: got %q, want %q", actual, code)
+			}
+		})
 	}
 }

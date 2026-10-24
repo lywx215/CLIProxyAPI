@@ -85,6 +85,23 @@ def main():
                     assert response.usage_metadata.thoughts_token_count is None
                     assert response.usage_metadata.cached_content_token_count is None
                     results.append("Google GenAI full + code + execution + grounding + token usage")
+                    history = [types.Content(role="user", parts=[types.Part(text="offline fixture")]),
+                        response.candidates[0].content,
+                        types.Content(role="user", parts=[types.Part(text="continue previous calculation")])]
+                    replay = gemini.models.generate_content(model="gemini-4-argon", contents=history)
+                    assert "offline" in "".join(p.text or "" for p in replay.candidates[0].content.parts)
+                    results.append("Google GenAI own code/result history replay")
+                    signature_history = [types.Content(role="user", parts=[types.Part(text="previous question")]),
+                        types.Content(role="model", parts=[types.Part(text="previous answer", thought_signature=b"opaque-signature")]),
+                        types.Content(role="user", parts=[types.Part(text="continue")])]
+                    replay = gemini.models.generate_content(model="gemini-4-argon", contents=signature_history)
+                    assert "offline" in "".join(p.text or "" for p in replay.candidates[0].content.parts)
+                    results.append("Google GenAI text history with thought signature")
+                    long_history = [types.Content(role="user" if i % 2 == 0 else "model",
+                        parts=[types.Part(text=f"history turn {i}")]) for i in range(513)]
+                    replay = gemini.models.generate_content(model="gemini-4-argon", contents=long_history)
+                    assert "offline" in "".join(p.text or "" for p in replay.candidates[0].content.parts)
+                    results.append("Google GenAI 513-turn history")
                     chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="offline fixture"))
                     assert "offline" in "".join(p.text or "" for c in chunks for p in c.candidates[0].content.parts)
                     assert chunks[-1].candidates[0].finish_reason == "STOP"

@@ -262,6 +262,12 @@ func safeErrorIdentifier(value string) bool {
 	if value == "" || len(value) > 256 || internalLeakPatterns.MatchString(value) {
 		return false
 	}
+	privateIdentifier := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(value))
+	for _, marker := range []string{"geminienterprise", "streamassist", "discoveryengine"} {
+		if strings.Contains(privateIdentifier, marker) {
+			return false
+		}
+	}
 	for _, char := range value {
 		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-' || char == '.' || char == '[' || char == ']' {
 			continue

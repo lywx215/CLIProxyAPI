@@ -37,9 +37,11 @@ var enterpriseFixtureModels = []string{
 }
 
 type enterpriseFixtureTransport struct {
-	calls    atomic.Int32
-	mu       sync.Mutex
-	lastBody []byte
+	calls          atomic.Int32
+	mu             sync.Mutex
+	lastBody       []byte
+	upstreamStatus int
+	upstreamBody   string
 }
 
 func (f *enterpriseFixtureTransport) requestBody() []byte {
@@ -58,6 +60,9 @@ func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Respons
 	f.mu.Lock()
 	f.lastBody = append([]byte(nil), body...)
 	f.mu.Unlock()
+	if f.upstreamStatus != 0 {
+		return &http.Response{StatusCode: f.upstreamStatus, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(f.upstreamBody))}, nil
+	}
 	text := "offline 前🙂引用"
 	if strings.Contains(gjson.GetBytes(body, "query.text").String(), "ONLY valid JSON") {
 		text = `{"ok":true}`
@@ -142,6 +147,16 @@ func enterprisePublicCall(router *gin.Engine, path string, body []byte) *httptes
 	return response
 }
 
+func enterpriseAssertPublicErrorChannelNeutral(t *testing.T, body []byte) {
+	t.Helper()
+	lower := strings.ToLower(string(body))
+	for _, private := range []string{"gemini enterprise", "gemini-enterprise", "gemini_enterprise", "geminienterprise", "streamassist", "discoveryengine"} {
+		if strings.Contains(lower, private) {
+			t.Fatalf("public error exposed internal channel detail %q: %s", private, body)
+		}
+	}
+}
+
 func enterprisePublicText(body []byte, protocol string, stream bool) string {
 	packets := []string{string(body)}
 	if stream {
@@ -182,6 +197,9 @@ func TestEnterprisePublicPayloadValidationAllModels(t *testing.T) {
 		{"wrong object type", "toolsSpec.webGroundingSpec", "must be an object", map[string]any{"toolsSpec.webGroundingSpec": []string{privateValue}}, nil},
 		{"null text", "languageCode", "must be text", map[string]any{"languageCode": nil}, nil},
 		{"filtered required field", "query.text", "is required", nil, []string{"query.text"}},
+		{"internal channel field", "body", "is not supported", map[string]any{"gemini_enterprise_private": privateValue}, nil},
+		{"internal endpoint field", "body", "is not supported", map[string]any{"streamAssist": privateValue}, nil},
+		{"internal host field", "body", "is not supported", map[string]any{"discoveryengine": privateValue}, nil},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			cfg := &config.Config{Payload: config.PayloadConfig{}}
@@ -199,11 +217,11 @@ func TestEnterprisePublicPayloadValidationAllModels(t *testing.T) {
 							path, body := enterprisePublicRequest(t, model, protocol, stream, nil)
 							response := enterprisePublicCall(router, path, body)
 							wire := response.Body.Bytes()
-							if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "gemini_enterprise_invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || gjson.GetBytes(wire, "error.type").String() != "invalid_request_error" {
+							if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || gjson.GetBytes(wire, "error.type").String() != "invalid_request_error" {
 								t.Fatalf("invalid field classification lost: status=%d body=%s", response.Code, wire)
 							}
 							message := gjson.GetBytes(wire, "error.message").String()
-							for _, expected := range []string{"Gemini Enterprise", scenario.field, scenario.reason, "requests.payload", "protocol gemini"} {
+							for _, expected := range []string{scenario.field, scenario.reason, "Check the server request payload configuration."} {
 								if !strings.Contains(message, expected) {
 									t.Fatalf("missing diagnostic %q: %s", expected, wire)
 								}
@@ -216,6 +234,45 @@ func TestEnterprisePublicPayloadValidationAllModels(t *testing.T) {
 							if transport.calls.Load() != 0 {
 								t.Fatal("invalid final payload reached upstream")
 							}
+							enterpriseAssertPublicErrorChannelNeutral(t, wire)
+						})
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestEnterprisePublicUpstreamErrorsAreChannelNeutralAllModels(t *testing.T) {
+	const privateValue = "synthetic-private-upstream-value"
+	for _, scenario := range []struct {
+		name, raw, code, param string
+		status                 int
+	}{
+		{"bad field", `{"error":{"message":"Gemini Enterprise: synthetic-private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"generationSpec.modelId"}]}]}}`, "upstream_invalid_request", "generationSpec.modelId", http.StatusBadRequest},
+		{"model permission", `{"error":{"message":"Model synthetic-private-upstream-value is not allowed"}}`, "model_access_denied", "model", http.StatusBadRequest},
+		{"permission", `{"error":{"message":"Gemini Enterprise: synthetic-private-upstream-value"}}`, "permission_denied", "", http.StatusForbidden},
+		{"missing resource", `{"error":{"message":"discoveryengine.googleapis.com synthetic-private-upstream-value"}}`, "resource_not_found", "", http.StatusNotFound},
+		{"invalid request", `{"error":{"message":"streamAssist synthetic-private-upstream-value"}}`, "upstream_invalid_request", "", http.StatusUnprocessableEntity},
+		{"server failure", `{"error":{"message":"gemini_enterprise_upstream_error synthetic-private-upstream-value"}}`, "upstream_error", "", http.StatusServiceUnavailable},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			for _, model := range enterpriseFixtureModels {
+				for _, protocol := range []string{"openai", "gemini"} {
+					for _, stream := range []bool{false, true} {
+						t.Run(fmt.Sprintf("%s/%s/stream=%t", model, protocol, stream), func(t *testing.T) {
+							router, transport, _ := enterpriseFixtureRouter(t)
+							transport.upstreamStatus, transport.upstreamBody = scenario.status, scenario.raw
+							path, body := enterprisePublicRequest(t, model, protocol, stream, nil)
+							response := enterprisePublicCall(router, path, body)
+							wire := response.Body.Bytes()
+							if response.Code != scenario.status || gjson.GetBytes(wire, "error.code").String() != scenario.code || gjson.GetBytes(wire, "error.param").String() != scenario.param {
+								t.Fatalf("upstream classification lost: status=%d body=%s", response.Code, wire)
+							}
+							if transport.calls.Load() == 0 || strings.Contains(string(wire), privateValue) {
+								t.Fatalf("upstream fixture was not called or a private value leaked: calls=%d body=%s", transport.calls.Load(), wire)
+							}
+							enterpriseAssertPublicErrorChannelNeutral(t, wire)
 						})
 					}
 				}
@@ -286,8 +343,8 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 		{"chat image", "openai", "messages[0].content[0]", "text parts only", map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": privateValue}}}}}}},
 		{"chat tool input", "openai", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"type": "function", "function": map[string]string{"name": privateValue}}}}},
 		{"chat tool history", "openai", "messages[0].tool_calls", "is not supported", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
-		{"gemini inline data", "gemini", "contents[0].parts[0]", "text parts only", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
-		{"gemini function result", "gemini", "contents[0].parts[0]", "text parts only", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"functionResponse": map[string]any{"name": privateValue, "response": map[string]string{"result": privateValue}}}}}}}},
+		{"gemini inline data", "gemini", "contents[0].parts[0].inlineData", "is not supported", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
+		{"gemini function result", "gemini", "contents[0].parts[0].functionResponse", "is not supported", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"functionResponse": map[string]any{"name": privateValue, "response": map[string]string{"result": privateValue}}}}}}}},
 		{"gemini function declaration", "gemini", "tools[0]", "function tools are not supported", map[string]any{"tools": []map[string]any{{"functionDeclarations": []map[string]string{{"name": privateValue}}}}}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -298,12 +355,13 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 						path, body := enterprisePublicRequest(t, model, scenario.protocol, stream, scenario.fields)
 						response := enterprisePublicCall(router, path, body)
 						wire := response.Body.Bytes()
-						if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "gemini_enterprise_invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
+						if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
 							t.Fatalf("unsupported content diagnostic lost: status=%d body=%s", response.Code, wire)
 						}
 						if strings.Contains(string(wire), privateValue) || transport.calls.Load() != 0 {
 							t.Fatalf("unsupported content leaked a value or reached upstream: calls=%d body=%s", transport.calls.Load(), wire)
 						}
+						enterpriseAssertPublicErrorChannelNeutral(t, wire)
 					})
 				}
 			}
@@ -336,6 +394,9 @@ func TestEnterprisePublicRoutesBothProtocolsAndOperations(t *testing.T) {
 		}
 		if test.status == 400 && before != transport.calls.Load() {
 			t.Fatal("unsupported endpoint called upstream")
+		}
+		if test.status == 400 {
+			enterpriseAssertPublicErrorChannelNeutral(t, response.Body.Bytes())
 		}
 	}
 	for _, path := range []string{"/v1/models", "/v1beta/models"} {
