@@ -784,6 +784,12 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 	if result.AuthID == "" {
 		return
 	}
+	if result.Error != nil && (result.Error.Code == enterpriseModelNotEnabledCode || result.Error.Code == "enterprise_model_gate") {
+		if result.Error.Code != "enterprise_model_gate" {
+			m.recordAvailabilityNeutralResult(ctx, result)
+		}
+		return
+	}
 	if isEnterpriseQuotaResult(result) {
 		if result.Error.Code != "enterprise_local_gate" {
 			m.recordAvailabilityNeutralResult(ctx, result)
@@ -1587,6 +1593,13 @@ func resultErrorFromError(err error) *Error {
 		return nil
 	}
 	var enterpriseErr *ge.GenerationError
+	if errors.As(err, &enterpriseErr) && enterpriseErr.ModelNotEnabled {
+		return &Error{Code: enterpriseModelNotEnabledCode, Message: "Google has not enabled this model for the application", HTTPStatus: 400}
+	}
+	var modelGate *enterpriseModelGateError
+	if errors.As(err, &modelGate) {
+		return &Error{Code: "enterprise_model_gate", Message: "Enterprise model dispatch blocked locally", HTTPStatus: statusCodeFromError(err)}
+	}
 	if errors.As(err, &enterpriseErr) && enterpriseErr.Restriction != nil {
 		return &Error{Code: "enterprise_quota", Message: enterpriseErr.Error(), HTTPStatus: enterpriseErr.StatusCode()}
 	}
@@ -2298,6 +2311,9 @@ func isRequestInvalidError(err error) bool {
 	}
 	if isRequestScopedError(err) {
 		return true
+	}
+	if isEnterpriseModelAvailabilityError(err) {
+		return false
 	}
 	if isCloudflareChallengeError(err) {
 		return false

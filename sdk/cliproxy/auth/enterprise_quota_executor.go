@@ -16,10 +16,27 @@ type enterpriseQuotaExecutor struct {
 
 type enterpriseLocalGateError struct{ error }
 
+func (e *enterpriseQuotaExecutor) validateModel(ctx context.Context, a *Auth, r exec.Request) error {
+	final := true
+	if validator, ok := e.ProviderExecutor.(interface{ ValidatesEnterpriseModelPayload() bool }); ok && validator.ValidatesEnterpriseModelPayload() {
+		// Built-in payload rules can change the model. Only the final read-only
+		// check knows the actual business model; identity is still checked here.
+		final = false
+	}
+	return validateEnterpriseModelRequest(ctx, a, r.Model, final)
+}
+
 func (e *enterpriseLocalGateError) Unwrap() error { return e.error }
 func (*enterpriseLocalGateError) StatusCode() int { return 429 }
 
 func (e *enterpriseQuotaExecutor) Execute(ctx context.Context, a *Auth, r exec.Request, o exec.Options) (response exec.Response, err error) {
+	if err = e.validateModel(ctx, a, r); err != nil {
+		return response, err
+	}
+	defer func() {
+		observeEnterpriseModelAttempt(ctx, a, r.Model, err)
+		err = stopEnterpriseProbeRetry(ctx, err)
+	}()
 	ticket, err := a.enterpriseQuota.begin()
 	if err != nil {
 		return response, err
@@ -28,6 +45,9 @@ func (e *enterpriseQuotaExecutor) Execute(ctx context.Context, a *Auth, r exec.R
 	return e.ProviderExecutor.Execute(ctx, a, r, o)
 }
 func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r exec.Request, o exec.Options) (*exec.StreamResult, error) {
+	if err := e.validateModel(ctx, a, r); err != nil {
+		return nil, err
+	}
 	ticket, err := a.enterpriseQuota.begin()
 	if err != nil {
 		return nil, err
@@ -35,7 +55,8 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 	source, err := e.ProviderExecutor.ExecuteStream(ctx, a, r, o)
 	if err != nil {
 		ticket.finish(err)
-		return source, err
+		observeEnterpriseModelAttempt(ctx, a, r.Model, err)
+		return source, stopEnterpriseProbeRetry(ctx, err)
 	}
 	if source == nil || source.Chunks == nil {
 		ticket.finish(context.Canceled)
@@ -58,6 +79,8 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 				}
 				if chunk.Err != nil {
 					finalErr = chunk.Err
+					observeEnterpriseModelAttempt(ctx, a, r.Model, finalErr)
+					chunk.Err = stopEnterpriseProbeRetry(ctx, finalErr)
 					ticket.finish(finalErr)
 					ticket = nil
 				}

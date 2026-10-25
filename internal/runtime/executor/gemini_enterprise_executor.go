@@ -40,6 +40,9 @@ func enterpriseRequestMediaKind(model string) string {
 	return registry.EnterpriseMediaKind(model)
 }
 func (*GeminiEnterpriseExecutor) Identifier() string { return ge.Provider }
+
+// ValidatesEnterpriseModelPayload defers model admission until payload rules finish.
+func (*GeminiEnterpriseExecutor) ValidatesEnterpriseModelPayload() bool { return true }
 func (*GeminiEnterpriseExecutor) RequestToFormat(coreexec.Request, coreexec.Options) translator.Format {
 	return translator.FormatGeminiEnterprise
 }
@@ -168,6 +171,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	}
 	input.Body = body
 	input.IncludeThoughts = kind == "" && gjson.GetBytes(body, "generationSpec.thinkingConfig.includeThoughts").Type == gjson.True
+	if err := coreauth.ValidateEnterpriseModelRequest(ctx, auth, gjson.GetBytes(body, "generationSpec.modelId").String()); err != nil {
+		return nil, input, err
+	}
 	if auth == nil {
 		return nil, input, enterprise.Invalid("missing Gemini Enterprise authentication")
 	}
@@ -209,7 +215,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		if len(raw) > 64*1024 {
 			raw = nil
 		}
-		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, false)
+		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, false, gjson.GetBytes(body, "generationSpec.modelId").String())
 	}
 	return response, input, nil
 }
@@ -255,7 +261,7 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 		}
 	}()
 	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-		return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
+		return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 	}}
 	err = parser.Parse(response.Body, func(event enterprise.Event) error {
 		if errRef := refs.Add(event); errRef != nil {
@@ -369,7 +375,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			}
 		}()
 		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-			return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
+			return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 		}}
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
 			reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")

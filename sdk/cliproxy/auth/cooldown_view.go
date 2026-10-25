@@ -38,6 +38,7 @@ func CooldownSnapshotForAuth(auth *Auth, now time.Time) []CooldownView {
 		return views
 	}
 	views = append(views, auth.enterpriseQuota.views(now)...)
+	views = append(views, auth.enterpriseQuota.modelAvailabilityViews(now)...)
 	// Match the explicit credential-wide gate in isAuthBlockedForModel. Other
 	// auth-level fields can be model aggregates and must not become global gates.
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {

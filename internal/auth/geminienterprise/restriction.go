@@ -26,10 +26,13 @@ type Restriction struct {
 }
 
 type GenerationError struct {
-	HTTPStatus  int
-	Started     bool
-	Restriction *Restriction
-	RetryAt     time.Time
+	HTTPStatus int
+	Started    bool
+	// ModelNotEnabled is set only from a validated Google ErrorInfo detail.
+	ModelNotEnabled bool
+	Model           string
+	Restriction     *Restriction
+	RetryAt         time.Time
 	// Diagnostic contains only locally constructed public error details.
 	Diagnostic error
 	now        time.Time
@@ -84,6 +87,11 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	retryAt := quotaHeaderRetryAt(headers, now)
 	if status == 429 {
 		e.RetryAt = retryAt
+	}
+	if IsModelNotEnabledResponse(raw, status) {
+		e.HTTPStatus = http.StatusBadRequest
+		e.ModelNotEnabled = true
+		return e
 	}
 	type rpcStatus struct {
 		Code    int               `json:"code"`

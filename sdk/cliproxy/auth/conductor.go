@@ -153,6 +153,7 @@ type resultPolicyHolder struct {
 
 // Manager orchestrates auth lifecycle, selection, execution, and persistence.
 type Manager struct {
+	enterpriseModels          enterpriseModelCoordinator
 	enterpriseQuota           enterpriseQuotaCoordinator
 	geminiBudgetMu            sync.Mutex
 	geminiBudget              *budget.Engine

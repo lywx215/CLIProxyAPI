@@ -185,6 +185,16 @@ func extractErrorBody(err error) string {
 // If a rule matches, it returns (action, true).
 // If no rule matches, it returns ("", false).
 func matchRequestScopedErrorAction(auth *Auth, err error, cfg *internalconfig.Config) (string, bool) {
+	var probeStop *enterpriseProbeStopError
+	if errors.As(err, &probeStop) {
+		return RequestScopedActionStop, true
+	}
+	if rejection := enterpriseModelRejection(err); rejection != nil {
+		if rejection.Started || coreexecutor.GenerationHasStarted(err) {
+			return RequestScopedActionStop, true
+		}
+		return "", false
+	}
 	if coreexecutor.GenerationHasStarted(err) {
 		return RequestScopedActionStop, true
 	}

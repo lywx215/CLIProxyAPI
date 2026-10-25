@@ -77,9 +77,10 @@ type requiredAuthKindContextKey struct{}
 type credentialPolicyContextKey struct{}
 
 type authSelectionEligibility struct {
-	requiredKind     string
-	credentialPolicy string
-	disallowFreeAuth bool
+	enterpriseContext context.Context
+	requiredKind      string
+	credentialPolicy  string
+	disallowFreeAuth  bool
 }
 
 func withRequiredAuthKind(ctx context.Context, requiredKind string) context.Context {
@@ -99,7 +100,7 @@ func credentialPolicyFromContext(ctx context.Context) string {
 }
 
 func authSelectionEligibilityForRequest(ctx context.Context, opts cliproxyexecutor.Options) authSelectionEligibility {
-	eligibility := authSelectionEligibility{disallowFreeAuth: disallowFreeAuthFromMetadata(opts.Metadata)}
+	eligibility := authSelectionEligibility{disallowFreeAuth: disallowFreeAuthFromMetadata(opts.Metadata), enterpriseContext: ctx}
 	if ctx != nil {
 		eligibility.requiredKind, _ = ctx.Value(requiredAuthKindContextKey{}).(string)
 		eligibility.credentialPolicy, _ = ctx.Value(credentialPolicyContextKey{}).(string)
@@ -109,6 +110,9 @@ func authSelectionEligibilityForRequest(ctx context.Context, opts cliproxyexecut
 
 func (e authSelectionEligibility) allows(auth *Auth) bool {
 	if auth == nil {
+		return false
+	}
+	if !enterpriseRetryCandidateAllowed(e.enterpriseContext, auth) {
 		return false
 	}
 	if e.requiredKind != "" && auth.AuthKind() != e.requiredKind {
@@ -570,6 +574,8 @@ func (m *Manager) availableAuthsForRouteModelWithPriorityMode(auths []*Auth, pro
 		candidate = m.geminiBudgetSelectionAuth(candidate, routeModel)
 		evaluatedAuths = append(evaluatedAuths, candidate)
 		checkModel := m.selectionModelForAuth(candidate, routeModel)
+		candidate = m.enterpriseModelSelectionAuth(candidate, checkModel)
+		evaluatedAuths[len(evaluatedAuths)-1] = candidate
 		blocked, reason, next := isAuthBlockedForModel(candidate, checkModel, now)
 		if !blocked {
 			priority := authPriority(candidate)
@@ -1346,6 +1352,9 @@ func (m *Manager) shouldRetryAfterErrorWithHomeRetryLimit(ctx context.Context, o
 }
 
 func (m *Manager) shouldRetryAfterErrorWithAttempted(ctx context.Context, opts cliproxyexecutor.Options, err error, attempt int, providers []string, model string, maxWait time.Duration, homeRetryLimit int, defaultRequestRetry int, attempted map[string]struct{}) (time.Duration, bool) {
+	if enterpriseProbeActive(ctx) || enterpriseRetryRestricted(ctx) || isEnterpriseModelAvailabilityError(err) {
+		return 0, false
+	}
 	if budget.Attempts(ctx) > 0 {
 		return 0, false
 	}
@@ -2008,7 +2017,7 @@ func (m *Manager) pickNext(ctx context.Context, provider, model string, opts cli
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = provider
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 
-	if m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
+	if canonicalSchedulingProvider(provider) == "gemini-enterprise" || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
 		return m.pickNextLegacy(ctx, provider, model, opts, tried)
 	}
 	eligibility := authSelectionEligibilityForRequest(ctx, opts)
@@ -2189,7 +2198,7 @@ func (m *Manager) pickNextMixed(ctx context.Context, providers []string, model s
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = "mixed"
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 
-	if m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
+	if containsEnterpriseProvider(providers) || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
 		return m.pickNextMixedLegacy(ctx, providers, model, opts, tried)
 	}
 
