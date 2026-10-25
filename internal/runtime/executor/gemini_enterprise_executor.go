@@ -82,15 +82,15 @@ func (e *GeminiEnterpriseExecutor) PrepareRequest(req *http.Request, auth *corea
 	if e.cfg != nil && e.cfg.Home.Enabled {
 		return enterprise.Invalid("Gemini Enterprise is not supported in CLIProxyAPIHome mode")
 	}
-	if !ge.Official(req) {
-		return enterprise.Invalid("Gemini Enterprise credentials may only be sent to the official HTTPS discoveryengine.googleapis.com origin")
-	}
 	if auth == nil || auth.Provider != ge.Provider {
 		return enterprise.Invalid("Gemini Enterprise authentication is required")
 	}
 	binding := ge.FromMetadata(auth.Metadata)
 	if err := binding.Validate(); err != nil {
 		return err
+	}
+	if !ge.OfficialBinding(req, binding.ProjectID, binding.Location) {
+		return enterprise.Invalid("Gemini Enterprise credentials require the official HTTPS endpoint matching the saved project and region")
 	}
 	token := ge.String(auth.Metadata, "access_token")
 	if token == "" {
@@ -175,7 +175,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if err := binding.Validate(); err != nil {
 		return nil, input, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, ge.Origin+"/v1alpha/"+ge.Engine(binding)+"/assistants/"+binding.AssistantID+":streamAssist", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, ge.OriginForLocation(binding.Location)+"/v1alpha/"+ge.Engine(binding)+"/assistants/"+binding.AssistantID+":streamAssist", bytes.NewReader(body))
 	if err != nil {
 		return nil, input, enterprise.Invalid("cannot construct streamAssist request")
 	}

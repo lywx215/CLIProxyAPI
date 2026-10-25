@@ -24,6 +24,50 @@ type resourceProject struct {
 	State     string `json:"state"`
 }
 
+// ResourceBinding is the public, editable portion of a saved credential.
+type ResourceBinding struct {
+	ProjectID    string `json:"project_id"`
+	Location     string `json:"location"`
+	CollectionID string `json:"collection_id"`
+	EngineID     string `json:"engine_id"`
+	AssistantID  string `json:"assistant_id"`
+}
+
+func Resources(c config.GeminiEnterpriseOAuth) ResourceBinding {
+	c = c.WithDefaults()
+	return ResourceBinding{c.ProjectID, c.Location, c.CollectionID, c.EngineID, c.AssistantID}
+}
+
+// Apply retains the credential's OAuth application; callers cannot change it
+// through the regional resource editor.
+func (r ResourceBinding) Apply(c config.GeminiEnterpriseOAuth) config.GeminiEnterpriseOAuth {
+	c.ProjectID, c.Location, c.CollectionID, c.EngineID, c.AssistantID = strings.TrimSpace(r.ProjectID), strings.TrimSpace(r.Location), strings.TrimSpace(r.CollectionID), strings.TrimSpace(r.EngineID), strings.TrimSpace(r.AssistantID)
+	return c.WithDefaults()
+}
+
+// ValidateResources performs read-only application and catalog checks. A region
+// switch never creates or migrates a Google resource, or calls a model.
+func ValidateResources(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string) error {
+	if err := binding.Validate(); err != nil {
+		return err
+	}
+	var engine struct {
+		Name string `json:"name"`
+	}
+	status, err := resourceJSON(ctx, client, OriginForLocation(binding.Location)+"/v1/"+Engine(binding), token, binding.ProjectID, &engine)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("gemini-enterprise: application validation returned HTTP %d; check the region, resource IDs and access permissions", status)
+	}
+	if engine.Name != Engine(binding) {
+		return fmt.Errorf("gemini-enterprise: Google returned an inconsistent application resource; use the project's canonical number")
+	}
+	_, err = Discover(ctx, client, binding, token)
+	return err
+}
+
 // ResolveResources finds a unique readable engine using the authorized user's
 // project visibility. It never reuses another account's saved project binding.
 func ResolveResources(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string) (config.GeminiEnterpriseOAuth, error) {
@@ -46,7 +90,7 @@ func ResolveResources(ctx context.Context, client *http.Client, binding config.G
 			var engine struct {
 				Name string `json:"name"`
 			}
-			status, errGet := resourceJSON(ctx, client, Origin+"/v1/"+Engine(candidate), token, project, &engine)
+			status, errGet := resourceJSON(ctx, client, OriginForLocation(location)+"/v1/"+Engine(candidate), token, project, &engine)
 			if errGet != nil {
 				return binding, errGet
 			}
@@ -119,7 +163,7 @@ func resourceJSON(ctx context.Context, client *http.Client, endpoint, token, quo
 	if err != nil {
 		return 0, fmt.Errorf("gemini-enterprise: invalid resource request")
 	}
-	if req.URL.Scheme != "https" || req.URL.User != nil || (req.URL.Host != "discoveryengine.googleapis.com" && req.URL.Host != "cloudresourcemanager.googleapis.com") {
+	if req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Opaque != "" || req.URL.Fragment != "" || (!OfficialResource(req) && req.URL.Host != "cloudresourcemanager.googleapis.com") {
 		return 0, fmt.Errorf("gemini-enterprise: untrusted resource discovery origin")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)

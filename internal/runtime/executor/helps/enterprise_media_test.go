@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 )
 
@@ -82,5 +83,52 @@ func TestEnterpriseMediaReferenceDeduplication(t *testing.T) {
 	}
 	if err := refs.Add(enterprise.Event{Type: "file", FileID: "two", MIME: "video/mp4"}); err == nil {
 		t.Fatal("accepted multiple files")
+	}
+}
+
+func TestEnterpriseRegionalMediaDownloads(t *testing.T) {
+	var pngData bytes.Buffer
+	_ = png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2)))
+	for _, region := range []string{"global", "us", "eu"} {
+		for _, redirectHost := range []string{"same", "cross-region", "foreign", "global-alias"} {
+			t.Run(region+"/"+redirectHost, func(t *testing.T) {
+				engine := "projects/p/locations/" + region + "/collections/default_collection/engines/e"
+				refs := EnterpriseMediaRefs{Session: engine + "/sessions/123", FileID: "file-id", MIME: "image/png"}
+				origin := ge.OriginForLocation(region)
+				redirectOrigin := origin
+				switch redirectHost {
+				case "cross-region":
+					if region == "eu" {
+						redirectOrigin = ge.OriginForLocation("us")
+					} else {
+						redirectOrigin = ge.OriginForLocation("eu")
+					}
+				case "foreign":
+					redirectOrigin = "https://us-discoveryengine.googleapis.com.evil.test"
+				case "global-alias":
+					redirectOrigin = "https://global-discoveryengine.googleapis.com"
+				}
+				calls := 0
+				client := &http.Client{Transport: mediaTransport(func(r *http.Request) (*http.Response, error) {
+					calls++
+					if !ge.OfficialBinding(r, "p", region) || r.Header.Get("Authorization") != "Bearer synthetic" {
+						t.Fatal("credentials sent to wrong media region", r.URL)
+					}
+					if calls == 1 {
+						return &http.Response{StatusCode: 302, Header: http.Header{"Location": {redirectOrigin + "/download/v1alpha/" + refs.Session + ":downloadFile?fileId=file-id&alt=media"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+					}
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(base64.StdEncoding.EncodeToString(pngData.Bytes())))}, nil
+				})}
+				data, err := DownloadEnterpriseMedia(context.Background(), client, func(r *http.Request) error { r.Header.Set("Authorization", "Bearer synthetic"); return nil }, engine, "image", refs)
+				valid := redirectHost == "same" || (region == "global" && redirectHost == "global-alias")
+				if valid {
+					if err != nil || !bytes.Equal(data, pngData.Bytes()) || calls != 2 {
+						t.Fatal("regional download failed", err, calls)
+					}
+				} else if err == nil || calls != 1 {
+					t.Fatal("unsafe redirect followed", calls)
+				}
+			})
+		}
 	}
 }

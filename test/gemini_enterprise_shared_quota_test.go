@@ -30,7 +30,7 @@ type quotaWireTransport struct {
 
 func (f *quotaWireTransport) RoundTripperFor(*auth.Auth) http.RoundTripper { return f }
 func (f *quotaWireTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.URL.Host != "discoveryengine.googleapis.com" || !strings.HasSuffix(r.URL.Path, ":streamAssist") {
+	if !ge.OfficialBinding(r, "12345", "us") || !strings.HasSuffix(r.URL.Path, ":streamAssist") {
 		return nil, io.ErrUnexpectedEOF
 	}
 	f.calls.Add(1)

@@ -64,7 +64,7 @@ func TestEnterpriseDiscoveredBindingSavedOnlyAfterSuccessfulResolution(t *testin
 						body = `{"email":"account@example.com"}`
 					case "cloudresourcemanager.googleapis.com":
 						body = `{"projects":[{"name":"projects/222","state":"ACTIVE"}]}`
-					case "discoveryengine.googleapis.com":
+					case "discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com":
 						if scenario == "cancelled" {
 							CancelOAuthSession(state)
 						}

@@ -118,7 +118,7 @@ func quotaTiers(ctx context.Context, client *http.Client, binding config.GeminiE
 	}
 	found := map[string]bool{}
 	params := url.Values{"pageSize": {"100"}}
-	endpoint := Origin + "/v1/projects/" + binding.ProjectID + "/locations/" + binding.Location + "/licenseConfigs"
+	endpoint := OriginForLocation(binding.Location) + "/v1/projects/" + binding.ProjectID + "/locations/" + binding.Location + "/licenseConfigs"
 	seen := map[string]bool{}
 	for range 100 {
 		var page struct {
@@ -239,7 +239,7 @@ func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, e
 
 func quotaJSON(ctx context.Context, client *http.Client, endpoint, token, project string, target any) string {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil || req.URL.Scheme != "https" || req.URL.User != nil || (req.URL.Host != "discoveryengine.googleapis.com" && req.URL.Host != "monitoring.googleapis.com") {
+	if err != nil || req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Opaque != "" || req.URL.Fragment != "" || (!OfficialResource(req) && req.URL.Host != "monitoring.googleapis.com") {
 		return "unavailable"
 	}
 	req.Header.Set("Authorization", "Bearer "+token)

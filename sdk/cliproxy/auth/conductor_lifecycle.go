@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -169,6 +170,7 @@ const (
 	updateModeReplace updateAuthMode = iota
 	updateModeRefresh
 	updateModePrepare
+	updateModeEnterpriseResources
 )
 
 // UpdatePreparedAuth atomically merges request preparation results into the latest runtime auth
@@ -205,7 +207,24 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	existing, ok := m.auths[auth.ID]
 	if !ok || existing == nil {
 		m.mu.Unlock()
+		if mode == updateModeEnterpriseResources {
+			return nil, ErrEnterpriseResourcesChanged
+		}
 		return nil, nil
+	}
+	resourcesRebound := false
+	if mode == updateModeEnterpriseResources {
+		if !sameEnterpriseResourceSnapshot(base, existing) {
+			m.mu.Unlock()
+			return nil, ErrEnterpriseResourcesChanged
+		}
+		proposed := ge.Resources(ge.FromMetadata(auth.Metadata))
+		resourcesRebound = proposed != ge.Resources(ge.FromMetadata(existing.Metadata))
+		auth = existing.Clone()
+		putEnterpriseResources(auth, proposed)
+		if resourcesRebound {
+			resetEnterpriseResourceState(auth)
+		}
 	}
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
@@ -270,9 +289,9 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	} else {
 		auth.CredentialVersion = existingVersion
 	}
-	cooldownStateChanged := false
+	cooldownStateChanged := resourcesRebound
 	if !existing.Disabled && existing.Status != StatusDisabled && !auth.Disabled && auth.Status != StatusDisabled {
-		if len(auth.ModelStates) == 0 && len(existing.ModelStates) > 0 {
+		if !resourcesRebound && len(auth.ModelStates) == 0 && len(existing.ModelStates) > 0 {
 			auth.ModelStates = existing.ModelStates
 		}
 		if credChanged || mode == updateModeRefresh {
@@ -291,7 +310,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		} else {
 			auth.RejectedAccessToken = existing.RejectedAccessToken
 		}
-		if existing.Quota.Exceeded && existing.Quota.Reason == "credential_quota" && existing.Quota.NextRecoverAt.After(time.Now()) {
+		if !resourcesRebound && existing.Quota.Exceeded && existing.Quota.Reason == "credential_quota" && existing.Quota.NextRecoverAt.After(time.Now()) {
 			auth.Unavailable = existing.Unavailable
 			auth.NextRetryAfter = existing.NextRetryAfter
 			auth.Quota = existing.Quota
@@ -317,6 +336,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist meta auth: %w", errPersist)
 		}
+		if mode == updateModeEnterpriseResources {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("persist enterprise resources: %w", errPersist)
+		}
 		// Ordinary persistence failures remain non-fatal, but never silent.
 		log.WithFields(log.Fields{"auth_id": auth.ID, "credential": auth.ID, "provider": auth.Provider}).Warnf("failed to persist updated auth %s (%s): %v", auth.Provider, auth.ID, errPersist)
 	}
@@ -325,6 +348,11 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		return nil, fmt.Errorf("auth %s changed registration during persistence", auth.ID)
 	}
 	mergeAuthSaveDelta(auth, existingBeforeSave, existing, false)
+	if resourcesRebound {
+		// Results from the previous binding may arrive while the store is saving.
+		// Preserve their counters, but never attach their cooldowns to new resources.
+		resetEnterpriseResourceState(auth)
+	}
 	if existing.Generation >= auth.Generation {
 		auth.Generation = existing.Generation + 1
 	}

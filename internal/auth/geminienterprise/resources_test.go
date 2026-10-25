@@ -36,7 +36,7 @@ func TestResourceDiscoveryUsesPagedProjectsAndEngineGet(t *testing.T) {
 			}
 			return resourceResponse(200, `{"projects":[{"name":"projects/222","state":"ACTIVE"},{"name":"projects/111","state":"ACTIVE"}]}`), nil
 		}
-		if req.URL.Host != "discoveryengine.googleapis.com" || !strings.HasSuffix(req.URL.Path, "/engines/manual-engine") {
+		if !OfficialResource(req) || !strings.HasSuffix(req.URL.Path, "/engines/manual-engine") {
 			t.Fatal("discovery must use Engine.Get only")
 		}
 		reads++

@@ -98,10 +98,6 @@ func FromMetadata(m map[string]any) config.GeminiEnterpriseOAuth {
 	return (config.GeminiEnterpriseOAuth{ClientID: String(m, "client_id"), ClientSecretEnv: String(m, "client_secret_env"), ProjectID: String(m, "project_id"), Location: String(m, "location"), CollectionID: String(m, "collection_id"), EngineID: String(m, "engine_id"), AssistantID: String(m, "assistant_id")}).WithDefaults()
 }
 
-func Official(req *http.Request) bool {
-	return req != nil && req.URL != nil && req.URL.Scheme == "https" && req.URL.Host == "discoveryengine.googleapis.com" && req.URL.User == nil && req.URL.Opaque == ""
-}
-
 // TokenError deliberately omits token endpoint response bodies and client credentials.
 func TokenError(err error) error {
 	var retrieval *oauth2.RetrieveError
@@ -149,7 +145,7 @@ func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpris
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, Origin+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, OriginForLocation(c.WithDefaults().Location)+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", nil)
 	if err != nil {
 		return nil, err
 	}

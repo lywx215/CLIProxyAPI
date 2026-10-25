@@ -28,6 +28,9 @@ func TestEnterpriseIdentityRequiresAssignedUserLicense(t *testing.T) {
 				case r.URL.Host == "cloudresourcemanager.googleapis.com":
 					body = `{"name":"projects/12345","projectId":"my-project","state":"ACTIVE"}`
 				case strings.Contains(r.URL.Path, "/userLicenses"):
+					if r.URL.Host != "us-discoveryengine.googleapis.com" {
+						t.Fatal("regional license identity used the global host")
+					}
 					if !strings.Contains(r.URL.Path, "/userStores/default_user_store/") || r.URL.Query().Get("filter") != "userPrincipal = oauth@example.test" {
 						t.Fatal("identity lookup guessed user store or untrusted principal")
 					}
@@ -43,6 +46,9 @@ func TestEnterpriseIdentityRequiresAssignedUserLicense(t *testing.T) {
 						body = strings.ReplaceAll(body, "projects/12345/", "projects/99999/")
 					}
 				case strings.HasSuffix(r.URL.Path, "/licenseConfigs/assigned"):
+					if r.URL.Host != "us-discoveryengine.googleapis.com" {
+						t.Fatal("regional subscription identity used the global host")
+					}
 					body = `{"name":"projects/12345/locations/us/licenseConfigs/assigned","subscriptionTier":"SEARCH_AND_ASSISTANT","state":"ACTIVE"}`
 				default:
 					t.Fatalf("unexpected identity endpoint: %s", r.URL.Path)

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -416,6 +417,9 @@ func authHasRefreshCredential(auth *Auth) bool {
 func CredentialsChanged(existing, incoming *Auth) bool {
 	if existing == nil || incoming == nil {
 		return false
+	}
+	if existing.Provider == ge.Provider && incoming.Provider == ge.Provider && ge.Binding(ge.FromMetadata(existing.Metadata)) != ge.Binding(ge.FromMetadata(incoming.Metadata)) {
+		return true
 	}
 	if authAccessToken(existing) != authAccessToken(incoming) {
 		return true

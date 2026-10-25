@@ -70,7 +70,8 @@ func ResolveQuotaIdentity(ctx context.Context, client *http.Client, binding conf
 		} `json:"userLicenses"`
 		Next string `json:"nextPageToken"`
 	}
-	status, errGet = resourceJSON(ctx, client, Origin+"/v1/"+parent+"/userStores/default_user_store/userLicenses?"+params.Encode(), token, binding.ProjectID, &licenses)
+	origin := OriginForLocation(binding.Location)
+	status, errGet = resourceJSON(ctx, client, origin+"/v1/"+parent+"/userStores/default_user_store/userLicenses?"+params.Encode(), token, binding.ProjectID, &licenses)
 	if errGet == nil && status == 200 && licenses.Next == "" && len(licenses.Licenses) == 0 {
 		result.Invalidated = true
 	}
@@ -91,7 +92,7 @@ func ResolveQuotaIdentity(ctx context.Context, client *http.Client, binding conf
 		Tier  string `json:"subscriptionTier"`
 		State string `json:"state"`
 	}
-	status, errGet = resourceJSON(ctx, client, Origin+"/v1/"+license.Config, token, binding.ProjectID, &subscription)
+	status, errGet = resourceJSON(ctx, client, origin+"/v1/"+license.Config, token, binding.ProjectID, &subscription)
 	edition := SubscriptionEdition(subscription.Tier)
 	if errGet == nil && status == 200 && (edition == "" || (subscription.State != "ACTIVE" && subscription.State != "DEACTIVATING")) {
 		result.Invalidated = true

@@ -155,6 +155,73 @@ func TestEnterprisePayloadFinalBarrier(t *testing.T) {
 	}
 }
 
+func TestEnterpriseRegionalInferenceBothProtocols(t *testing.T) {
+	for _, region := range []string{"global", "us", "eu"} {
+		for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
+			for _, stream := range []bool{false, true} {
+				t.Run(region+"/"+format.String()+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
+					auth := enterpriseExecutorAuth()
+					auth.Metadata["location"] = region
+					cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "regional-model", Protocol: ge.Provider}}, Params: map[string]any{"query.text": "final regional query"}}}}}
+					calls := 0
+					ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", enterpriseTransport(func(req *http.Request) (*http.Response, error) {
+						calls++
+						if !ge.OfficialBinding(req, "project", region) || req.Header.Get("Authorization") != "Bearer access" || "https://"+req.URL.Host != ge.OriginForLocation(region) {
+							t.Fatal("incorrect regional inference endpoint", req.URL)
+						}
+						if _, deadline := req.Context().Deadline(); deadline {
+							t.Fatal("inference has a deadline")
+						}
+						body, _ := io.ReadAll(req.Body)
+						if gjson.GetBytes(body, "query.text").String() != "final regional query" {
+							t.Fatal("regional routing changed the final business payload")
+						}
+						return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(enterpriseAnswer))}, nil
+					}))
+					body := []byte(`{"messages":[{"role":"user","content":"hello"}],"stream_options":{"include_usage":true}}`)
+					if format == translator.FormatGemini {
+						body = []byte(`{"contents":[{"parts":[{"text":"hello"}]}]}`)
+					}
+					e := NewGeminiEnterpriseExecutor(cfg)
+					req := exec.Request{Model: "regional-model", Payload: body}
+					opts := enterpriseOptions(format)
+					var output []byte
+					if stream {
+						result, err := e.ExecuteStream(ctx, auth, req, opts)
+						if err != nil {
+							t.Fatal(err)
+						}
+						for chunk := range result.Chunks {
+							if chunk.Err != nil {
+								t.Fatal(chunk.Err)
+							}
+							output = append(output, chunk.Payload...)
+						}
+					} else {
+						result, err := e.Execute(ctx, auth, req, opts)
+						if err != nil {
+							t.Fatal(err)
+						}
+						output = result.Payload
+					}
+					if calls != 1 || !strings.Contains(string(output), "hello") || (!strings.Contains(string(output), "usageMetadata") && !strings.Contains(string(output), "prompt_tokens")) {
+						t.Fatal("lost regional response or usage", string(output))
+					}
+					for _, other := range []string{"global", "us", "eu"} {
+						if other == region {
+							continue
+						}
+						r, _ := http.NewRequest(http.MethodGet, ge.OriginForLocation(other)+"/v1alpha/"+ge.Engine(ge.FromMetadata(auth.Metadata)), nil)
+						if e.PrepareRequest(r, auth) == nil {
+							t.Fatal("credentials accepted a mismatched regional host")
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestEnterpriseRejectsOperationsAndCredentialRedirects(t *testing.T) {
 	e := NewGeminiEnterpriseExecutor(&config.Config{})
 	auth := enterpriseExecutorAuth()
@@ -169,7 +236,7 @@ func TestEnterpriseRejectsOperationsAndCredentialRedirects(t *testing.T) {
 			t.Fatal("credentials allowed on foreign origin")
 		}
 	}
-	req, _ := http.NewRequestWithContext(ctx, "GET", ge.Origin+"/v1alpha/anything", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", ge.Origin+"/v1alpha/"+ge.Engine(ge.FromMetadata(auth.Metadata)), nil)
 	resp, err := e.HttpRequest(ctx, auth, req)
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +331,7 @@ func TestEnterpriseDiagnosticHeadersAreBoundedAndSafe(t *testing.T) {
 		t.Fatalf("unbounded diagnostic header: %d bytes", len(got))
 	}
 	e := NewGeminiEnterpriseExecutor(&config.Config{})
-	req, _ := http.NewRequest("GET", ge.Origin+"/v1alpha/test", nil)
+	req, _ := http.NewRequest("GET", ge.Origin+"/v1alpha/"+ge.Engine(ge.FromMetadata(enterpriseExecutorAuth().Metadata)), nil)
 	req.Header = nil
 	if err := e.PrepareRequest(req, enterpriseExecutorAuth()); err != nil {
 		t.Fatal(err)

@@ -34,6 +34,44 @@ func quotaFixture(suffix, kind, value string, start, end time.Time) quotaSeries 
 	return s
 }
 
+func TestEnterpriseRegionalQuotaEndpointsAndUsageIsolation(t *testing.T) {
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	for _, region := range []string{"global", "us", "eu"} {
+		t.Run(region, func(t *testing.T) {
+			binding := config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", Location: region, EngineID: "app"}
+			calls := 0
+			client := &http.Client{Transport: quotaTransport(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.Header.Get("Authorization") != "Bearer synthetic" {
+					t.Fatal("quota lost credential")
+				}
+				if strings.HasSuffix(r.URL.Path, "/licenseConfigs") {
+					if !OfficialBinding(r, "123", region) || "https://"+r.URL.Host != OriginForLocation(region) {
+						t.Fatal("license request used the wrong region", r.URL)
+					}
+					return quotaResponse(200, map[string]any{"licenseConfigs": []any{map[string]string{"subscriptionTier": "SEARCH_AND_ASSISTANT", "state": "ACTIVE"}}}), nil
+				}
+				if r.URL.Host != "monitoring.googleapis.com" || !strings.Contains(r.URL.Query().Get("filter"), `resource.labels.location = "`+region+`"`) {
+					t.Fatal("Monitoring filter used the wrong region", r.URL)
+				}
+				suffix, kind, value := "usage", "DELTA", "7"
+				if strings.Contains(r.URL.Query().Get("filter"), "/limit") {
+					suffix, kind, value = "limit", "GAUGE", "100"
+				}
+				known := quotaFixture(suffix, kind, value, now.Add(-time.Minute), now)
+				known.Resource.Labels["location"], known.Metric.Labels["regional_location"] = region, region
+				other := quotaFixture(suffix, kind, "999", now.Add(-time.Minute), now)
+				other.Resource.Labels["location"], other.Metric.Labels["regional_location"] = "foreign", "foreign"
+				return quotaResponse(200, map[string]any{"timeSeries": []quotaSeries{known, other}}), nil
+			})}
+			result := FetchQuota(context.Background(), client, binding, "synthetic", now)
+			if result.Status != "ok" || result.Location != region || len(result.Pools) != 1 || result.Pools[0].Remaining == nil || *result.Pools[0].Remaining != 93 || calls != 3 {
+				t.Fatalf("incorrect regional quota: %+v calls=%d", result, calls)
+			}
+		})
+	}
+}
+
 func TestEnterpriseQuotaSumsPagedDeltaAndSeparatesRegions(t *testing.T) {
 	now := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
 	first := quotaFixture("usage", "DELTA", "3", now.Add(-3*time.Minute), now.Add(-2*time.Minute))

@@ -219,7 +219,7 @@ func addGeminiEnterpriseCredentialSummary(c *gin.Context, entry gin.H, provider 
 
 // Return only the public binding and renewal capability, never credential values.
 func geminiEnterpriseCredentialSummary(metadata map[string]any) gin.H {
-	summary := gin.H{"has_refresh_token": ge.String(metadata, "refresh_token") != ""}
+	summary := gin.H{"has_refresh_token": ge.String(metadata, "refresh_token") != "", "resource_edit_supported": true, "endpoint": ge.OriginForLocation(ge.FromMetadata(metadata).Location)}
 	for _, key := range []string{"client_id", "project_id", "location", "collection_id", "engine_id", "assistant_id", "expiry"} {
 		if value := ge.String(metadata, key); value != "" {
 			summary[key] = value

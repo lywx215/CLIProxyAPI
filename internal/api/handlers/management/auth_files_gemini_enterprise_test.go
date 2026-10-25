@@ -284,7 +284,7 @@ func TestEnterpriseCredentialListMetadata(t *testing.T) {
 						continue
 					}
 					var public map[string]any
-					if !exists || json.Unmarshal(summary, &public) != nil || len(public) != 8 || public["client_id"] != binding.ClientID || public["project_id"] != binding.ProjectID || public["engine_id"] != binding.EngineID || public["assistant_id"] != binding.AssistantID || public["has_refresh_token"] != true {
+					if !exists || json.Unmarshal(summary, &public) != nil || len(public) != 10 || public["client_id"] != binding.ClientID || public["project_id"] != binding.ProjectID || public["engine_id"] != binding.EngineID || public["assistant_id"] != binding.AssistantID || public["has_refresh_token"] != true || public["resource_edit_supported"] != true || public["endpoint"] != ge.OriginForLocation(binding.Location) {
 						t.Fatal("v8 credential list lost the public binding or renewal capability")
 					}
 				}

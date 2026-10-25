@@ -61,7 +61,11 @@ func DownloadEnterpriseMedia(ctx context.Context, client *http.Client, prepare f
 	}
 	path := "/v1alpha/" + refs.Session + ":downloadFile"
 	query := url.Values{"fileId": {refs.FileID}, "alt": {"media"}}
-	target := ge.Origin + path + "?" + query.Encode()
+	origin, errOrigin := ge.OriginForResource(engine)
+	if errOrigin != nil {
+		return nil, fail()
+	}
+	target := origin + path + "?" + query.Encode()
 	copyClient := *client
 	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	for step := 0; step < 2; step++ {
@@ -80,7 +84,7 @@ func DownloadEnterpriseMedia(ctx context.Context, client *http.Client, prepare f
 		if step == 0 && response.StatusCode == http.StatusFound {
 			location, errLocation := response.Location()
 			_ = response.Body.Close()
-			if errLocation != nil || location.Scheme != "https" || location.Host != "discoveryengine.googleapis.com" || location.User != nil || location.Fragment != "" || location.Path != "/download"+path || location.EscapedPath() != location.Path {
+			if errLocation != nil || !ge.OfficialResource(&http.Request{URL: location}) || location.Path != "/download"+path || location.EscapedPath() != location.Path {
 				return nil, fail()
 			}
 			q, errQuery := url.ParseQuery(location.RawQuery)
