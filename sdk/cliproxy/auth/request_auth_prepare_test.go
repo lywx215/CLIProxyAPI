@@ -134,6 +134,54 @@ func (e *requestPrepareExecutor) HttpRequest(context.Context, *Auth, *http.Reque
 	return nil, &Error{HTTPStatus: http.StatusNotImplemented, Message: "http not implemented"}
 }
 
+type persistenceFailurePrepareExecutor struct{ requestPrepareExecutor }
+
+func (*persistenceFailurePrepareExecutor) Identifier() string { return "meta" }
+
+func TestRequestPreparationPersistenceFailureRetainsSelectedAuth(t *testing.T) {
+	for _, path := range []string{"execute", "count", "stream"} {
+		t.Run(path, func(t *testing.T) {
+			failure := errors.New("synthetic preparation persistence failure")
+			var fail atomic.Bool
+			store := &callbackAuthStore{save: func(*Auth) error {
+				if fail.Load() {
+					return failure
+				}
+				return nil
+			}}
+			hook := &resultCaptureHook{}
+			manager := NewManager(store, nil, hook)
+			manager.SetRetryConfig(0, 0, 0)
+			executor := &persistenceFailurePrepareExecutor{}
+			manager.RegisterExecutor(executor)
+			auth, err := manager.Register(context.Background(), &Auth{ID: "prepare-persist-" + path, Provider: "meta", Status: StatusActive})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := "prepare-persist-" + path
+			registry.GetGlobalRegistry().RegisterClient(auth.ID, auth.Provider, []*registry.ModelInfo{{ID: model}})
+			t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
+			fail.Store(true)
+			request := cliproxyexecutor.Request{Model: model}
+			switch path {
+			case "execute":
+				_, err = manager.Execute(context.Background(), []string{auth.Provider}, request, cliproxyexecutor.Options{})
+			case "count":
+				_, err = manager.ExecuteCount(context.Background(), []string{auth.Provider}, request, cliproxyexecutor.Options{})
+			case "stream":
+				_, err = manager.ExecuteStream(context.Background(), []string{auth.Provider}, request, cliproxyexecutor.Options{Stream: true})
+			}
+			if err == nil || !strings.Contains(err.Error(), failure.Error()) {
+				t.Fatalf("preparation error was lost: %v", err)
+			}
+			results := hook.Results()
+			if executor.executeCalls.Load() != 0 || len(results) != 1 || results[0].AuthID != auth.ID || results[0].Success {
+				t.Fatalf("preparation failure was dispatched or attributed incorrectly: %+v", results)
+			}
+		})
+	}
+}
+
 type homeRequestPrepareDispatcher struct {
 	calls atomic.Int32
 }

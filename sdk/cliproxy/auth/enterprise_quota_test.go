@@ -47,6 +47,80 @@ func rejectSharedQuota(t *testing.T, a *Auth, now time.Time, scope string) {
 	ticket.finish(quotaRejection(now, scope, "enterprise_plus"))
 }
 
+func TestEnterpriseQuotaMetadataPublicationKeepsRequestsAdmissible(t *testing.T) {
+	m := NewManager(nil, nil, nil)
+	before := sharedQuotaAuth(t, m, "metadata-publication", "12345", "us", "enterprise_plus", "alice")
+	updated := before.Clone()
+	updated.Metadata["note"] = "new note"
+	updated.EnterpriseQuotaIdentity.CheckedAt = updated.EnterpriseQuotaIdentity.CheckedAt.Add(time.Minute)
+	current, err := m.Update(context.Background(), updated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := before.enterpriseQuota.begin()
+	if err != nil {
+		t.Fatalf("unchanged credential rejected after metadata publication: %v", err)
+	}
+	if ticket.gate != current.enterpriseQuota {
+		t.Fatal("request did not use the latest quota identity and policy")
+	}
+	ticket.finish(nil)
+}
+
+func TestEnterpriseQuotaOldSnapshotUsesNewlyDiscoveredSharedPool(t *testing.T) {
+	m := NewManager(nil, nil, nil)
+	now := time.Now()
+	before := sharedQuotaAuth(t, m, "identity-publication", "12345", "us", "", "alice")
+	sibling := sharedQuotaAuth(t, m, "discovered-sibling", "12345", "us", "enterprise_plus", "bob")
+	updated := before.Clone()
+	identity := *sibling.EnterpriseQuotaIdentity
+	identity.PrincipalHash = quotaDigest("alice")
+	updated.EnterpriseQuotaIdentity = &identity
+	if _, err := m.Update(context.Background(), updated); err != nil {
+		t.Fatal(err)
+	}
+	rejectSharedQuota(t, sibling, now, "edition")
+	_, err := before.enterpriseQuota.begin()
+	status, ok := err.(interface{ StatusCode() int })
+	if !ok || status.StatusCode() != 429 {
+		t.Fatalf("old snapshot did not enforce the discovered shared pool: %v", err)
+	}
+}
+
+func TestEnterpriseQuotaChangedCredentialSnapshotsRemainFenced(t *testing.T) {
+	for _, change := range []string{"resources", "token", "disabled", "proxy", "registration"} {
+		t.Run(change, func(t *testing.T) {
+			m := NewManager(nil, nil, nil)
+			before := sharedQuotaAuth(t, m, "changed-"+change, "12345", "us", "enterprise_plus", "alice")
+			updated := before.Clone()
+			switch change {
+			case "resources":
+				updated.Metadata["location"] = "eu"
+			case "token":
+				updated.Metadata["access_token"] = "new-token"
+			case "disabled":
+				updated.Disabled = true
+			case "proxy":
+				updated.ProxyURL = "http://proxy.example.test:8080"
+			}
+			var err error
+			if change == "registration" {
+				_, err = m.Register(context.Background(), updated)
+			} else {
+				_, err = m.Update(context.Background(), updated)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = before.enterpriseQuota.begin()
+			status, ok := err.(*Error)
+			if !ok || status.HTTPStatus != 409 {
+				t.Fatalf("changed credential was not fenced: %v", err)
+			}
+		})
+	}
+}
+
 func TestEnterpriseSharedQuotaScopeAndNoFalseFailures(t *testing.T) {
 	m := NewManager(nil, nil, nil)
 	now := time.Now()

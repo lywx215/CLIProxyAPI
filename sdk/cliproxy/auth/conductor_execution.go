@@ -592,8 +592,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 			continue
 		}
 		attempted[auth.ID] = struct{}{}
-		var errPrepare error
-		auth, errPrepare = m.prepareRequestAuth(execCtx, executor, auth)
+		preparedAuth, errPrepare := m.prepareRequestAuth(execCtx, executor, auth)
 		if errPrepare != nil {
 			if errCancel := claudeOAuthRequestCancellation(execCtx, auth, errPrepare); errCancel != nil {
 				return cliproxyexecutor.Response{}, errCancel
@@ -607,6 +606,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 			lastErr = errPrepare
 			continue
 		}
+		auth = preparedAuth
 		executor = executorForAuth(executor, auth)
 		var authErr error
 		didRefreshOnUnauthorized := false
@@ -804,8 +804,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 			continue
 		}
 		attempted[auth.ID] = struct{}{}
-		var errPrepare error
-		auth, errPrepare = m.prepareRequestAuth(execCtx, executor, auth)
+		preparedAuth, errPrepare := m.prepareRequestAuth(execCtx, executor, auth)
 		if errPrepare != nil {
 			if errCancel := claudeOAuthRequestCancellation(execCtx, auth, errPrepare); errCancel != nil {
 				return cliproxyexecutor.Response{}, errCancel
@@ -819,6 +818,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 			lastErr = errPrepare
 			continue
 		}
+		auth = preparedAuth
 		executor = executorForAuth(executor, auth)
 		var authErr error
 		didRefreshOnUnauthorized := false
@@ -1153,11 +1153,12 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			continue
 		}
 		attempted[auth.ID] = struct{}{}
+		var preparedAuth *Auth
 		var errPrepare error
 		if selection != nil {
-			auth, errPrepare = m.prepareHomeRequestAuth(execCtx, executor, selection)
+			preparedAuth, errPrepare = m.prepareHomeRequestAuth(execCtx, executor, selection)
 		} else {
-			auth, errPrepare = m.prepareRequestAuth(execCtx, executor, auth)
+			preparedAuth, errPrepare = m.prepareRequestAuth(execCtx, executor, auth)
 		}
 		if errPrepare != nil {
 			if selection != nil {
@@ -1198,6 +1199,7 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			}
 			continue
 		}
+		auth = preparedAuth
 		execReq := sanitizeDownstreamWebsocketFallbackRequest(execCtx, auth, req)
 		if selection != nil && !restoreExecutionModel {
 			execReq = attachResolvedHomeModelInfo(execReq, auth, routeModel, selection.modelInfo, selection.configurationUpdateSupport)

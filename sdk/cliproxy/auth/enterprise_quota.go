@@ -201,10 +201,14 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 		c.mu.Unlock()
 		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise shared quota is unsupported in Home mode", HTTPStatus: 409}
 	}
-	if !g.currentLocked() {
+	current := c.bindings[g.authID]
+	if current == nil || current.epoch != g.epoch || current.credential != g.credential || current.fingerprint != g.fingerprint || current.policy.ProxyURL != g.policy.ProxyURL || current.policy.Disabled || current.policy.Status == StatusDisabled {
 		c.mu.Unlock()
 		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise credential changed; retry the request", HTTPStatus: 409}
 	}
+	// Identity discovery and metadata edits publish a new gate without changing
+	// credentials. Admit those snapshots against the latest quota identity/policy.
+	g = current
 	t := &enterpriseQuotaTicket{gate: g, versions: map[string]quotaTicketVersion{}, probes: map[string]uint64{}}
 	keys := g.keys()
 	enabled := g.enabled()

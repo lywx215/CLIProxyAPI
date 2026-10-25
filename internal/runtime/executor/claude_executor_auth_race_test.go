@@ -39,10 +39,12 @@ func TestClaudeExecutorPrepareRequestAuthIsRaceFreeOnSharedCredential(t *testing
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
+	start := make(chan struct{})
 	for i := 0; i < 32; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			// ShouldPrepareRequestAuth reads the same map the writers below mutate.
 			if executor.ShouldPrepareRequestAuth(auth) {
 				if _, err := executor.PrepareRequestAuth(ctx, auth); err != nil {
@@ -53,6 +55,7 @@ func TestClaudeExecutorPrepareRequestAuthIsRaceFreeOnSharedCredential(t *testing
 			_ = executor.ShouldPrepareRequestAuth(auth)
 		}()
 	}
+	close(start)
 	wg.Wait()
 
 	if got := claudeauth.ReadMetadataString(&auth.Metadata, "account_uuid"); got != "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
@@ -80,13 +83,17 @@ func TestClaudeExecutorSharedCredentialMetadataReadersUseOneLock(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			if i%3 == 0 {
+			if i%4 == 0 {
 				claudeauth.StoreMetadataValue(&auth.Metadata, "access_token", "sk-ant-oat-race-probe")
 				claudeauth.StoreMetadataValue(&auth.Metadata, "cloak_mode", "always")
 				return
 			}
-			if i%3 == 1 {
+			if i%4 == 1 {
 				_, _ = claudeCreds(auth)
+				return
+			}
+			if i%4 == 2 {
+				_ = isClaudeSetupToken(auth, "sk-ant-oat-race-probe")
 				return
 			}
 			_, _, _, _ = getCloakConfigFromAuth(auth)

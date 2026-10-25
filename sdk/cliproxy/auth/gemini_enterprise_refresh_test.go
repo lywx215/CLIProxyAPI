@@ -27,6 +27,9 @@ func (f enterpriseRefreshTransport) RoundTrip(r *http.Request) (*http.Response, 
 func (f enterpriseRefreshTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper  { return f }
 
 func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	const requests = 8
 	store := sdkauth.NewFileTokenStore()
 	store.SetBaseDir(t.TempDir())
 	m := coreauth.NewManager(store, nil, nil)
@@ -55,15 +58,23 @@ func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"new","refresh_token":"rotated","token_type":"Bearer","expires_in":3600}`))}, nil
 	})
 	gate := make(chan struct{})
+	arrived := make(chan struct{}, requests)
 	m.SetRoundTripperProvider(enterpriseRefreshTransport(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "www.googleapis.com" {
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
 		}
 		if req.Header.Get("Authorization") == "Bearer old" {
-			if oldCalls.Add(1) == 8 {
-				close(gate)
+			oldCalls.Add(1)
+			select {
+			case arrived <- struct{}{}:
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
 			}
-			<-gate
+			select {
+			case <-gate:
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
 			return &http.Response{StatusCode: 401, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("rejected"))}, nil
 		}
 		if req.Header.Get("Authorization") != "Bearer new" {
@@ -72,19 +83,36 @@ func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"ok"}}]}},{"answer":{"state":"SUCCEEDED"}}]`))}, nil
 	}))
 	var wg sync.WaitGroup
-	errs := make(chan error, 8)
-	for range 8 {
+	errs := make(chan error, requests)
+	for range requests {
 		wg.Go(func() {
-			_, err := m.Execute(context.Background(), []string{ge.Provider}, exec.Request{Model: "gemini-4-argon", Payload: []byte(`{"messages":[{"role":"user","content":"hi"}]}`)}, exec.Options{SourceFormat: translator.FormatOpenAI, Metadata: map[string]any{exec.OperationMetadataKey: "chat_completions"}})
+			_, err := m.Execute(ctx, []string{ge.Provider}, exec.Request{Model: "gemini-4-argon", Payload: []byte(`{"messages":[{"role":"user","content":"hi"}]}`)}, exec.Options{SourceFormat: translator.FormatOpenAI, Metadata: map[string]any{exec.OperationMetadataKey: "chat_completions"}})
 			errs <- err
 		})
 	}
+	for range requests {
+		select {
+		case <-arrived:
+		case err := <-errs:
+			cancel()
+			wg.Wait()
+			t.Fatalf("request completed before all unauthorized attempts arrived: %v", err)
+		case <-ctx.Done():
+			cancel()
+			wg.Wait()
+			t.Fatalf("waiting for unauthorized attempts: %v (arrived %d/%d)", ctx.Err(), oldCalls.Load(), requests)
+		}
+	}
+	close(gate)
 	wg.Wait()
 	close(errs)
 	for err := range errs {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	if oldCalls.Load() != requests {
+		t.Fatalf("unauthorized attempts=%d, want %d", oldCalls.Load(), requests)
 	}
 	if tokenCalls.Load() != 1 {
 		t.Fatalf("concurrent refreshes=%d, want 1", tokenCalls.Load())
