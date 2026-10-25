@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 )
 
 type Error struct {
@@ -47,10 +49,12 @@ func Failure(kind, message string, started bool) error {
 
 type Input struct {
 	Body                   []byte
+	MediaKind              string
 	JSON                   bool
 	JSONObject             bool
 	Ignored                []string
 	ClientFunctionsIgnored bool
+	IncludeThoughts        bool
 }
 
 type normalizer struct {
@@ -285,7 +289,12 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 				n.ignored["response_format"] = true
 			}
 		}
-		n.unknown(b, "model|messages|stream|stream_options|tools|gemini_tools|web_search_options|response_format|tool_choice|functions|function_call|parallel_tool_calls", " ")
+		known := "model|messages|stream|stream_options|tools|gemini_tools|web_search_options|response_format|tool_choice|functions|function_call|parallel_tool_calls"
+		if registry.EnterpriseThinkingSupport(model) != nil {
+			known += "|reasoning_effort|extra_body"
+			n.chatThinking(b)
+		}
+		n.unknown(b, known, " ")
 	case "gemini":
 		for i, content := range n.array(b["contents"], "contents", true) {
 			path := fmt.Sprintf("contents[%d]", i)
@@ -345,7 +354,12 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 					n.ignored["generationConfig.responseMimeType"] = true
 				}
 			}
-			n.unknown(g, "responseMimeType|response_mime_type", "generationConfig.")
+			known := "responseMimeType|response_mime_type"
+			if registry.EnterpriseThinkingSupport(model) != nil {
+				known += "|thinkingConfig|thinking_config"
+				n.thinkingConfig(g)
+			}
+			n.unknown(g, known, "generationConfig.")
 		}
 		n.unknown(b, "contents|systemInstruction|system_instruction|tools|toolConfig|tool_config|generationConfig|generation_config|model", "")
 	default:

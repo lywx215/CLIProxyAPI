@@ -646,6 +646,21 @@ func (h *OpenAIAPIHandler) ImagesGenerations(c *gin.Context) {
 	if imageModel == "" {
 		imageModel = defaultImagesToolModel
 	}
+	if registry.EnterpriseMediaKind(imageModel) == "image" {
+		c.Set("operation", "image_generation")
+		ctx, cancel := h.GetContextWithCancel(h, c, context.Background())
+		defer cancel()
+		stop := h.StartNonStreamingKeepAlive(c, ctx)
+		resp, headers, failure := h.ExecuteImageWithAuthManager(ctx, "openai-image", imageModel, rawJSON, "")
+		stop()
+		if failure != nil {
+			h.WriteErrorResponse(c, failure)
+			return
+		}
+		handlers.WriteUpstreamHeaders(c.Writer.Header(), headers)
+		c.Data(http.StatusOK, "application/json", resp)
+		return
+	}
 	if rejectUnsupportedImagesModel(c, imageModel) {
 		return
 	}

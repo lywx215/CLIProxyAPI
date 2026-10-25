@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -355,6 +356,172 @@ func TestEnterpriseCatalogUsesHostAliasesExclusionsPrefixes(t *testing.T) {
 		}
 		if len(m.SupportedGenerationMethods) != 2 {
 			t.Fatal("unexpected countTokens advertisement")
+		}
+	}
+}
+
+func TestEnterpriseMediaCatalogAliasesPrefixesAndExclusions(t *testing.T) {
+	for _, tc := range []struct {
+		model, kind, alias, output string
+		methods                    int
+	}{
+		{"gemini-3-pro-image", "image", "portrait", "IMAGE", 2},
+		{"veo-3.1", "video", "movie", "VIDEO", 3},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			svc, auth := enterpriseTestService(t, "enterprise-media-catalog-"+tc.kind)
+			svc.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"hidden-media-fixture"}}
+			svc.cfg.OAuthModelAlias = map[string][]config.OAuthModelAlias{ge.Provider: {{Name: tc.model, Alias: tc.alias}}}
+			auth.Prefix = "work"
+			auth, _ = svc.coreManager.Update(t.Context(), auth)
+			svc.enterpriseState().fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+				return []ge.Model{{ID: tc.model, MediaKind: tc.kind}, {ID: "hidden-media-fixture", MediaKind: tc.kind}}, nil
+			}
+			svc.registerEnterpriseModels(t.Context(), auth)
+			svc.enterpriseState().wg.Wait()
+			models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+			if len(models) != 2 {
+				t.Fatalf("models=%v", models)
+			}
+			for _, m := range models {
+				if m.ID != tc.alias && m.ID != "work/"+tc.alias {
+					t.Fatalf("incorrect alias: %s", m.ID)
+				}
+				if m.MetadataModelID != tc.model || registry.EnterpriseMediaKind(m.ID) != tc.kind || len(m.SupportedGenerationMethods) != tc.methods || m.SupportedOutputModalities[0] != tc.output {
+					t.Fatal("alias lost media capabilities")
+				}
+			}
+		})
+	}
+}
+
+func TestEnterpriseImageCatalogPublishesOfficialModelID(t *testing.T) {
+	svc, auth := enterpriseTestService(t, "enterprise-official-image-catalog")
+	svc.enterpriseState().fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		return ge.ParseModels([]byte(`{"uiSettings":{"features":{"disable-image-generation":"FEATURE_STATE_OFF"},"modelConfigs":{"gemini-3-pro-image":"MODEL_ENABLED"},"modelConfigInfo":{"resolvedModels":[{"modelId":"text"}]}}}`))
+	}
+	svc.registerEnterpriseModels(t.Context(), auth)
+	svc.enterpriseState().wg.Wait()
+	models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+	if len(models) != 2 {
+		t.Fatalf("catalog=%v", models)
+	}
+	var image *ModelInfo
+	for _, model := range models {
+		if model.ID == "gemini-3-pro-image" {
+			image = model
+		}
+	}
+	if image == nil || image.Name != "models/gemini-3-pro-image" || image.EnterpriseMedia != "image" || image.OwnedBy != ge.Provider {
+		t.Fatalf("official image entry missing or mislabeled: %+v", image)
+	}
+	if len(image.SupportedInputModalities) != 1 || image.SupportedInputModalities[0] != "TEXT" || len(image.SupportedOutputModalities) != 1 || image.SupportedOutputModalities[0] != "IMAGE" {
+		t.Fatal("image input/output capabilities changed")
+	}
+	if len(image.SupportedGenerationMethods) != 2 || image.SupportedGenerationMethods[0] != "generateContent" || image.SupportedGenerationMethods[1] != "streamGenerateContent" {
+		t.Fatal("image model advertised unsupported generation methods")
+	}
+}
+
+func TestEnterpriseVideoCatalogPublishesDefaultVariantContractAndHonorsExclusions(t *testing.T) {
+	for _, excluded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("excluded=%t", excluded), func(t *testing.T) {
+			svc, auth := enterpriseTestService(t, fmt.Sprintf("enterprise-default-video-catalog-%t", excluded))
+			if excluded {
+				svc.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"veo-3.1"}}
+			}
+			svc.enterpriseState().fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+				return ge.ParseModels([]byte(`{"uiSettings":{"features":{"disable-video-generation":"FEATURE_STATE_OFF"},"modelConfigInfo":{"resolvedModels":[{"modelId":"text"}]}}}`))
+			}
+			svc.registerEnterpriseModels(t.Context(), auth)
+			svc.enterpriseState().wg.Wait()
+			models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+			if excluded {
+				if len(models) != 1 || models[0].ID != "text" {
+					t.Fatalf("excluded video entry was published: %+v", models)
+				}
+				return
+			}
+			if len(models) != 2 {
+				t.Fatalf("catalog=%v", models)
+			}
+			var video *ModelInfo
+			for _, model := range models {
+				if model.ID == "veo-3.1" {
+					video = model
+				}
+			}
+			if video == nil || video.Name != "models/veo-3.1" || video.EnterpriseMedia != "video" || video.OwnedBy != ge.Provider || video.DisplayName != "Veo 3.1 (Enterprise default variant)" {
+				t.Fatalf("default video tool entry missing or mislabeled: %+v", video)
+			}
+			if len(video.SupportedInputModalities) != 1 || video.SupportedInputModalities[0] != "TEXT" || len(video.SupportedOutputModalities) != 1 || video.SupportedOutputModalities[0] != "VIDEO" {
+				t.Fatal("video input/output capabilities changed")
+			}
+			if len(video.SupportedGenerationMethods) != 3 || video.SupportedGenerationMethods[0] != "generateContent" || video.SupportedGenerationMethods[1] != "streamGenerateContent" || video.SupportedGenerationMethods[2] != "predictLongRunning" {
+				t.Fatal("video entry lost its native generation methods")
+			}
+			if !strings.Contains(video.Description, "Enterprise selects the underlying variant") || !strings.Contains(video.Description, "no publisher model ID is pinned") {
+				t.Fatal("video metadata implies a pinned upstream variant")
+			}
+			var native map[string]any
+			for _, entry := range GlobalModelRegistry().GetAvailableModels("gemini") {
+				if entry["name"] == "models/veo-3.1" {
+					native = entry
+				}
+			}
+			if native == nil || native["description"] != video.Description {
+				t.Fatal("native model metadata lost its default variant description")
+			}
+			methods, ok := native["supportedGenerationMethods"].([]string)
+			if !ok || len(methods) != 3 || methods[2] != "predictLongRunning" {
+				t.Fatal("native model metadata omitted predictLongRunning")
+			}
+		})
+	}
+}
+
+func TestEnterpriseThinkingCatalogPreservesCapabilitiesThroughAliases(t *testing.T) {
+	svc, auth := enterpriseTestService(t, "enterprise-thinking-catalog")
+	svc.cfg.OAuthModelAlias = map[string][]config.OAuthModelAlias{ge.Provider: {
+		{Name: "gemini-3.1-pro-preview", Alias: "pro-enterprise"},
+		{Name: "gemini-3.8-flash", Alias: "flash-enterprise"},
+	}}
+	auth.Prefix = "tenant"
+	var err error
+	auth, err = svc.coreManager.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.enterpriseState().fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		return []ge.Model{{ID: "gemini-3.1-pro-preview"}, {ID: "gemini-3.8-flash"}, {ID: "future-unverified"}}, nil
+	}
+	svc.registerEnterpriseModels(t.Context(), auth)
+	svc.enterpriseState().wg.Wait()
+	models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+	if len(models) != 6 {
+		t.Fatalf("unexpected catalog: %+v", models)
+	}
+	seen := make(map[string]bool)
+	for _, model := range models {
+		seen[model.ID] = true
+		base := strings.TrimPrefix(model.ID, "tenant/")
+		switch base {
+		case "pro-enterprise", "flash-enterprise":
+			support := model.Thinking
+			if support == nil || strings.Join(support.Levels, ",") != "low,high" || support.Min != 0 || support.Max != 0 || support.DynamicAllowed || support.ZeroAllowed {
+				t.Fatalf("alias %q lost verified level capabilities or advertised budgets: %+v", model.ID, support)
+			}
+		case "future-unverified":
+			if model.Thinking != nil {
+				t.Fatalf("unverified model %q advertised thinking controls", model.ID)
+			}
+		default:
+			t.Fatalf("unexpected model %q", model.ID)
+		}
+	}
+	for _, id := range []string{"pro-enterprise", "flash-enterprise", "future-unverified"} {
+		if !seen[id] || !seen["tenant/"+id] {
+			t.Fatalf("missing alias or prefix for %q", id)
 		}
 	}
 }

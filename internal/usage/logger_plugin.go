@@ -439,7 +439,7 @@ func resolveSuccess(ctx context.Context) bool {
 		return true
 	}
 	ginCtx, ok := ctx.Value("gin").(*gin.Context)
-	if !ok || ginCtx == nil {
+	if !ok || ginCtx == nil || ginCtx.Writer == nil {
 		return true
 	}
 	status := ginCtx.Writer.Status()

@@ -93,6 +93,12 @@ func (h *GeminiAPIHandler) GeminiGetHandler(c *gin.Context) {
 		return
 	}
 	action := strings.TrimPrefix(request.Action, "/")
+	if _, id, ok := strings.Cut(action, "/operations/"); ok {
+		if !h.EnterpriseVideoResource(c, id, true, false) {
+			c.Status(http.StatusNotFound)
+		}
+		return
+	}
 
 	// Get dynamic models from the global registry and find the matching one
 	availableModels := h.Models()
@@ -163,6 +169,27 @@ func (h *GeminiAPIHandler) GeminiHandler(c *gin.Context) {
 	case "countTokens":
 		c.Set("operation", "count_tokens")
 		h.handleCountTokens(c, action[0], rawJSON)
+	case "predictLongRunning":
+		h.CreateEnterpriseVideo(c, action[0], rawJSON, true)
+	default:
+		c.Status(http.StatusNotFound)
+	}
+}
+
+func (h *GeminiAPIHandler) VideoOperation(c *gin.Context) {
+	if !h.EnterpriseVideoResource(c, c.Param("operation_id"), true, false) {
+		c.Status(http.StatusNotFound)
+	}
+}
+
+func (h *GeminiAPIHandler) VideoDownload(c *gin.Context) {
+	file := c.Param("file_id")
+	if !strings.HasSuffix(file, ":download") {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if !h.EnterpriseVideoResource(c, strings.TrimSuffix(file, ":download"), true, true) {
+		c.Status(http.StatusNotFound)
 	}
 }
 

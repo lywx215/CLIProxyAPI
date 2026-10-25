@@ -11,6 +11,7 @@ import (
 
 type Output struct {
 	Text        string
+	Reasoning   string
 	textRunes   int
 	Parts       []map[string]any
 	Sources     []Source
@@ -36,6 +37,21 @@ func NewOutput() *Output {
 func (o *Output) Add(e Event) (text string, part map[string]any, err error) {
 	if e.Type == "done" {
 		return "", nil, nil
+	}
+	if e.Type == "thought" {
+		o.chunks++
+		if len(o.Reasoning)+len(o.Text)+len(e.Text) > 4*1024*1024 || o.chunks > 32768 {
+			return "", nil, Failure("output_too_large", "generated output exceeded the provider limit", true)
+		}
+		o.Reasoning += e.Text
+		part = map[string]any{"text": e.Text, "thought": true}
+		if len(o.Parts) > 0 && o.Parts[len(o.Parts)-1]["thought"] == true {
+			previous, _ := o.Parts[len(o.Parts)-1]["text"].(string)
+			o.Parts[len(o.Parts)-1]["text"] = previous + e.Text
+		} else {
+			o.Parts = append(o.Parts, part)
+		}
+		return "", part, nil
 	}
 	if e.Type == "grounding" {
 		mapping := map[int]int{}
@@ -100,11 +116,11 @@ func (o *Output) Add(e Event) (text string, part map[string]any, err error) {
 		return "", nil, nil
 	}
 	o.chunks++
-	if len(o.Text)+len(text) > 4*1024*1024 || o.chunks > 32768 {
+	if len(o.Reasoning)+len(o.Text)+len(text) > 4*1024*1024 || o.chunks > 32768 {
 		return "", nil, Failure("output_too_large", "generated output exceeded the provider limit", true)
 	}
 	if e.Type == "text" && len(o.Parts) > 0 {
-		if previous, ok := o.Parts[len(o.Parts)-1]["text"].(string); ok {
+		if previous, ok := o.Parts[len(o.Parts)-1]["text"].(string); ok && o.Parts[len(o.Parts)-1]["thought"] != true {
 			o.Parts[len(o.Parts)-1]["text"] = previous + text
 			o.textRuns[len(o.textRuns)-1].end += len(text)
 		} else {
@@ -148,7 +164,12 @@ func (o *Output) Finish(input Input) error {
 		return nil
 	}
 	var raw strings.Builder
+	var thoughts []map[string]any
 	for _, part := range o.Parts {
+		if part["thought"] == true {
+			thoughts = append(thoughts, part)
+			continue
+		}
 		if text, ok := part["text"].(string); ok {
 			raw.WriteString(text)
 		}
@@ -167,7 +188,7 @@ func (o *Output) Finish(input Input) error {
 	}
 	o.Text = normalized
 	o.textRunes = utf8.RuneCountInString(normalized)
-	o.Parts = []map[string]any{{"text": normalized}}
+	o.Parts = append(thoughts, map[string]any{"text": normalized})
 	o.Supports = nil
 	o.Annotations = nil
 	o.Sources = nil
@@ -195,6 +216,9 @@ func (o *Output) Gemini(done bool, parts []map[string]any) []byte {
 
 func (o *Output) Chat(model string) []byte {
 	message := map[string]any{"role": "assistant", "content": o.Text}
+	if o.Reasoning != "" {
+		message["reasoning_content"] = o.Reasoning
+	}
 	if len(o.Annotations) > 0 {
 		message["annotations"] = o.Annotations
 	}
@@ -216,4 +240,8 @@ func (o *Output) ChatDelta(model, text string, annotations []map[string]any, don
 	}
 	data := marshal(map[string]any{"id": o.id, "object": "chat.completion.chunk", "created": o.created, "model": model, "choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}}})
 	return data
+}
+
+func (o *Output) ChatThoughtDelta(model, text string) []byte {
+	return marshal(map[string]any{"id": o.id, "object": "chat.completion.chunk", "created": o.created, "model": model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "reasoning_content": text}, "finish_reason": nil}}})
 }

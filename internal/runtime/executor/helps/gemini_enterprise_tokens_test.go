@@ -81,3 +81,16 @@ func TestEnterpriseTokenCounterFailureWithoutText(t *testing.T) {
 		}
 	}
 }
+
+func TestEnterpriseThoughtVisibilityDoesNotChangeVisibleTokenCount(t *testing.T) {
+	counter := NewEnterpriseTokenCounter([]byte(`{"query":{"text":"hi"}}`))
+	want := counter.Detail([]map[string]any{{"text": "hello world"}})
+	parts := []map[string]any{{"text": "hel"}, {"text": "not part of the visible answer", "thought": true}, {"text": "lo world"}}
+	got := counter.Detail(parts)
+	if got.OutputTokens != want.OutputTokens || got.TotalTokens != want.TotalTokens || got.TokenPresence.ReasoningTokens {
+		t.Fatalf("thought visibility affected visible usage: got=%+v want=%+v", got, want)
+	}
+	if parts[0]["text"] != "hel" || parts[2]["text"] != "lo world" {
+		t.Fatal("counting mutated response parts")
+	}
+}

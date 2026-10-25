@@ -72,6 +72,10 @@ func ExtractSummaryConfig(body []byte, format string) SummaryConfig {
 		if config, ok := firstSummaryBoolConfig(body, []string{
 			"generationConfig.thinkingConfig.includeThoughts",
 			"generationConfig.thinkingConfig.include_thoughts",
+			"generationConfig.thinking_config.includeThoughts",
+			"generationConfig.thinking_config.include_thoughts",
+			"generation_config.thinkingConfig.includeThoughts",
+			"generation_config.thinkingConfig.include_thoughts",
 			"generation_config.thinking_config.include_thoughts",
 			"generation_config.thinking_config.includeThoughts",
 		}); ok {
@@ -84,6 +88,10 @@ func ExtractSummaryConfig(body []byte, format string) SummaryConfig {
 			"request.generationConfig.thinking_config.includeThoughts",
 			"request.generationConfig.thinking_config.include_thoughts",
 		}); ok {
+			return config
+		}
+	case "gemini-enterprise":
+		if config, ok := summaryBoolConfig(body, "generationSpec.thinkingConfig.includeThoughts"); ok {
 			return config
 		}
 	case "interactions":
@@ -218,6 +226,8 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 		} {
 			body, _ = sjson.DeleteBytes(body, path)
 		}
+	case "gemini-enterprise":
+		body, _ = sjson.SetBytes(body, "generationSpec.thinkingConfig.includeThoughts", enabled)
 	case "antigravity":
 		body, _ = sjson.SetBytes(body, "request.generationConfig.thinkingConfig.includeThoughts", enabled)
 		for _, path := range []string{
@@ -257,7 +267,7 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 // intent that this package can read or write.
 func summaryFormatSupported(format string) bool {
 	switch format {
-	case "openai", "openai-response", "codex", "claude", "gemini", "antigravity", "interactions":
+	case "openai", "openai-response", "codex", "claude", "gemini", "antigravity", "interactions", "gemini-enterprise":
 		return true
 	default:
 		return false

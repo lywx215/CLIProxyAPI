@@ -1,6 +1,6 @@
 # Gemini Enterprise 内置 provider
 
-`gemini-enterprise` 在普通 CLIProxyAPI 模式下，把 Gemini Generate Content 和 OpenAI Chat Completions 转换为 Google Discovery Engine `streamAssist` 请求。它使用宿主的 API Key、账号存储、OAuth 刷新、代理、轮询、优先级、会话亲和、冷却、限流、日志和请求统计。
+`gemini-enterprise` 在普通 CLIProxyAPI 模式下，把 Gemini Generate Content 和 OpenAI Chat Completions 转换为 Google Discovery Engine `streamAssist` 请求，并通过应用媒体工具提供图片和视频生成。它使用宿主的 API Key、账号存储、OAuth 刷新、代理、轮询、优先级、会话亲和、冷却、限流、日志和请求统计。
 
 公开模型名为上游发现的裸 ID，例如 `gemini-4-argon`。同名模型可以与其他 provider 共同调度；本功能不增加 Enterprise 优先级、隐式前缀、调用方 Key 绑定或全局默认模型。客户端预设和下面的样例显式使用 Argon，缺少 `model` 和宿主 `auto` 的既有行为保持不变。
 
@@ -62,7 +62,7 @@ go build -o cli-proxy-api.exe ./cmd/server
 GET https://discoveryengine.googleapis.com/v1alpha/projects/{project}/locations/{location}/collections/{collection}/engines/{engine}/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en
 ```
 
-读取 `uiSettings.modelConfigInfo.resolvedModels` 中非空的真实 `modelId`，包括未来上游新增的虚拟 ID。网页 Auto 的空 ID 不会注册为宿主 `auto`。目录表示上游声明可选，不能据此声称每个模型均已生成验收。发现不发送生成请求，不枚举 Cloud 项目，也不依赖 `engines.list`。
+读取 `uiSettings.modelConfigInfo.resolvedModels` 中非空的真实 `modelId`，包括未来上游新增的 ID。网页 Auto 的空 ID 不会注册为宿主 `auto`。图片使用已确认对应 Nano Banana Pro 的正式模型 ID `gemini-3-pro-image`，在应用图片功能明确启用时发布，通过 `toolsSpec.imageGenerationSpec` 路由。视频使用 `veo-3.1` 产品家族入口，在应用视频功能明确启用时发布，通过 `toolsSpec.videoGenerationSpec` 调用 Enterprise 默认视频工具，具体底层变体由 Enterprise 决定。两个媒体入口均不作为上游 `generationSpec.modelId` 发送。目录表示上游声明可选，不能据此声称每个模型均已生成验收。发现不发送生成请求，不枚举 Cloud 项目，也不依赖 `engines.list`。
 
 目录只保存在本次服务运行的内存中，重启后重新发现；首次失败不发布猜测模型。成功目录替换该账号旧目录，成功空目录注销该账号模型。网络/解析失败保留该账号最近一次成功目录，日志报告失败，失败退避最长五分钟。token 轮换保留目录，并独立于旧 token 的失败退避。后台发现最多五个并发，不限制推理并发。发现结果按认证注册 epoch、资源绑定、探测 revision 和 registry epoch 校验，旧请求不能恢复已删、禁用或重绑账号的模型。
 
@@ -76,6 +76,7 @@ GET https://discoveryengine.googleapis.com/v1alpha/projects/{project}/locations/
 - `POST /v1/chat/completions`，普通响应和 SSE。
 - `POST /v1beta/models/{model}:generateContent`。
 - `POST /v1beta/models/{model}:streamGenerateContent?alt=sse`。
+- 图片和视频媒体模型同时支持以上两套内容接口，并提供图片专用接口、OpenAI 视频任务和 Gemini 原生视频任务，见下一节。
 
 OpenAI Python SDK 样例，环境变量中的 Key 是**宿主 API Key**：
 
@@ -104,7 +105,277 @@ for chunk in client.models.generate_content_stream(model="gemini-4-argon", conte
     print(chunk.text or "", end="")
 ```
 
-内部 Go SDK 必须显式声明 operation。使用 core auth manager 时，在 `executor.Options.Metadata[executor.OperationMetadataKey]` 中设置 `chat_completions`、`generate_content` 或 `stream_generate_content`，并使 source/response 同为 `openai` 或同为 `gemini`。`handlers.ModelExecutionRequest` 和 `handlers.ProtocolExecutionRequest` 提供 `Operation` 字段。缺少 operation 时 Enterprise 不参与调度。不要用转换后的旧接口冒充原生操作。
+内部 Go SDK 必须显式声明 operation。使用 core auth manager 时，在 `executor.Options.Metadata[executor.OperationMetadataKey]` 中设置 `chat_completions`、`generate_content` 或 `stream_generate_content`，并使 source/response 同为 `openai` 或同为 `gemini`。专用媒体执行分别使用 `openai-image` / `image_generation` 和 `openai-video` / `video_generation`，source 与 response 也须一致；原生视频 HTTP 入口通过共享任务服务调用后者。`handlers.ModelExecutionRequest` 和 `handlers.ProtocolExecutionRequest` 提供 `Operation` 字段。缺少 operation 时 Enterprise 不参与调度。不要用转换后的旧接口冒充原生操作。
+
+## 图片与视频生成
+
+图片入口采用已确认的正式模型 ID，目录发现必须同时确认 `disable-image-generation: FEATURE_STATE_OFF` 和 `modelConfigs.gemini-3-pro-image: MODEL_ENABLED` 才发布。视频在 `disable-video-generation: FEATURE_STATE_OFF` 时发布 `veo-3.1` 产品家族入口。它们沿用 `oauth.excluded-models`、`oauth.model-alias`、`oauth.settings` 和账号 prefix；使用别名或前缀时，把示例中的模型名替换为模型目录实际发布的名称。
+
+| 模型名 | 应用工具 | 结果 |
+| --- | --- | --- |
+| `gemini-3-pro-image` | 已确认的 Nano Banana Pro 正式模型 ID；发送 `toolsSpec.imageGenerationSpec: {}`，不设置上游 `generationSpec.modelId` | 单张图片 |
+| `veo-3.1` | Veo 3.1 产品家族入口；发送 `toolsSpec.videoGenerationSpec: {}`，不设置上游 `generationSpec.modelId` | 单个 MP4；具体底层变体由 Enterprise 决定 |
+
+视频工具的产品版本已确认为 **Veo 3.1**：[Enterprise 官方发布说明](https://docs.cloud.google.com/gemini/enterprise/docs/release-notes#March_03_2026) 和应用公开界面的工具标题一致。按用户确认，公开入口使用 `veo-3.1`，调用此前已成功的 Enterprise 默认视频工具。它表示产品家族，不固定为 `veo-3.1-generate-001`、`veo-3.1-fast-generate-001` 或其他具体变体。[官方 streamAssist 定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist#VideoGenerationSpec) 的 `VideoGenerationSpec` 没有模型选择字段，`generationSpec.modelId` 选择 Assistant 模型；媒体请求不发送该字段，由 Enterprise 决定实际视频变体。此入口不宣称取得任何指定变体的独立 API 调用权限。
+
+2026-10-24 使用本地 OAuth 凭证和已绑定项目，对 `veo-3.1-generate-001`、`veo-3.1-fast-generate-001` 分别提交了直连请求：官方专用 Veo API（`us-central1` 的 `predictLongRunning`）均返回 HTTP 403 / `IAM_PERMISSION_DENIED`，缺少 `aiplatform.endpoints.predict`；在现有 Enterprise `streamAssist` 的 `generationSpec.modelId` 中分别指定两者，均返回 `INVALID_ARGUMENT`，消息为 `model id: <requested-id> is invalid`。这些结果表明当前凭证/绑定项目不能通过所测入口调用这两个明确 ID，不代表模型本身不存在，也不能据此确认默认视频工具的底层变体。该指定 ID 测试阶段未接受任何生成任务、未自动重试、未修改 IAM、应用设置或 API 开关；未注册这两个未经成功验证的具体视频 ID，没有这两款指定变体的原生接口成功、下载及播放证据。后续接入的 `veo-3.1` 产品家族入口沿用 Enterprise 默认工具，不改变这些历史测试结论。
+
+下列视频调用均使用 `veo-3.1`。客户端只选择 Enterprise 视频工具入口，不能通过模型名或 Payload 规则把它固定到 `generate-001` / `fast-generate-001` 等底层变体；加入上游 `generationSpec` 会被媒体最终字段校验拒绝。
+
+2026-10-24 的 `veo-3.1` 接入复测：隔离代理已发现并发布该入口，原生模型详情包含 `predictLongRunning` 和由 Enterprise 选择变体的说明。Google Gen AI SDK 2.32.0 的 `generate_videos` 创建代理 operation、`operations.get` 查询及跨身份隔离均通过；实际生成返回上游 429，任务进入失败终态。随后单次直连默认 `videoGenerationSpec: {}` 复核，传输 HTTP 200，但流内错误为 `429 / RESOURCE_EXHAUSTED`，`ErrorInfo.reason` 明确为 `RATE_LIMIT_EXCEEDED_VIDEO_GENERATION`，未返回视频文件引用。两次请求均未自动重试。当时 `metricDescriptors.list` 返回 403，尚未直接读取视频时间序列，因此当时没有据此判定剩余额度、恢复时间或日额度已经用尽；后续直接读取成功的证据见下方日额度排查记录。本次没有新生成的 MP4，因此该阶段 `veo-3.1` 的真实生成、下载和播放验收仍未完成；历史成功视频及离线夹具不计作本次通过。模型发现、工具路由、Gemini 原生 operation/下载契约和别名/前缀测试通过，服务编译成功。额度重置后的新一轮核心媒体成功及用量断言失败，分别记录在下方恢复实测小节，不覆盖本阶段失败历史。
+
+2026-10-24 使用本地凭证和隔离代理，分别以 Google Gen AI SDK 调用正式图片 ID 的 `generateContent` 和 `streamGenerateContent`，两次均成功返回单张 `inlineData` PNG，已下载、解压校验并预览，尺寸均为 1408×768；每次仅记录一次生成用量。模型详情返回 `models/gemini-3-pro-image`，当前目录不再发布原先的自定义媒体名称。该复测只验证正式图片入口，不将历史视频成功或离线夹具计作某个精确视频模型 ID 的实测证据。
+
+媒体请求只接受文本提示词。Chat/Gemini 内容接口可包含文本历史和系统指令，输出模式由所选媒体模型决定；普通文本模型仍拒绝未请求的媒体输出。图片编辑、输入图片或视频、参考文件、延长视频、多结果，以及尺寸、分辨率、时长、比例等无法保证生效的控制参数返回 400，不会静默忽略。`gemini-2.5-flash-image`、`gemini-3.1-flash-image` 在当前应用中被禁用，本轮不启用它们，也不修改 Google 应用或 IAM 设置。
+
+| 入口 | 创建与返回行为 |
+| --- | --- |
+| `POST /v1/chat/completions` | 图片或视频；普通 JSON 和 SSE；等待生成并下载后返回 Base64 data URI |
+| Gemini `:generateContent`、`:streamGenerateContent?alt=sse` | 图片或视频；原生 `contents` 请求；返回 `parts[].inlineData` |
+| `POST /v1/images/generations` | 图片；`data[].b64_json`；仅普通 JSON |
+| `POST /openai/v1/videos` | 视频异步任务；创建后查询 `GET /openai/v1/videos/{id}`，完成后 `GET /openai/v1/videos/{id}/content` |
+| `POST /v1/videos`、`POST /v1/videos/generations` | Enterprise 视频模型使用同一异步任务；查询 `/v1/videos/{id}`，下载 `/v1/videos/{id}/content`；其他模型沿用原行为 |
+| `POST /v1beta/models/{model}:predictLongRunning` | Gemini 原生视频 operation；支持 SDK 查询和文件下载 |
+
+### Chat 的媒体字段与 SSE
+
+环境变量仍是宿主 API Key。下面分别演示普通图片和流式视频；客户端关闭自动重试，避免调用方在连接不确定时重新提交生成。
+
+```python
+import base64
+import os
+from pathlib import Path
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8317/v1",
+                api_key=os.environ["CLIPROXY_API_KEY"], max_retries=0)
+image = client.chat.completions.create(
+    model="gemini-3-pro-image",
+    messages=[{"role": "user", "content": "生成一张日落海边灯塔的图片。"}],
+)
+uri = image.choices[0].message.model_dump()["images"][0]["image_url"]["url"]
+mime = uri.split(";", 1)[0].removeprefix("data:")
+extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}[mime]
+Path("chat-image." + extension).write_bytes(base64.b64decode(uri.split(",", 1)[1]))
+
+for chunk in client.chat.completions.create(
+    model="veo-3.1",
+    messages=[{"role": "user", "content": "生成一个海边灯塔旁海浪缓慢涌动的视频。"}],
+    stream=True,
+):
+    for choice in chunk.choices:
+        for item in choice.delta.model_dump().get("videos") or []:
+            uri = item["video_url"]["url"]
+            Path("chat-video.mp4").write_bytes(base64.b64decode(uri.split(",", 1)[1]))
+```
+
+Chat 图片沿用 `message.images[] = {"type":"image_url","image_url":{"url":"data:image/png;base64,..."}}`；视频对应 `message.videos[] = {"type":"video_url","video_url":{"url":"data:video/mp4;base64,..."}}`。两者均可能附带真实文本，视频没有文本也可成功。SSE 使用相同的 `delta.images` / `delta.videos` 字段，在完整下载后发送媒体块、结束块和 `[DONE]`，不提供逐帧视频或生成进度流。
+
+### Gemini 内容接口的 inlineData
+
+```python
+import os
+from pathlib import Path
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    api_key=os.environ["CLIPROXY_API_KEY"],
+    http_options=types.HttpOptions(
+        base_url="http://localhost:8317", api_version="v1beta",
+        retry_options=types.HttpRetryOptions(attempts=1),
+    ),
+)
+response = client.models.generate_content(
+    model="gemini-3-pro-image", contents="生成一张海边灯塔的图片。",
+)
+for part in response.candidates[0].content.parts:
+    if part.inline_data:
+        mime = part.inline_data.mime_type
+        extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}[mime]
+        Path("gemini-image." + extension).write_bytes(part.inline_data.data)
+
+for chunk in client.models.generate_content_stream(
+    model="veo-3.1", contents="生成一个海边灯塔旁海浪涌动的视频。",
+):
+    for candidate in chunk.candidates or []:
+        for part in candidate.content.parts or []:
+            if part.inline_data:
+                Path("gemini-video.mp4").write_bytes(part.inline_data.data)
+```
+
+HTTP 请求保留 Gemini `contents` 结构，例如 `{"contents":[{"role":"user","parts":[{"text":"生成一张海边灯塔的图片。"}]}]}`。响应使用 `candidates[].content.parts[].inlineData = {"mimeType":"image/png","data":"<base64>"}`，视频 MIME 为 `video/mp4`；SDK 将 Base64 解码为 `part.inline_data.data`。媒体应从 parts 读取，不能只读取 `.text`。可选的 `generationConfig.responseModalities` 仅接受 `TEXT` 与对应 `IMAGE` / `VIDEO`，`candidateCount` 只能为 1；这不启用其他生成控制参数。
+
+### 图片专用接口
+
+```python
+import base64
+import os
+from pathlib import Path
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8317/v1",
+                api_key=os.environ["CLIPROXY_API_KEY"], max_retries=0)
+result = client.images.generate(
+    model="gemini-3-pro-image", prompt="生成一张水彩风格的山间湖泊图片。",
+    n=1, response_format="b64_json",
+)
+Path("image.bin").write_bytes(base64.b64decode(result.data[0].b64_json))
+```
+
+对应 HTTP 请求体为 `{"model":"gemini-3-pro-image","prompt":"生成一张水彩风格的山间湖泊图片。"}`。响应为 `{"created":<unix秒>,"data":[{"b64_json":"<base64>"}]}`，下载到本机后按图片实际格式保存或解码。此入口只接受单张图片和 `b64_json`，不返回外部 URL；不支持 `stream: true`。宿主禁用全部图片生成时此入口同样不可用。
+
+### OpenAI 异步视频任务
+
+OpenAI SDK 视频客户端使用 `/openai/v1` 作为 base URL。提交只传 `model` 和 `prompt`，不要发送 SDK 为其他模型提供的 `seconds`、`size` 或 `input_reference`。下面样例使用 OpenAI Python SDK 默认的宽松响应解析。
+
+```python
+import os
+import time
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8317/openai/v1",
+                api_key=os.environ["CLIPROXY_API_KEY"], max_retries=0)
+job = client.videos.create(model="veo-3.1",
+                           prompt="生成一个清晨薄雾中小舟缓慢漂过湖面的视频。")
+while job.status in ("queued", "in_progress"):
+    time.sleep(2)
+    job = client.videos.retrieve(job.id)
+if job.status != "completed":
+    raise RuntimeError(job.error)
+client.videos.download_content(job.id).write_to_file("openai-video.mp4")
+```
+
+HTTP 创建接受 JSON，也兼容 SDK 的文本 multipart 表单。立即返回 `object: "video"`、代理生成的 `id`、`model`、`status`、`progress` 和 `created_at`。状态为 `queued`、`in_progress`、`completed` 或 `failed`，终态带 `completed_at`；`progress` 只区分未完成的 0 和完成的 100，不表示 Google 实时进度。任务失败返回安全的 `error`，不会自动重新生成。查询和内容下载共用同一份缓存 MP4，内容未就绪时下载返回 409。
+
+当前兼容创建、轮询和内容下载的异步工作流，返回可确认的任务字段。当前任务服务未提取并发布时长、尺寸元数据，任务对象不提供 `seconds`、`size`，也不填入 Sora 的默认值；调用方不要依赖 `job.seconds` / `job.size`。OpenAI Python SDK 3.36.1 的 `Video` 类型将这两个字段列为必需项，启用 `_strict_response_validation=True` 会因缺少字段拒绝响应，按其完整响应 schema 校验的客户端同样不兼容。这是目前的响应兼容边界，不能据默认 SDK 解析成功宣称完整的 OpenAI 视频 schema 兼容。
+
+### Gemini 原生视频任务
+
+Google Gen AI SDK 使用与内容接口相同的本机 `Client` 配置。下面覆盖原生 `generate_videos`、`operations.get` 和 `files.download`：
+
+```python
+import os
+import time
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    api_key=os.environ["CLIPROXY_API_KEY"],
+    http_options=types.HttpOptions(
+        base_url="http://localhost:8317", api_version="v1beta",
+        retry_options=types.HttpRetryOptions(attempts=1),
+    ),
+)
+operation = client.models.generate_videos(
+    model="veo-3.1", prompt="生成一个晨雾中小舟漂过湖面的视频。",
+)
+while not operation.done:
+    time.sleep(2)
+    operation = client.operations.get(operation)
+if operation.error:
+    raise RuntimeError(operation.error)
+video = operation.response.generated_videos[0].video
+client.files.download(file=video)
+video.save("gemini-native-video.mp4")
+```
+
+原生 HTTP 流程如下，所有请求都使用同一宿主 API Key 鉴权：
+
+```http
+POST /v1beta/models/veo-3.1:predictLongRunning
+x-goog-api-key: <CLIPROXY_API_KEY>
+Content-Type: application/json
+
+{"instances":[{"prompt":"生成一个晨雾中小舟漂过湖面的视频。"}]}
+```
+
+创建返回 `{"name":"models/veo-3.1/operations/<opaque-id>","done":false}`。原样查询该 name 对应的 `GET /v1beta/models/veo-3.1/operations/<opaque-id>`；也支持 `GET /v1beta/operations/<opaque-id>`。完成后的原生结构为：
+
+```json
+{
+  "name": "models/veo-3.1/operations/<opaque-id>",
+  "done": true,
+  "response": {
+    "generateVideoResponse": {
+      "generatedSamples": [
+        {"video": {"uri": "files/<opaque-id>", "encoding": "video/mp4"}}
+      ]
+    }
+  }
+}
+```
+
+`files/<opaque-id>` 是本机代理的相对资源名，SDK 使用配置的 base URL 和宿主 Key 下载；它不是 Google 上游文件 ID，也不是可匿名访问的外部链接。手动下载可用 `GET /download/v1beta/files/<opaque-id>:download?alt=media` 或 `GET /v1beta/files/<opaque-id>:download?alt=media`，返回鉴权后的 MP4 字节。`parameters` 仅允许可选的 `sampleCount: 1`，不支持其他控制参数。
+
+### 下载、任务缓存与限制
+
+生成结果固定由生成该文件的账号及资源绑定下载。代理去重重复的文件引用，只接受同源且会话路径、文件 ID 一致的下载跳转，并在本机校验 Base64、MIME 和文件大小。无效结果或下载失败返回错误；生成一旦开始，不因下载失败、流尾错误或凭证切换重新提交生成。公开结果和错误不包含 OAuth Token、`assistToken`、上游 session 或文件 ID。
+
+OpenAI 和 Gemini 视频任务共用单服务实例的内存缓存。创建请求返回后，任务继续在后台运行；服务关闭统一取消。客户端轮询或下载不会再次调用生成，也不重复记录生成用量；媒体二进制和 Base64 不计入文本 Token。
+
+| 限制 | 行为 |
+| --- | --- |
+| 并行和排队 | 最多 2 个后台视频任务并行，32 个排队；队列满返回 429 |
+| 单文件 | 解码后最多 32 MiB；内容接口的图片和视频也适用 |
+| 已结束任务 | 最多 128 项，完成结果总字节最多 128 MiB；超限淘汰最旧的已结束任务 |
+| 保留时间 | 沿用 `multimedia.video-result-auth-cache-ttl`，默认 3 小时；从任务结束起计时，较短配置可缩短保留，上限为 3 小时 |
+| 访问身份 | 绑定创建请求的鉴权身份；使用其他身份访问、结果过期或被淘汰均返回 404 |
+| 服务重启和多实例 | 重启丢失任务及文件；缓存不跨实例共享，不提供外部文件托管 |
+
+缓存 TTL 不是推理或下载超时。直接 Chat、Gemini 内容接口和图片专用接口随请求 context 取消；专用视频任务的生成及下载由服务生命周期管理。业务生成完成后的缓存查询、下载可以重试，创建请求不要自动重试。
+
+### 本轮媒体真实验收状态（2026-10-23 至 24 日）
+
+本轮使用本地凭证和隔离代理执行真实生成，分项结果如下。这是调整为图片正式 ID 和 `veo-3.1` 视频产品家族入口之前的开发验收记录，不代表更名后已经重测，也不证明已确认视频底层变体。上面的 SDK 示例说明接口用法；新入口的恢复实测见后续小节，不能把下表当作 `veo-3.1` 入口的完整真实验收。
+
+| 用例 | 真实上游结果 |
+| --- | --- |
+| Chat 图片普通响应 | 生成、下载及返回成功 |
+| Chat 视频 SSE | 生成、下载及返回成功 |
+| Gemini 图片 SSE | 生成、下载及返回成功 |
+| Gemini 视频普通响应 | 生成、下载及返回成功 |
+| 图片专用接口 | 生成、下载及返回成功 |
+| OpenAI 专用异步视频 | 任务及人工复测均失败，未完成真实成功生成与下载验收；共享执行路径的 Gemini 复测确认上游 429 |
+| Gemini 原生异步视频 | 上游返回 429，未完成真实成功生成与下载验收 |
+
+脱敏分项报告保存在本轮证据目录 `enterprise-media-proxy-e2e-20261023`。离线 SDK 回放验证协议转换、任务查询和缓存文件下载，不能代替该阶段两项真实上游成功验收；不将上游 429 或模拟成功记为真实通过。历史直接调用的视频成功也不替代新增异步入口的完整真实验收。
+
+### 视频 429 的日额度排查（2026-10-24）
+
+后续排查已直接读取 Cloud Monitoring `timeSeries.list` 并取得 HTTP 200，范围是当前本地凭证实际绑定的项目及 `global` 区域。先前 `metricDescriptors.list` 的 403 只说明该次描述符枚举失败，不代表 `timeSeries.list` 同样不可读；两种请求结果分别保留。
+
+| 监控项 | 本次直接读取结果 |
+| --- | --- |
+| limit 指标 | `discoveryengine.googleapis.com/quota/video_gen_numbers_tier_enterprise_regional/limit` |
+| `limit_name` | `VideoGenNumbersTierEntPerDayPerProjectRegional`，明确为项目/区域的视频每日次数额度 |
+| 最新 limit | GAUGE 值为 2 |
+| 同一 Pacific 日的 usage | 观测到 3 个值均为 1 的计数点，合计 3 |
+| 同日 exceeded | 合计 6；最近的 `06:29`、`06:30 UTC` 数据点与刚才两次失败吻合 |
+
+结合每日次数限制的明确名称、实际 limit/usage 和对应时间的 exceeded 计数，本次 429 已确认为绑定项目/区域的视频日次数额度耗尽，不仅依据 `RATE_LIMIT_EXCEEDED_VIDEO_GENERATION` 的错误名称判断。观测到 usage 为 3、上限为 2；两者出现这一关系的原因尚未确证，按原始观测分别记录，不猜测原因。用户 Business 界面截图的 `150 videos per day` 不能代替该绑定项目/区域的实际监控上限，也不据此把当前可用次数改算为 150。
+
+按 [Google 每日额度规则](https://docs.cloud.google.com/gemini/enterprise/docs/quotas-and-overages)，每日额度在太平洋时间午夜重置；本次对应 `2026-10-24 07:00 UTC`，即北京时间 `2026-10-24 15:00`。原计划在 `07:03 UTC`（北京时间 `15:03`）仅执行一次关闭自动重试的 Gemini 原生 SDK 受控验证；该请求已于 `07:03:37 UTC` 提交，生成、下载、播放及用量检查的实际结果分项记录如下。
+
+### Veo 3.1 日额度重置后的原生恢复实测（2026-10-24）
+
+本轮通过 Google Gen AI SDK 2.32.0，以 `veo-3.1` 调用原生 `predictLongRunning`，仅提交一次生成，没有自动重试或额外生成。新的 `native_async.mp4` 已生成、下载并完整播放，核心媒体流程通过；脚本最后的用量次数断言失败，统计问题及修复验证范围在本节单独保留。
+
+| 验证项 | 实际结果 |
+| --- | --- |
+| 提交时间 | `2026-10-24 07:03:37 UTC`，北京时间 `15:03:37` |
+| operation 查询 | 模型内路径与全局 operation 路径返回一致结果 |
+| 文件下载 | SDK 两种下载入口及 4 个 HTTP 下载路径均返回 200，包括 `/download/v1beta/files/{id}:download` 和 `/v1beta/files/{id}:download`；字节及 SHA256 全部一致 |
+| 身份隔离 | 其他请求身份访问返回 404 |
+| 结果文件 | `native_async.mp4`，2,440,685 字节 |
+| SHA256 | `3090fd018302e315301edbfca4e577902c2539eb307b2f6ff24083f7eb65d22d` |
+| 完整播放 | 首次 `07:09:23` 至 `07:09:31 UTC`；1280×720、8 秒、192 帧、丢帧 0；同文件 `07:15:34` 至 `07:15:42 UTC` 复核播放通过，呈现丢帧 2；两次均 `ended=true`、`played=[0,8]`，无解码错误 |
+
+`07:12:54 UTC` 的新 Pacific 日监控读取仍显示 limit 为 2、usage 为 1；新日 exceeded 没有返回时间序列，此项按未返回记录，不能填成已确认的 0。本次请求成功及新日 usage 为 1 证明此前耗尽的日额度已恢复可用；这不等同于代理内部成功用量已记录一次。
+
+原始 `native_async-report.json` 在媒体下载完成后的最后一个用量次数断言失败，保持原文件及失败结论。定位到后台 Gin 快照没有 `Writer`，使 `usage.resolveSuccess` 发生 nil pointer，导致该次成功用量丢失。产品代码已增加空 `Writer` 检查，新增 6 个回归用例、usage 包测试和服务编译通过；全量 Go 回归中仅 pluginhost 的注册等待出现 5 秒超时，随后该整包隔离补跑通过，首次失败记录保留。统计修复只做了离线回归，没有再次发起真实生成，因此不能宣称这次真实用量已成功记录一次，也不把原始脚本写为全项通过。
+
+本机证据目录为 `enterprise-video-429-recovery-20261024`：[MEDIA_ACCEPTANCE.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/MEDIA_ACCEPTANCE.json) 记录核心媒体验收与统计瑕疵，[PLAYBACK_VERIFICATION-first.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/PLAYBACK_VERIFICATION-first.json) 和 [PLAYBACK_VERIFICATION.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/PLAYBACK_VERIFICATION.json) 分别保留两次完整播放证据；[最终验收截图](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/playback-verification-final.jpg) 显示复核播放及统计修复说明。[原始失败报告 native_async-report.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/native_async-report.json) 未改写。
 
 ## 工具、历史和输出边界
 
@@ -123,15 +394,15 @@ for chunk in client.models.generate_content_stream(model="gemini-4-argon", conte
 | Gemini `application/json` | 提示约束，加最终合法 JSON 校验 |
 | OpenAI `response_format:{"type":"json_object"}` | 提示约束，加顶层 JSON 对象校验 |
 
-同一对象不能同时提供某个 camelCase/snake_case 别名。工具字段类型错误、无效历史结构，以及图片、音频、文件等不能保真转换的内容继续返回 400。客户端自定义函数按 2026-10-24 用户明确选择的忽略策略处理，具体边界见下文。普通可选参数如 sampling、token 限额、thinking 或 JSON schema 可被忽略，不宣称 schema 强制约束。忽略的字段名记入诊断日志和 `X-CLIProxyAPI-Ignored-Parameters` 响应头；经公开 HTTP 接口获取此头需要启用宿主 `requests.passthrough-headers`。忽略客户端函数时另记不含函数定义或参数值的服务端警告；部署不会为显示提示而修改现有透传配置。
+同一对象不能同时提供某个 camelCase/snake_case 别名。工具字段类型错误、无效历史结构，以及输入图片、音频、文件等不能保真转换的内容继续返回 400。客户端自定义函数按 2026-10-24 用户明确选择的忽略策略处理，具体边界见下文。对文本模型，普通可选参数如 sampling、token 限额、thinking 或 JSON schema 可被忽略，不宣称 schema 强制约束；媒体模式使用上节的严格参数限制。忽略的字段名记入诊断日志和 `X-CLIProxyAPI-Ignored-Parameters` 响应头；经公开 HTTP 接口获取此头需要启用宿主 `requests.passthrough-headers`。忽略客户端函数时另记不含函数定义或参数值的服务端警告；部署不会为显示提示而修改现有透传配置。
 
-Gemini 输出保留文本、真实 executableCode、codeExecutionResult、grounding parts/metadata；OpenAI 输出正文、URL annotations，并将代码及结果呈现为文本块。上游 grounding 的 UTF-8 字节 offset 在 Gemini 中保留字节单位，在 OpenAI 中转换为 Unicode 字符索引，包含中文和 emoji 的回归测试。不生成上游没有提供的 function call、searchQueries、URL 抓取状态或隐藏思考/缓存计数，不泄露 thought 正文、assistToken 或 sessionInfo。输入与可见输出的本地 Token 统计另见下节；计数不可用时仍发布宿主请求数。
+Gemini 输出保留文本、真实 executableCode、codeExecutionResult、grounding parts/metadata；OpenAI 输出正文、URL annotations，并将代码及结果呈现为文本块。上游 grounding 的 UTF-8 字节 offset 在 Gemini 中保留字节单位，在 OpenAI 中转换为 Unicode 字符索引，包含中文和 emoji 的回归测试。不生成上游没有提供的 function call、searchQueries、URL 抓取状态或隐藏思考/缓存计数，默认过滤 thought 正文，始终过滤 assistToken 和 sessionInfo。显式思考返回的已验证范围见下文“Enterprise 思考配置增量验证”。输入与可见输出的本地 Token 统计另见下节；计数不可用时仍发布宿主请求数。
 
 JSON 请求的流式输出先完整缓冲并校验，再发出可见内容。最终 JSON 输出仅包含通过校验的 JSON 文本，不夹带中间代码块或引用；需要观察代码、执行结果和引用时使用普通文本输出。
 
-只有 `SUCCEEDED` 是成功终态。HTTP 200 内的 error、FAILED、SKIPPED、错误尾部、缺终态的 EOF 都作为错误处理。开始生成或工具活动后的失败（即使只有被过滤的 thought）不会跨账号重放。第一个可见块之前不会发送纯 role 块，已输出内容后的错误按宿主流式错误机制终止。客户端取消会释放上游。
+只有 `SUCCEEDED` 是成功终态。HTTP 200 内的 error、FAILED、SKIPPED、错误尾部、缺终态的 EOF 都作为错误处理。开始生成或工具活动后的失败（即使只有被过滤的 thought）不会跨账号重放。第一个可见块之前不会发送纯 role 块，已输出内容后的错误按宿主流式错误机制终止。同步内容请求的客户端取消会释放上游；已创建的专用视频任务按前述后台生命周期继续执行。
 
-模型推理和模型发现不设置连接后的总、读或响应头超时，受调用 context 取消控制。OAuth 凭据获取可使用短期超时。推理使用宿主临时/账号/全局代理顺序；刷新只使用账号/全局代理，不继承执行级临时代理。认证仅发送到固定的官方 HTTPS origin，且不跟随认证请求的重定向。
+模型推理和模型发现不设置连接后的总、读或响应头超时，受调用 context 取消控制。OAuth 凭据获取可使用短期超时。推理使用宿主临时/账号/全局代理顺序；刷新只使用账号/全局代理，不继承执行级临时代理。认证仅发送到固定的官方 HTTPS origin，不自动跟随认证请求的重定向；媒体下载仅在验证前述同源路径和文件绑定后显式请求跳转目标。
 
 ## Payload 规则
 
@@ -147,11 +418,11 @@ requests:
         params: ["toolsSpec.webGroundingSpec"]
 ```
 
-规则之后只做只读校验、序列化和传输封装。删除的字段不会被恢复，override 不会被内建逻辑覆盖。删除必需的 `generationSpec.modelId` 或产生无效 JSON/字段会明确报错，不自动修复。禁止通过规则注入可复用的上游 session/assist token。
+规则之后只做只读校验、序列化和传输封装。删除的字段不会被恢复，override 不会被内建逻辑覆盖。文本模型删除必需的 `generationSpec.modelId` 或产生无效 JSON/字段会明确报错，不自动修复。媒体模型不发送 `generationSpec`，只允许相应的空 `toolsSpec.imageGenerationSpec` 或 `videoGenerationSpec`；删除必需媒体工具、改为另一媒体工具或注入 `generationSpec` 同样报错。禁止通过规则注入可复用的上游 session/assist token。
 
 ### 最终请求的严格支持子集
 
-字段校验对本渠道所有已发现模型统一生效，Argon 沿用 Pro 的同一规则。它检查最终的 `streamAssist` 请求；客户端的 Gemini `generateContent` 参数需先经过上述协议转换。以下是本代理支持的文本与 grounding 子集，依据 [Google streamAssist 定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 约束，不代表完整 Google API 能力。
+字段校验按文本、图片、视频模式分别生效；文本模型中 Argon 沿用 Pro 的同一规则。它检查最终的 `streamAssist` 请求；客户端的 Gemini `generateContent` 参数需先经过上述协议转换。以下是本代理支持的文本与 grounding 子集，媒体模式的必需工具与参数限制见上节，均不代表完整 Google API 能力。文本字段依据 [Google streamAssist 定义](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 约束。
 
 | 最终字段 | 允许的类型或取值 |
 | --- | --- |
@@ -167,7 +438,7 @@ requests:
 
 这些字段的父对象仅接受表内列出的子字段；`toolsSpec` 及其他可选父对象可以省略。未知字段、错误类型、无效枚举、重复 JSON 键、无效 JSON/UTF-8 和超过 64 层的嵌套在发送 Google 请求前返回 400。`null` 不作为删除字段的替代方式。校验不改写请求，也不恢复被规则删除的字段。IANA 时区、搜索过滤表达式等服务语义，以及模型和资源权限仍由 Google 判断；本地校验不能保证所有合法类型的值都会被 Google 接受。
 
-本代理不接受 `session`、`sessionInfo`、`assistToken`、`fileIds`、浏览器上下文、agents、媒体工具及 `RESEARCH` / `AGENT` 等超出该子集的最终字段或模式。Google API 支持某能力不等于本 provider 已支持对应输入和输出。
+本代理不接受调用方注入 `session`、`sessionInfo`、`assistToken`、`fileIds`、浏览器上下文、agents 及 `RESEARCH` / `AGENT` 等超出该子集的最终字段或模式。文本模式还拒绝媒体工具和媒体输出，媒体工具仅由已确认并发布的相应媒体模型选择。Google API 支持某能力不等于本 provider 已支持对应输入和输出。
 
 原生 Gemini 的 `generationConfig`、`systemInstruction`、`contents` 不属于最终 `streamAssist` 请求。为原生 Gemini 模型设置的规则必须声明 `protocol: gemini`；Enterprise 的规则声明 `protocol: gemini-enterprise`。只匹配同名模型且省略 `protocol` 的规则会同时匹配其他协议，可能再次把原生字段注入 Enterprise；现在这类不兼容最终字段会被本地拦截，不能靠删除校验来规避。
 
@@ -249,6 +520,7 @@ Enterprise 上游没有提供本次执行的完整 usage。当前实现使用随
 这些数值是本机对可见业务文本的计数，不能视为 Argon 的官方 tokenizer、上游实际消耗或 Google 账单。Google SDK 的模型映射没有为 Argon 提供此保证；上游隐藏提示、思考和缓存也不在本机可观测范围内。
 
 - 输入在所有内建转换和用户 payload 规则完成后读取，不修改最终请求。输出从合并后的文本、代码和执行结果 parts 读取，在 JSON 清理及 OpenAI Markdown 呈现之前计数，因此文本分片不改变结果，也不会把呈现包装重复计入。
+- 媒体结果只统计可见业务文本；文件二进制、Base64、下载内容及任务轮询不作为文本 Token 或额外生成用量。
 - 普通 OpenAI 响应填充已知的 `usage.prompt_tokens`、`completion_tokens` 和 `total_tokens`；SSE 仅在请求 `stream_options.include_usage: true` 时追加 `choices: []` 的 usage 尾包。Gemini 响应及正常 SSE 终包填充相应的 `usageMetadata` 字段。失败流不发送成功终态或成功 usage 尾包。
 - 隐藏思考、缓存读取和缓存创建保持未知，不用零代替。分词初始化或校验失败时，不能确定的输入、输出及总量不出现在协议 usage 中；宿主仍记录请求结果和耗时。连接前失败没有可用计数；生成中途失败只能记录已观察到的业务内容。
 - 宿主 `TokenPresence` 按字段保留可用性，缺省为 `nil` 的旧生产者沿用原有行为。管理用量及快照导入/导出把未知字段序列化为 `null`，保留明确的零；有显式可用性标记时，不从分项重算未知或明确为零的总量。快照不会共享可变的可用性指针，去重区分未知值与零值。
@@ -258,7 +530,7 @@ Enterprise 上游没有提供本次执行的完整 usage。当前实现使用随
 
 ## 未支持与验收
 
-仅限制本 provider：Responses、旧 Completions、Claude Messages、Interactions、countTokens、媒体及函数调用不支持；同名模型可继续由支持这些操作的其他 provider 执行。Chat 入口自动转换 Responses body 的兼容分支也不开放给 Enterprise。
+仅限制本 provider：Responses、旧 Completions、Claude Messages、Interactions、countTokens、函数调用、Deep Research，以及媒体编辑、参考输入、视频延长、固定视频底层变体和未支持的生成控制参数不支持；同名模型可继续由支持这些操作的其他 provider 执行。图片生成使用 `gemini-3-pro-image`，视频使用 `veo-3.1` 产品家族入口并由 Enterprise 决定实际变体。Chat 入口自动转换 Responses body 的兼容分支也不开放给 Enterprise。
 
 CLIProxyAPIHome 模式目前未支持 Enterprise OAuth、刷新和模型发现。启用 Home 时本地发现、刷新和 Enterprise 执行均禁用，不会绕过控制平面使用本地账号池，也不发布本地目录覆盖 Home 信息。
 
@@ -457,3 +729,68 @@ python test/gemini_enterprise_sdk_smoke.py
 本轮验收为脱敏离线 fixtures 和本机合成联调，**未取得真实 Google 共享日额度自然耗尽样本，未故意耗尽额度，未新增真实 Google/模型调用、IAM 写入、推送或部署**。测试结果及环境限制见 [本轮验收记录](docs/enterprise-shared-quota-validation.md)。历史 Windows 拦截证据保持原阶段记录。
 
 依据：[Google quota/overages](https://docs.cloud.google.com/gemini/enterprise/docs/quotas-and-overages)、[UserLicense list](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1/projects.locations.userStores.userLicenses/list)、[UserLicense](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1/UserLicense)、[AIP-193](https://google.aip.dev/193)、[google.rpc error details](https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto)。
+
+## Enterprise 思考配置增量验证（2026-10-24）
+
+本节是独立于前述共享日额度验收的新一轮直连验证。使用用户指定项目的 OAuth 凭证，直接请求 `discoveryengine.googleapis.com` 的 `streamAssist`，未经过 new-api 或已部署代理。完整脱敏记录保存在本地 `temp/_enterprise-thinking-live-20261024/live-results.json`；不保存原始思考正文、OAuth 令牌、assistToken 或 sessionInfo。
+
+Google 明确以 400 拒绝非法 `thinkingLevel` 枚举和非布尔 `includeThoughts`，说明 `generationSpec.thinkingConfig` 是实际识别的结构，而非未知字段被静默忽略。有效 HIGH/LOW 与 true/false 的组合请求可完成生成。首轮同题四组合的观察如下：
+
+| thinkingLevel | includeThoughts | 首个答案正文（秒） | thought 标记片段的累计字符数 | 数独答案 |
+| --- | --- | ---: | ---: | --- |
+| LOW | false | 303.99 | 1,537 | 正确 |
+| HIGH | false | 355.13 | 1,813 | 正确 |
+| LOW | true | 432.49 | 31,940 | 正确 |
+| HIGH | true | 326.85 | 37,672 | 正确 |
+
+`includeThoughts=false` 仍有短状态片段，不能把这些片段的存在等同于模型思考内容的开关失效。true 样本可包含大段思考返回，也可能没有；客户端须允许缺省。第二轮出现了错误答案，因此不能把参数被接收、思考文本更多或 HTTP 200 当作正确性保证。Google 未返回实际生效档位、思考 token 或预算反馈；**HIGH/LOW 的字段接收已验证，内部推理深度和固定性能差异仍不能量化确认**。
+
+两轮共 8 次生成均以 SUCCEEDED 结束，独立答案核验为 5 次正确、3 次错误。第二轮 LOW/false、HIGH/false、LOW/true、HIGH/true 的首正文分别为 447.42、434.83、410.26、479.87 秒，thought 累计字符数分别为 3,530、2,124、2,196、29,253；只有 HIGH/false 的数独答案正确。两轮 HIGH 的 true/false 对照都观察到明显的思考返回量差异，但 HIGH 相对 LOW 的延迟方向不固定。
+
+当前适配范围限定为本轮验证的 `gemini-3.1-pro-preview`，支持 LOW/HIGH。其他 Enterprise 模型保持既有忽略行为，不依据目录可见或其他 Google API 的同名模型泛化能力。未验证的 MEDIUM、显式 `thinkingBudget` 等控制不作为本轮新增能力。
+
+```json
+{
+  "contents": [{"role": "user", "parts": [{"text": "请解答这个问题。"}]}],
+  "generationConfig": {
+    "thinkingConfig": {"thinkingLevel": "HIGH", "includeThoughts": true}
+  }
+}
+```
+
+参数经统一 `ThinkingConfig` 和 `SummaryConfig` 处理，再由 Enterprise provider applier 写入 `generationSpec.thinkingConfig`。模型名后缀优先于请求正文，例如 `(low)` 覆盖正文 HIGH；最终 payload 规则最后执行，可覆盖或移除配置，之后不补回字段。camelCase、snake_case 及其已定义别名继续遵循冲突校验。
+
+Gemini 响应以 `thought: true` 的 parts 表示显式请求的思考内容；OpenAI Chat 的对应字段为 `reasoning_content`。OpenAI 使用 `reasoning_effort`，并沿用项目“非 none effort 表示请求思考返回”的惯例；需要仅设 HIGH 而隐藏返回时，可传 `extra_body.google.thinking_config.include_thoughts: false`。缺省不增加思考返回，最终 payload 设置的 false 或过滤同样会阻止本地回显。
+
+思考文本不混入可见答案、JSON 校验、来源字符索引或输出 token 计数。思考插入可见文本分片之间时，计数先合并可见文本；思考和缓存的真实用量仍未知，不补零、不用思考文本的本地分词数冒充上游消耗。失败、断流与取消继续沿用现有单次 usage 上报和错误终态。
+
+## Flash 思考配置增量验证（2026-10-25）
+
+本节扩展上一节 2026-10-24 阶段的模型范围。使用用户新提供的项目 `190565269829` 凭证，直接访问 Google Discovery Engine `streamAssist`，只测试 `gemini-3.8-flash`；未经过 new-api 或已部署代理。凭证只在测试进程内使用，没有写入本地认证目录、代码或报告。此前项目的四次 429 单独保留在旧证据目录，不计入本轮成功请求。
+
+两轮同题四组合共 8 次生成均返回 HTTP 200，并以 `SUCCEEDED` 结束；另两次非法枚举、非布尔类型负对照均为 400，明确指向 `generation_spec.thinking_config` 下的对应字段。完整脱敏记录、统计和 Schema 摘录分别见本地 `temp/_enterprise-thinking-flash-20261025-resumed/` 下的 `live-results.json`、`summary.json`、`metrics.csv` 和 `public-discovery-thinking-schema.json`。
+
+| 轮次 | thinkingLevel | includeThoughts | 首个答案正文（秒） | thought 标记片段累计字符数 | 数独答案 |
+| --- | --- | --- | ---: | ---: | --- |
+| 1 | LOW | false | 241.90 | 2,513 | 正确 |
+| 1 | LOW | true | 247.44 | 3,449 | 正确 |
+| 1 | HIGH | false | 150.83 | 2,216 | 正确 |
+| 1 | HIGH | true | 181.43 | 2,224 | 正确 |
+| 2 | LOW | false | 317.84 | 3,851 | 正确 |
+| 2 | LOW | true | 178.51 | 2,103 | 正确 |
+| 2 | HIGH | false | 207.86 | 1,979 | 正确 |
+| 2 | HIGH | true | 233.47 | 1,945 | 正确 |
+
+独立答案核验为 8 次正确、0 次错误。表中字符数为流中已观察片段的累计值，不代表思考 token、独立推理步骤或模型实际消耗。首字时间只作本机对照观察，不作为固定性能承诺。
+
+已确认的是有效 HIGH/LOW 和布尔参数的接口接收及生成兼容性。Google 没有返回实际生效档位、思考预算或思考 token。本轮 true/false 返回量的差异不能单独证明服务端开关的语义效果，更不能从 HTTP 200、延迟或文本长度声称已验证内部推理深度。false 仍可能返回短 thought 状态内容；true 也不保证每次都有额外的大段思考正文。
+
+Google 当前公开的 [StreamAssist REST 说明](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 及本轮保存的 Discovery Schema 在 `GenerationSpec` 中只公开 `modelId`，未公开这些思考字段。负对照和有效请求构成本项目的有限运行证据，不等同于 Google 对该内部字段的稳定兼容承诺，也不将 Agent Platform GenerateContent 等其他 API 的同名模型能力泛化为本渠道合同。
+
+当前 Enterprise 适配范围为 `gemini-3.1-pro-preview` 和 `gemini-3.8-flash` 的 LOW/HIGH 参数传递与显式思考返回。Flash 复用现有统一 `ThinkingConfig` / `SummaryConfig` 和 Enterprise applier；Gemini camelCase/snake_case、OpenAI `reasoning_effort`、模型后缀优先级及最终 payload 规则顺序保持一致。上节原生请求示例选择 Flash 即可使用，不新增路由。MEDIUM、显式预算和未验证模型继续保持原有边界。
+
+响应行为由最终 payload 中的可见性设置决定：默认及 false 在本地过滤 thought 标记内容，true 才转为 Gemini `thought: true` parts 或 OpenAI `reasoning_content`。这项本地显示控制由模拟上游回归验证，不表述为 Google 原始返回在 false 时完全不含 thought。思考不混入答案、JSON、来源索引或可见输出 token；未知思考和缓存用量仍不补零。
+
+本轮回归扩展到两款模型，覆盖 HIGH/LOW、显式 true/false、双协议流式与非流式、JSON、后缀与别名、最终 payload 覆盖和过滤、非法输入的本地阻止、显式注册能力禁用，以及模型别名/前缀的能力元数据保留。执行结果和系统策略拦截记录分别保存在该证据目录，不把未启动的测试计作通过。保留其他未提交修改，暂不提交、推送或部署。
+
+服务端编译通过。统一思考管线、执行器、辅助用量代码、注册表及 SDK 模型目录回归通过。`go test ./...` 最后一轮有 109 个测试包、19,236 项测试及子测试通过，没有断言失败；`internal/api/handlers/management` 和 `internal/translator/geminienterprise` 的测试程序仍被 Windows Application Control 阻止启动，因此全量结果不是通过。首轮曾出现 GPT-4o 插件流取消的失败状态断言，未修改其代码的后两轮均通过，首轮失败记录保留。本轮没有修改系统策略、签名、测试执行目录或缓存设置。

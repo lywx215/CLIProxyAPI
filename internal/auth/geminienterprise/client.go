@@ -142,6 +142,7 @@ func Refresh(ctx context.Context, c config.GeminiEnterpriseOAuth, refreshToken, 
 type Model struct {
 	ID          string
 	DisplayName string
+	MediaKind   string
 }
 
 func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpriseOAuth, token string) ([]Model, error) {
@@ -174,6 +175,8 @@ func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpris
 func ParseModels(data []byte) ([]Model, error) {
 	var body struct {
 		UISettings struct {
+			Features        map[string]string `json:"features"`
+			ModelConfigs    map[string]string `json:"modelConfigs"`
 			ModelConfigInfo struct {
 				ResolvedModels *[]json.RawMessage `json:"resolvedModels"`
 			} `json:"modelConfigInfo"`
@@ -184,6 +187,8 @@ func ParseModels(data []byte) ([]Model, error) {
 	}
 	models := make([]Model, 0)
 	seen := map[string]bool{}
+	imageEnabled := body.UISettings.Features["disable-image-generation"] == "FEATURE_STATE_OFF" && body.UISettings.ModelConfigs["gemini-3-pro-image"] == "MODEL_ENABLED"
+	videoEnabled := body.UISettings.Features["disable-video-generation"] == "FEATURE_STATE_OFF"
 	for _, raw := range *body.UISettings.ModelConfigInfo.ResolvedModels {
 		var entry struct {
 			ModelID     string `json:"modelId"`
@@ -198,6 +203,15 @@ func ParseModels(data []byte) ([]Model, error) {
 		if id == "" || seen[id] {
 			continue
 		}
+		if id == "gemini-3-pro-image" && !imageEnabled {
+			continue
+		}
+		if id == "veo-3.1" && !videoEnabled {
+			continue
+		}
+		if (id == "gemini-2.5-flash-image" || id == "gemini-3.1-flash-image") && body.UISettings.ModelConfigs[id] == "MODEL_DISABLED" {
+			continue
+		}
 		// Nonempty virtual IDs are advertised by the upstream too; never invent an Auto ID.
 		if strings.ContainsAny(id, "\r\n\x00") {
 			return nil, fmt.Errorf("gemini-enterprise: invalid model ID in catalog")
@@ -209,8 +223,23 @@ func ParseModels(data []byte) ([]Model, error) {
 		if name == "" {
 			name = id
 		}
-		models = append(models, Model{ID: id, DisplayName: name})
+		kind := ""
+		if id == "gemini-3-pro-image" {
+			kind = "image"
+		}
+		if id == "veo-3.1" {
+			kind = "video"
+			name = "Veo 3.1 (Enterprise default variant)"
+		}
+		models = append(models, Model{ID: id, DisplayName: name, MediaKind: kind})
 		seen[id] = true
+	}
+	if imageEnabled && !seen["gemini-3-pro-image"] {
+		models = append(models, Model{ID: "gemini-3-pro-image", DisplayName: "Nano Banana Pro (Gemini 3 Pro Image)", MediaKind: "image"})
+	}
+	// The application selects the Veo variant; this entry does not pin a publisher model ID.
+	if videoEnabled && !seen["veo-3.1"] {
+		models = append(models, Model{ID: "veo-3.1", DisplayName: "Veo 3.1 (Enterprise default variant)", MediaKind: "video"})
 	}
 	return models, nil
 }

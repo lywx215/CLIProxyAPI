@@ -374,7 +374,7 @@ func isBudgetCapableProvider(provider string) bool {
 
 func isGeminiFamily(provider string) bool {
 	switch provider {
-	case "gemini", "antigravity":
+	case "gemini", "antigravity", "gemini-enterprise":
 		return true
 	default:
 		return false

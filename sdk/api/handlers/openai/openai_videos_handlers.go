@@ -17,6 +17,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -255,6 +256,28 @@ func readXAIVideosNativeRequest(c *gin.Context) ([]byte, error) {
 }
 
 func videosCreateRequestFromForm(c *gin.Context) ([]byte, error) {
+	if registry.EnterpriseMediaKind(c.PostForm("model")) == "video" {
+		values := map[string]any{}
+		if c.Request.MultipartForm != nil {
+			for key, v := range c.Request.MultipartForm.Value {
+				if len(v) != 1 {
+					return nil, fmt.Errorf("each field must occur once")
+				}
+				values[key] = v[0]
+			}
+			for key := range c.Request.MultipartForm.File {
+				values[key] = "unsupported_file"
+			}
+		} else {
+			for key, v := range c.Request.PostForm {
+				if len(v) != 1 {
+					return nil, fmt.Errorf("each field must occur once")
+				}
+				values[key] = v[0]
+			}
+		}
+		return json.Marshal(values)
+	}
 	rawJSON := []byte(`{}`)
 	for _, field := range []string{"model", "prompt", "seconds", "size", "aspect_ratio", "resolution"} {
 		if value := strings.TrimSpace(c.PostForm(field)); value != "" {
@@ -697,6 +720,10 @@ func (h *OpenAIAPIHandler) VideosCreate(c *gin.Context) {
 	}
 
 	videoModel := strings.TrimSpace(gjson.GetBytes(rawJSON, "model").String())
+	if registry.EnterpriseMediaKind(videoModel) == "video" {
+		h.CreateEnterpriseVideo(c, videoModel, rawJSON, false)
+		return
+	}
 	if videoModel == "" {
 		videoModel = defaultXAIVideosModel
 	}
@@ -738,6 +765,14 @@ func (h *OpenAIAPIHandler) handleXAIVideosNativePost(c *gin.Context) {
 	}
 
 	videoModel := strings.TrimSpace(gjson.GetBytes(rawJSON, "model").String())
+	if registry.EnterpriseMediaKind(videoModel) == "video" {
+		if strings.HasSuffix(c.Request.URL.Path, "/edits") || strings.HasSuffix(c.Request.URL.Path, "/extensions") {
+			c.JSON(http.StatusBadRequest, handlers.ErrorResponse{Error: handlers.ErrorDetail{Type: "invalid_request_error", Message: "Enterprise video editing and extension are unsupported"}})
+			return
+		}
+		h.CreateEnterpriseVideo(c, videoModel, rawJSON, false)
+		return
+	}
 	if videoModel == "" {
 		videoModel = defaultXAIVideosModel
 	}
@@ -754,6 +789,9 @@ func (h *OpenAIAPIHandler) XAIVideosRetrieve(c *gin.Context) {
 	requestID := strings.TrimSpace(c.Param("request_id"))
 	if requestID == "" {
 		requestID = strings.TrimSpace(c.Param("video_id"))
+	}
+	if h.EnterpriseVideoResource(c, requestID, false, false) {
+		return
 	}
 	if requestID == "" {
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
@@ -772,6 +810,9 @@ func (h *OpenAIAPIHandler) XAIVideosRetrieve(c *gin.Context) {
 
 func (h *OpenAIAPIHandler) VideosRetrieve(c *gin.Context) {
 	videoID := strings.TrimSpace(c.Param("video_id"))
+	if h.EnterpriseVideoResource(c, videoID, false, false) {
+		return
+	}
 	if videoID == "" {
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{
@@ -822,6 +863,12 @@ func (h *OpenAIAPIHandler) VideosRetrieve(c *gin.Context) {
 
 func (h *OpenAIAPIHandler) VideosContent(c *gin.Context) {
 	videoID := strings.TrimSpace(c.Param("video_id"))
+	if videoID == "" {
+		videoID = c.Param("request_id")
+	}
+	if h.EnterpriseVideoResource(c, videoID, false, true) {
+		return
+	}
 	if videoID == "" {
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{

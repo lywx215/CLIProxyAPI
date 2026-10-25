@@ -33,6 +33,7 @@ auths/*
 docs/*
 !docs/management-api-v8.md
 !docs/enterprise-shared-quota-validation.md
+!docs/GEMINI_ENTERPRISE_NATIVE_COMPATIBILITY_CN.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md

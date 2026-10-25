@@ -18,16 +18,21 @@ type Support struct {
 	Indices    []int
 }
 type Event struct {
-	Type      string
-	Text      string
-	Code      map[string]any
-	Execution map[string]any
-	Sources   []Source
-	Supports  []Support
-	WholeText bool
+	Type                  string
+	Text                  string
+	Code                  map[string]any
+	Execution             map[string]any
+	Sources               []Source
+	Supports              []Support
+	WholeText             bool
+	FileID, MIME, Session string
 }
 
 type Parser struct {
+	// IncludeThoughts exposes only explicitly requested thought-marked replies.
+	IncludeThoughts bool
+	// MediaKind explicitly opts into a single application media tool.
+	MediaKind string
 	// Error decodes sanitized structured generation errors at any stream boundary.
 	Error     func([]byte, bool) error
 	ReadError func(error, bool) error
@@ -204,6 +209,21 @@ func (p *Parser) item(raw []byte) error {
 	if json.Unmarshal(raw, &item) != nil || item == nil {
 		return p.wrap("invalid_upstream_stream", "expected upstream JSON object")
 	}
+	if p.MediaKind != "" {
+		var info struct {
+			Session string `json:"session"`
+		}
+		if session := item["sessionInfo"]; len(session) > 0 {
+			if json.Unmarshal(session, &info) != nil {
+				return p.wrap("invalid_media", "invalid media session metadata")
+			}
+			if info.Session != "" {
+				if err := p.emit(Event{Type: "session", Session: info.Session}); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if value, ok := item["error"]; ok && string(value) != "null" {
 		p.observeAnswerActivity(item["answer"])
 		if p.Error != nil {
@@ -268,10 +288,27 @@ func (p *Parser) item(raw []byte) error {
 			return p.wrap("invalid_upstream_stream", "invalid reply content")
 		}
 		if c.Thought {
+			if p.IncludeThoughts && c.Text != "" {
+				if err := p.emit(Event{Type: "thought", Text: c.Text}); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if classifyEnterpriseMedia(c.File, c.InlineData) == enterpriseMediaUnsupported {
-			return p.wrap("unsupported_upstream_content", "Google returned media that cannot be represented by this text provider")
+			if p.MediaKind == "" || len(c.InlineData) > 0 && string(c.InlineData) != "null" {
+				return p.wrap("unsupported_upstream_content", "Google returned unsupported media content")
+			}
+			var file struct {
+				ID   string `json:"fileId"`
+				MIME string `json:"mimeType"`
+			}
+			if json.Unmarshal(c.File, &file) != nil || file.ID == "" || !strings.HasPrefix(file.MIME, p.MediaKind+"/") {
+				return p.wrap("invalid_media", "Google returned invalid media metadata")
+			}
+			if err := p.emit(Event{Type: "file", FileID: file.ID, MIME: file.MIME}); err != nil {
+				return err
+			}
 		}
 		if c.Text != "" {
 			if err := p.emit(Event{Type: "text", Text: c.Text}); err != nil {

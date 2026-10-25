@@ -39,6 +39,8 @@ type ModelInfo struct {
 	// MetadataModelID identifies the canonical model used to resolve client metadata.
 	// It is internal and must not be exposed in model-list responses.
 	MetadataModelID string `json:"-"`
+	// EnterpriseMedia selects an application tool rather than an upstream model ID.
+	EnterpriseMedia string `json:"-"`
 	// ExplicitThinking indicates thinking/reasoning configuration was explicitly configured for this model.
 	ExplicitThinking bool `json:"-"`
 	// ExplicitInputModalities indicates input modalities were explicitly configured for this model.

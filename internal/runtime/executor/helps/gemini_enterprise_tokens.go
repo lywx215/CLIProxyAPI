@@ -87,7 +87,21 @@ func (c *EnterpriseTokenCounter) Detail(parts []map[string]any) usage.Detail {
 		presence.OutputTokens = false
 		return detail
 	}
+	var semantic []map[string]any
 	for _, part := range parts {
+		if part["thought"] == true {
+			continue
+		}
+		if text, ok := part["text"].(string); ok && len(part) == 1 && len(semantic) > 0 {
+			previous := semantic[len(semantic)-1]
+			if before, ok := previous["text"].(string); ok && len(previous) == 1 {
+				semantic[len(semantic)-1] = map[string]any{"text": before + text}
+				continue
+			}
+		}
+		semantic = append(semantic, part)
+	}
+	for _, part := range semantic {
 		var texts []string
 		if text, ok := part["text"].(string); ok {
 			texts = append(texts, text)

@@ -66,6 +66,10 @@ var finalRequestFields = map[string]fieldSpec{
 	}},
 	"generationSpec": {kind: "object", required: true, fields: map[string]fieldSpec{
 		"modelId": {kind: "nonempty text", required: true},
+		"thinkingConfig": {kind: "object", fields: map[string]fieldSpec{
+			"thinkingLevel":   {kind: "enum", values: "LOW|HIGH"},
+			"includeThoughts": {kind: "boolean"},
+		}},
 	}},
 	"toolsSpec": {kind: "object", fields: map[string]fieldSpec{
 		"webGroundingSpec": {kind: "object", fields: map[string]fieldSpec{}},

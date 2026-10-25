@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,20 +11,33 @@ import (
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 )
 
-// GeminiEnterpriseExecutor executes text requests using each account's saved binding.
+// GeminiEnterpriseExecutor executes text and media tools using each account's saved binding.
 type GeminiEnterpriseExecutor struct{ cfg *config.Config }
 
 func NewGeminiEnterpriseExecutor(cfg *config.Config) *GeminiEnterpriseExecutor {
 	return &GeminiEnterpriseExecutor{cfg: cfg}
+}
+
+func enterpriseRequestMediaKind(model string) string {
+	switch model {
+	case "gemini-3-pro-image":
+		return "image"
+	case "veo-3.1":
+		return "video"
+	}
+	return registry.EnterpriseMediaKind(model)
 }
 func (*GeminiEnterpriseExecutor) Identifier() string { return ge.Provider }
 func (*GeminiEnterpriseExecutor) RequestToFormat(coreexec.Request, coreexec.Options) translator.Format {
@@ -59,7 +73,7 @@ func (e *GeminiEnterpriseExecutor) validate(opts coreexec.Options) error {
 		return enterprise.Invalid("Gemini Enterprise is not supported in CLIProxyAPIHome mode")
 	}
 	if opts.Alt == "responses/compact" || !coreexec.GeminiEnterpriseOperationAllowed(opts.SourceFormat.String(), coreexec.ResponseFormatOrSource(opts).String(), coreexec.Operation(opts)) {
-		return enterprise.Invalid("operation_not_supported: explicit native Chat Completions or Gemini Generate Content operation is required")
+		return enterprise.Invalid("operation_not_supported: an explicit native content or media generation operation is required")
 	}
 	return nil
 }
@@ -110,7 +124,18 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if err := e.validate(opts); err != nil {
 		return nil, enterprise.Input{}, err
 	}
-	input, err := enterprise.Normalize(req.Payload, opts.SourceFormat.String(), req.Model)
+	kind := enterpriseRequestMediaKind(req.Model)
+	if kind == "image" && e.cfg != nil && (e.cfg.DisableImageGeneration == config.DisableImageGenerationAll || e.cfg.DisableImageGeneration == config.DisableImageGenerationChat && opts.SourceFormat.String() != "openai-image") {
+		return nil, enterprise.Input{}, enterprise.Invalid("image generation is disabled for this endpoint")
+	}
+	var input enterprise.Input
+	var err error
+	baseModel := thinking.ParseSuffix(req.Model).ModelName
+	if kind != "" {
+		input, err = enterprise.NormalizeMedia(req.Payload, opts.SourceFormat.String(), req.Model, kind)
+	} else {
+		input, err = enterprise.Normalize(req.Payload, opts.SourceFormat.String(), baseModel)
+	}
 	if err != nil {
 		if fields := helps.EnterpriseValidationFields("input", err); fields != nil {
 			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
@@ -124,14 +149,25 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		log.WithField("provider", e.Identifier()).Warn("client function fields ignored; continuing as text without client function execution")
 	}
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
+	if kind == "" {
+		input.Body, err = helps.ApplyEnterpriseThinking(input.Body, req, opts)
+		if err != nil {
+			return nil, input, err
+		}
+	}
 	body := finalize(input.Body)
-	if err := enterprise.ValidateFinal(body); err != nil {
+	validate := enterprise.ValidateFinal
+	if kind != "" {
+		validate = func(b []byte) error { return enterprise.ValidateMediaFinal(b, kind) }
+	}
+	if err := validate(body); err != nil {
 		if fields := helps.EnterpriseValidationFields("final_payload", err); fields != nil {
 			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
 		}
 		return nil, input, err
 	}
 	input.Body = body
+	input.IncludeThoughts = kind == "" && gjson.GetBytes(body, "generationSpec.thinkingConfig.includeThoughts").Type == gjson.True
 	if auth == nil {
 		return nil, input, enterprise.Invalid("missing Gemini Enterprise authentication")
 	}
@@ -158,7 +194,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		if ctx.Err() != nil {
 			return nil, input, ctx.Err()
 		}
-		return nil, input, &ge.TransportError{Cause: err}
+		return nil, input, &ge.TransportError{Cause: err, Started: kind != ""}
 	}
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -183,6 +219,7 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 		return result, err
 	}
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
+	reporter.SetStream(opts.Stream)
 	defer func() {
 		if err != nil {
 			reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
@@ -190,11 +227,19 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	}()
 	response, input, err := e.open(ctx, auth, req, opts, reporter)
 	if err != nil {
+		var started *ge.TransportError
+		if input.MediaKind != "" && errors.As(err, &started) && started.Started {
+			err = coreexec.MarkGenerationStarted(err)
+		}
 		return result, err
+	}
+	if input.MediaKind != "" {
+		defer func() { err = coreexec.MarkGenerationStarted(err) }()
 	}
 	defer func() { _ = response.Body.Close() }()
 	counter := helps.NewEnterpriseTokenCounter(input.Body)
 	output := enterprise.NewOutput()
+	refs := helps.EnterpriseMediaRefs{}
 	var finalDetail *usage.Detail
 	defer func() {
 		var detail usage.Detail
@@ -209,10 +254,13 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 			reporter.Publish(ctx, detail)
 		}
 	}()
-	parser := &enterprise.Parser{ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
 		return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
 	}}
 	err = parser.Parse(response.Body, func(event enterprise.Event) error {
+		if errRef := refs.Add(event); errRef != nil {
+			return errRef
+		}
 		reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
 		_, _, errAdd := output.Add(event)
 		return errAdd
@@ -225,6 +273,19 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	}
 	detail := counter.Detail(output.Parts)
 	finalDetail = &detail
+	if input.MediaKind != "" {
+		binding := ge.FromMetadata(auth.Metadata)
+		data, errDownload := helps.DownloadEnterpriseMedia(ctx, newHTTPClient(ctx, e.cfg, auth, 0), func(r *http.Request) error { return e.PrepareRequest(r, auth) }, ge.Engine(binding), input.MediaKind, refs)
+		if errDownload != nil {
+			return result, errDownload
+		}
+		result.Payload = output.MediaResponse(req.Model, opts.SourceFormat.String(), input.MediaKind, refs.MIME, data)
+		if opts.SourceFormat.String() == "openai" || opts.SourceFormat == translator.FormatGemini {
+			result.Payload = helps.EnterpriseUsagePayload(result.Payload, opts.SourceFormat == translator.FormatGemini, detail)
+		}
+		result.Headers = helps.EnterpriseResponseHeaders(nil)
+		return result, nil
+	}
 	if err = output.Finish(input); err != nil {
 		return result, err
 	}
@@ -242,6 +303,29 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (result *coreexec.StreamResult, err error) {
 	if err = e.validate(opts); err != nil {
 		return nil, err
+	}
+	if enterpriseRequestMediaKind(req.Model) != "" {
+		response, errMedia := e.Execute(ctx, auth, req, opts)
+		if errMedia != nil {
+			return nil, errMedia
+		}
+		chunks := make(chan coreexec.StreamChunk, 3)
+		if opts.SourceFormat == translator.FormatGemini {
+			chunks <- coreexec.StreamChunk{Payload: response.Payload}
+		} else {
+			media, terminal := enterprise.MediaChatChunks(response.Payload)
+			chunks <- coreexec.StreamChunk{Payload: media}
+			chunks <- coreexec.StreamChunk{Payload: terminal}
+			original := req.Payload
+			if len(opts.OriginalRequest) > 0 {
+				original = opts.OriginalRequest
+			}
+			if helps.EnterpriseStreamUsageRequested(original) {
+				chunks <- coreexec.StreamChunk{Payload: enterprise.MediaChatUsageChunk(response.Payload)}
+			}
+		}
+		close(chunks)
+		return &coreexec.StreamResult{Chunks: chunks, Headers: response.Headers}, nil
 	}
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
 	reporter.SetStream(true)
@@ -284,7 +368,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 				reporter.Publish(ctx, detail)
 			}
 		}()
-		parser := &enterprise.Parser{ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
 			return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started)
 		}}
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
@@ -304,6 +388,9 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 				return send(output.Gemini(false, []map[string]any{part}))
 			}
 			if text == "" && len(output.Annotations) == previousAnnotations {
+				if event.Type == "thought" {
+					return send(output.ChatThoughtDelta(req.Model, event.Text))
+				}
 				return nil
 			}
 			return send(output.ChatDelta(req.Model, text, output.Annotations[previousAnnotations:], false))
@@ -331,7 +418,12 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			streamErr = send(helps.EnterpriseUsagePayload(output.Gemini(true, parts), true, *finalDetail))
 		} else {
 			if input.JSON {
-				streamErr = send(output.ChatDelta(req.Model, output.Text, nil, false))
+				if output.Reasoning != "" {
+					streamErr = send(output.ChatThoughtDelta(req.Model, output.Reasoning))
+				}
+				if streamErr == nil {
+					streamErr = send(output.ChatDelta(req.Model, output.Text, nil, false))
+				}
 			}
 			if streamErr == nil {
 				streamErr = send(output.ChatDelta(req.Model, "", nil, true))

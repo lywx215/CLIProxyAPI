@@ -9,7 +9,9 @@ func GeminiEnterpriseOperationAllowed(source, response, operation string) bool {
 		return false
 	}
 	return (source == "openai" && operation == "chat_completions") ||
-		(source == "gemini" && (operation == "generate_content" || operation == "stream_generate_content"))
+		(source == "gemini" && (operation == "generate_content" || operation == "stream_generate_content")) ||
+		(source == "openai-image" && operation == "image_generation") ||
+		(source == "openai-video" && operation == "video_generation")
 }
 
 func Operation(opts Options) string { op, _ := opts.Metadata[OperationMetadataKey].(string); return op }

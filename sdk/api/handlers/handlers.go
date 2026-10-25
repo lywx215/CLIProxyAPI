@@ -20,6 +20,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/mediajobs"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
@@ -499,6 +500,9 @@ func setGenerateMetadata(meta map[string]any, rawJSON []byte) {
 // It holds a pool of clients to interact with the backend service and manages
 // load balancing, client selection, and configuration.
 type BaseAPIHandler struct {
+	mediaMu     sync.Mutex
+	mediaJobs   *mediajobs.Manager
+	mediaClosed bool
 	// AuthManager manages auth lifecycle and execution in the new architecture.
 	AuthManager *coreauth.Manager
 

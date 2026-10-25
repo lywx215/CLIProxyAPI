@@ -79,6 +79,7 @@ func (s *Server) setupRoutes() {
 		v1.POST("/videos/edits", openaiHandlers.XAIVideosEdits)
 		v1.POST("/videos/extensions", openaiHandlers.XAIVideosExtensions)
 		v1.GET("/videos/:request_id", openaiHandlers.XAIVideosRetrieve)
+		v1.GET("/videos/:request_id/content", openaiHandlers.VideosContent)
 		v1.POST("/audio/speech", openaiHandlers.AudioSpeech)
 		v1.POST("/tts", openaiHandlers.XAITTS)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
@@ -135,7 +136,13 @@ func (s *Server) setupRoutes() {
 		v1beta.POST("/interactions", geminiHandlers.Interactions)
 		v1beta.POST("/models/*action", geminiHandlers.GeminiHandler)
 		v1beta.GET("/models/*action", s.geminiGetHandler(geminiHandlers))
+		v1beta.GET("/operations/:operation_id", geminiHandlers.VideoOperation)
+		v1beta.GET("/files/:file_id", geminiHandlers.VideoDownload)
 	}
+	downloads := s.engine.Group("/download/v1beta")
+	downloads.Use(AuthMiddleware(s.accessManager))
+	downloads.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	downloads.GET("/files/:file_id", geminiHandlers.VideoDownload)
 
 	// Root endpoint
 	s.engine.GET("/", func(c *gin.Context) {

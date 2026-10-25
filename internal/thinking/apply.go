@@ -20,16 +20,17 @@ var providerAppliersMu sync.RWMutex
 
 // nativeProviderAppliers maps built-in provider names to their implementations.
 var nativeProviderAppliers = map[string]ProviderApplier{
-	"gemini":      nil,
-	"claude":      nil,
-	"openai":      nil,
-	"codex":       nil,
-	"antigravity": nil,
-	"kimi":        nil,
-	"kimi-ai":     nil,
-	"kimi.ai":     nil,
-	"kimi.com":    nil,
-	"xai":         nil,
+	"gemini":            nil,
+	"gemini-enterprise": nil,
+	"claude":            nil,
+	"openai":            nil,
+	"codex":             nil,
+	"antigravity":       nil,
+	"kimi":              nil,
+	"kimi-ai":           nil,
+	"kimi.ai":           nil,
+	"kimi.com":          nil,
+	"xai":               nil,
 }
 
 // pluginProviderAppliers maps plugin-owned provider names to their implementations.
@@ -601,7 +602,7 @@ func extractThinkingConfig(body []byte, provider string) ThinkingConfig {
 	switch provider {
 	case "claude":
 		return extractClaudeConfig(body)
-	case "gemini", "antigravity":
+	case "gemini", "antigravity", "gemini-enterprise":
 		return extractGeminiConfig(body, provider)
 	case "interactions":
 		return extractInteractionsConfig(body)
@@ -787,6 +788,15 @@ func extractGeminiConfig(body []byte, provider string) ThinkingConfig {
 	prefix := "generationConfig.thinkingConfig"
 	if provider == "antigravity" {
 		prefix = "request.generationConfig.thinkingConfig"
+	} else if provider == "gemini-enterprise" {
+		prefix = "generationSpec.thinkingConfig"
+	} else if provider == "gemini" {
+		for _, candidate := range []string{"generationConfig.thinkingConfig", "generationConfig.thinking_config", "generation_config.thinkingConfig", "generation_config.thinking_config"} {
+			if gjson.GetBytes(body, candidate).IsObject() {
+				prefix = candidate
+				break
+			}
+		}
 	}
 
 	// Check thinkingLevel first (Gemini 3 format takes precedence)
@@ -796,7 +806,7 @@ func extractGeminiConfig(body []byte, provider string) ThinkingConfig {
 		level = gjson.GetBytes(body, prefix+".thinking_level")
 	}
 	if level.Exists() {
-		value := level.String()
+		value := strings.ToLower(strings.TrimSpace(level.String()))
 		switch value {
 		case "none":
 			return ThinkingConfig{Mode: ModeNone, Budget: 0}

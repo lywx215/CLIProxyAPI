@@ -106,7 +106,17 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	cfg := s.cfg
 	models := make([]*ModelInfo, 0, len(catalog.models))
 	for _, model := range catalog.models {
-		models = append(models, &ModelInfo{ID: model.ID, Object: "model", OwnedBy: ge.Provider, Type: "gemini", Name: "models/" + model.ID, DisplayName: model.DisplayName, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}})
+		info := &ModelInfo{ID: model.ID, Object: "model", OwnedBy: ge.Provider, Type: "gemini", Name: "models/" + model.ID, DisplayName: model.DisplayName, EnterpriseMedia: model.MediaKind, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}
+		info.Thinking = registry.EnterpriseThinkingSupport(model.ID)
+		if model.MediaKind != "" {
+			info.SupportedInputModalities = []string{"TEXT"}
+			info.SupportedOutputModalities = []string{strings.ToUpper(model.MediaKind)}
+			if model.MediaKind == "video" {
+				info.Description = "Veo 3.1 via the Gemini Enterprise default video tool. Enterprise selects the underlying variant; no publisher model ID is pinned."
+				info.SupportedGenerationMethods = append(info.SupportedGenerationMethods, "predictLongRunning")
+			}
+		}
+		models = append(models, info)
 	}
 	excluded := cfg.OAuthExcludedModels[ge.Provider]
 	if value := auth.Attributes["excluded_models"]; value != "" {

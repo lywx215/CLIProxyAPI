@@ -22,7 +22,7 @@ func filterEnterpriseProviders(providers []string, opts exec.Options, count, hom
 		out = append(out, p)
 	}
 	if removed && len(out) == 0 {
-		return nil, &Error{Code: "operation_not_supported", Message: "Gemini Enterprise supports native Chat Completions and Gemini Generate Content only; Home and countTokens are unsupported", HTTPStatus: http.StatusBadRequest}
+		return nil, &Error{Code: "operation_not_supported", Message: "Gemini Enterprise requires a supported native content or media generation operation; Home and countTokens are unsupported", HTTPStatus: http.StatusBadRequest}
 	}
 	return out, nil
 }
