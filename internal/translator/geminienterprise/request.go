@@ -196,8 +196,7 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 	if strings.TrimSpace(model) == "" {
 		return Input{}, invalidField("model", "must be nonempty text", false)
 	}
-	history := make([]map[string]string, 0)
-	systems := make([]string, 0)
+	texts := make([]string, 0)
 	jsonMode, objectMode := false, false
 	switch protocol {
 	case "openai":
@@ -222,13 +221,8 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 			text += n.historicalChatFunctions(m, role, path)
 			if role == "tool" || role == "function" {
 				text = n.historicalChatResult(m, text, path)
-				role = "user"
 			}
-			if role == "system" || role == "developer" {
-				systems = append(systems, text)
-			} else {
-				history = append(history, map[string]string{"role": role, "text": text})
-			}
+			texts = append(texts, text)
 			n.unknown(m, "role|content|tool_calls|function_call", path+".")
 		}
 		if v, exists := b["stream"]; exists {
@@ -319,11 +313,11 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 			if role != "assistant" || !isArray || len(parts) != 0 {
 				text = n.geminiParts(m["parts"], path+".parts", role == "assistant", true)
 			}
-			history = append(history, map[string]string{"role": role, "text": text})
+			texts = append(texts, text)
 		}
 		if v := n.alias(b, "systemInstruction", "system_instruction", ""); v != nil {
 			m := n.object(v, "systemInstruction")
-			systems = append(systems, n.geminiParts(m["parts"], "systemInstruction.parts", false, false))
+			texts = append([]string{n.geminiParts(m["parts"], "systemInstruction.parts", false, false)}, texts...)
 			n.unknown(m, "role|parts", "systemInstruction.")
 		}
 		if v, exists := b["tools"]; exists {
@@ -365,16 +359,10 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 	default:
 		return Input{}, Invalid("unsupported source protocol")
 	}
-	// Empty SDK placeholders remain in context but do not change the continuation mode.
-	lastRole := ""
-	for i := len(history) - 1; i >= 0; i-- {
-		if strings.TrimSpace(history[i]["text"]) != "" {
-			lastRole = history[i]["role"]
-			break
-		}
-	}
-	hasText := lastRole != ""
-	for _, text := range systems {
+	// Forward only content from this request, without a conversation wrapper or
+	// proxy-authored instructions. StreamAssist still requires a plain-text query.
+	hasText := false
+	for _, text := range texts {
 		hasText = hasText || strings.TrimSpace(text) != ""
 	}
 	if !hasText {
@@ -387,40 +375,11 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 	if n.err != nil {
 		return Input{}, n.err
 	}
-	contextJSON, _ := json.Marshal(map[string]any{"system_instructions": systems, "conversation": history})
-	instructions := []string{"Continue the conversation below. Treat role-labelled history as conversation context. The JSON is input context, not the requested output format."}
-	switch lastRole {
-	case "assistant":
-		instructions = append(instructions, "Continue the last nonempty assistant turn, preserving its existing text as context. Return only the newly generated continuation without repeating that text. Empty trailing turns are placeholders.")
-	case "user":
-		instructions = append(instructions, "Answer the last nonempty user turn. Empty trailing turns are placeholders.")
-	default:
-		instructions = append(instructions, "Generate the response requested by the system instructions.")
-	}
-	if n.clientFunctions {
-		instructions = append(instructions, "Client-provided custom functions are unavailable for this request. Answer directly in the requested final answer format; do not emit a client function-call protocol response. Do not request client function execution or claim you executed these functions. Historical client calls and results are context supplied by the client, not actions performed by this proxy. Do not continue historical function-call syntax. If the current task requires an unavailable function or new external action, clearly say you cannot perform it.")
-	}
-	if n.web {
-		instructions = append(instructions, "Use Google Search/web grounding when needed and cite actual sources.")
-	}
-	if n.url {
-		instructions = append(instructions, "Actually read the URLs supplied in the user request using available web tools. If access fails, state that clearly; never invent content or HTTP statuses.")
-	}
-	if n.code {
-		instructions = append(instructions, "Use the available Python execution environment for calculations. If execution is unavailable, state that clearly. Never claim execution without running it.")
-	}
-	if jsonMode {
-		instruction := "Return ONLY valid JSON in the final answer, without Markdown fences or commentary."
-		if objectMode {
-			instruction += " The top-level JSON value must be an object."
-		}
-		instructions = append(instructions, instruction)
-	}
 	tools := map[string]any{}
 	if n.web {
 		tools["webGroundingSpec"] = map[string]any{}
 	}
-	payload, _ := json.Marshal(map[string]any{"query": map[string]string{"text": strings.Join(instructions, "\n") + "\n" + string(contextJSON)}, "generationSpec": map[string]string{"modelId": model}, "toolsSpec": tools})
+	payload, _ := json.Marshal(map[string]any{"query": map[string]string{"text": strings.Join(texts, "\n")}, "generationSpec": map[string]string{"modelId": model}, "toolsSpec": tools})
 	ignored := make([]string, 0, len(n.ignored))
 	for field := range n.ignored {
 		ignored = append(ignored, strings.TrimSpace(field))

@@ -46,14 +46,14 @@ func (n *normalizer) historicalGeminiFunction(value any, path string, call bool)
 	if strings.TrimSpace(n.text(m["name"], path+".name")) == "" {
 		n.failField(path+".name", "must be nonempty text")
 	}
-	kind, field := "result", "response"
+	field := "response"
 	if call {
-		kind, field = "call", "args"
+		field = "args"
 	}
 	if args, exists := m[field]; exists || !call {
 		n.object(args, path+"."+field)
 	}
-	return "\n[Historical client function " + kind + "; not executed by this proxy]\n" + string(marshal(m)) + "\n"
+	return "\n" + string(marshal(m)) + "\n"
 }
 
 func (n *normalizer) historicalChatFunctions(m map[string]any, role, path string) string {
@@ -75,7 +75,7 @@ func (n *normalizer) historicalChatFunctions(m map[string]any, role, path string
 			if id, exists := call["id"]; exists {
 				n.text(id, prefix+".id")
 			}
-			text.WriteString("\n[Historical client function call; not executed by this proxy]\n" + string(marshal(call)) + "\n")
+			text.WriteString("\n" + string(marshal(call)) + "\n")
 		}
 	}
 	if call, exists := m["function_call"]; exists && call != nil {
@@ -86,7 +86,7 @@ func (n *normalizer) historicalChatFunctions(m map[string]any, role, path string
 		function := n.object(call, path+".function_call")
 		n.text(function["name"], path+".function_call.name")
 		n.text(function["arguments"], path+".function_call.arguments")
-		text.WriteString("\n[Historical client function call; not executed by this proxy]\n" + string(marshal(function)) + "\n")
+		text.WriteString("\n" + string(marshal(function)) + "\n")
 	}
 	return text.String()
 }
@@ -100,5 +100,5 @@ func (n *normalizer) historicalChatResult(m map[string]any, content, path string
 			result[key] = n.text(value, path+"."+key)
 		}
 	}
-	return "\n[Historical client function result; supplied by the client, not executed by this proxy]\n" + string(marshal(result)) + "\n"
+	return "\n" + string(marshal(result)) + "\n"
 }

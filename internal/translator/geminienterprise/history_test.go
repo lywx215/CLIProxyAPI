@@ -142,10 +142,13 @@ func TestGeminiCodeHistoryRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	query := gjson.GetBytes(input.Body, "query.text").String()
-	for _, value := range []string{"print(7)", "OUTCOME_OK", "The answer is seven.", "Previous model code"} {
+	for _, value := range []string{"print(7)", "OUTCOME_OK", "The answer is seven.", "executableCode", "codeExecutionResult"} {
 		if !strings.Contains(query, value) {
 			t.Fatalf("lost %q: %s", value, query)
 		}
+	}
+	if strings.Contains(query, "Previous model code") {
+		t.Fatal("proxy-authored code history label was added")
 	}
 	for _, keys := range [][2]string{{"executable_code", "code_execution_result"}, {"executableCode", "codeExecutionResult"}} {
 		parts := fmt.Sprintf(`[{%q:{"language":"PYTHON","code":"print(7)"}},{%q:{"outcome":"OUTCOME_OK","output":"7"}}]`, keys[0], keys[1])

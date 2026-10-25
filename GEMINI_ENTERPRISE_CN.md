@@ -507,7 +507,7 @@ new-api 启用相应的 Gemini 思考签名选项时，会给助手历史的首�
 
 最后一个非空可见轮次为 assistant/model 时，提示上游继续该轮次，只返回新增内容；为空的尾部占位不改变判定，也不会通过追加虚构 user 消息修复请求。OpenAI assistant 的 `null` 或缺省 `content`、Gemini model 的空 `parts` 可作为占位；字段类型错误、整段请求没有非空文本或系统指令、真实媒体及自定义函数仍返回通用字段错误。OpenAI 仅包含非空系统指令的请求可以生成响应。
 
-该渠道通过 [streamAssist 的 `query` 字段](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 携带角色标注的完整文本上下文。续写是此文本适配层的提示语义，不是原生解码器预填充；JSON 模式仍要求输出完整、有效的 JSON。取消本地限制不代表上游或模型上下文无限，实际超限错误仍按安全错误规则返回。Argon 与其他模型使用相同规则，账号权限验收仍单独判断。
+该渠道通过 [streamAssist 的 `query` 字段](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.assistants/streamAssist) 携带请求中的完整可见文本。当前实现不再添加代理编写的提示说明或对话 JSON 包装：单条文本原样写入 `query.text`，多条文本按请求顺序用换行连接；Gemini 的 `systemInstruction` 文本放在正文之前。历史代码和函数结果仍保留其业务内容，但不附加代理说明。角色边界不再编码进提示文本，不能据此认定原生角色优先级或解码器预填充语义。JSON 模式仍校验完整、有效的 JSON；需要 JSON 输出时，调用方应在自己的提示中说明。取消本地限制不代表上游或模型上下文无限，实际超限错误仍按安全错误规则返回。Argon 与其他模型使用相同规则，账号权限验收仍单独判断。思考参数、媒体路径和最终文本的 Token 统计维持现有管线。
 
 Payload 规则仍是最后一次语义变更：完整历史转换之后仅应用一次，随后只读校验，不恢复过滤字段、不重写覆盖值。回归覆盖超过 1 MiB 的 514 轮历史、直到 4 MiB 的文本、末尾 assistant/model、空占位、双协议普通与流式入口及最终配置保留；逐项比较转发的角色、顺序和文本。所有历史 Windows 策略拦截与失败记录继续保留。
 

@@ -64,7 +64,7 @@ func (f *enterpriseFixtureTransport) RoundTrip(req *http.Request) (*http.Respons
 		return &http.Response{StatusCode: f.upstreamStatus, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(f.upstreamBody))}, nil
 	}
 	text := "offline 前🙂引用"
-	if strings.Contains(gjson.GetBytes(body, "query.text").String(), "ONLY valid JSON") {
+	if strings.Contains(gjson.GetBytes(body, "query.text").String(), "Return a JSON object") {
 		text = `{"ok":true}`
 	}
 	runes := []rune(text)

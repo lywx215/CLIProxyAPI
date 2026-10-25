@@ -64,10 +64,11 @@ def main():
                     assert chunks[-1].choices == [] and chunks[-1].usage.total_tokens > 0
                     assert chunks[-2].choices[0].finish_reason == "stop"
                     results.append("OpenAI SSE include_usage tail")
-                    response = chat.chat.completions.create(**args, response_format={"type": "json_object"})
+                    json_args = dict(args, messages=[{"role": "user", "content": "Return a JSON object"}])
+                    response = chat.chat.completions.create(**json_args, response_format={"type": "json_object"})
                     assert json.loads(response.choices[0].message.content) == {"ok": True}
                     results.append("OpenAI JSON object validation")
-                    chunks = list(chat.chat.completions.create(**args, stream=True, response_format={"type": "json_object"}))
+                    chunks = list(chat.chat.completions.create(**json_args, stream=True, response_format={"type": "json_object"}))
                     assert json.loads(chunks[0].choices[0].delta.content) == {"ok": True}
                     assert chunks[-1].choices[0].finish_reason == "stop"
                     results.append("OpenAI JSON SSE buffering")
@@ -160,11 +161,11 @@ def main():
                     assert chunks[-1].candidates[0].finish_reason == "STOP"
                     assert chunks[-1].usage_metadata.total_token_count > 0
                     results.append("Google GenAI SSE + terminal finish")
-                    response = gemini.models.generate_content(model="gemini-4-argon", contents="offline fixture",
+                    response = gemini.models.generate_content(model="gemini-4-argon", contents="Return a JSON object",
                         config=types.GenerateContentConfig(response_mime_type="application/json"))
                     assert json.loads(response.candidates[0].content.parts[0].text) == {"ok": True}
                     results.append("Google GenAI JSON validation")
-                    chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="offline fixture",
+                    chunks = list(gemini.models.generate_content_stream(model="gemini-4-argon", contents="Return a JSON object",
                         config=types.GenerateContentConfig(response_mime_type="application/json")))
                     assert json.loads(chunks[0].candidates[0].content.parts[0].text) == {"ok": True}
                     assert chunks[-1].candidates[0].finish_reason == "STOP"

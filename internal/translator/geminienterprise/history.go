@@ -100,15 +100,15 @@ func (n *normalizer) geminiParts(value any, path string, modelHistory, conversat
 		case code != nil:
 			object := n.object(code, prefix+"executableCode")
 			n.contentKeys(object, "language|code", prefix+"executableCode.")
-			language := n.optionalText(object, "language", prefix+"executableCode.")
-			codeText := n.optionalText(object, "code", prefix+"executableCode.")
-			text.WriteString("\n[Previous model code (" + language + ")]\n" + codeText + "\n")
+			n.optionalText(object, "language", prefix+"executableCode.")
+			n.optionalText(object, "code", prefix+"executableCode.")
+			text.WriteString("\n" + string(marshal(map[string]any{"executableCode": object})) + "\n")
 		case result != nil:
 			object := n.object(result, prefix+"codeExecutionResult")
 			n.contentKeys(object, "outcome|output", prefix+"codeExecutionResult.")
-			outcome := n.optionalText(object, "outcome", prefix+"codeExecutionResult.")
-			output := n.optionalText(object, "output", prefix+"codeExecutionResult.")
-			text.WriteString("\n[Previous model code execution result (" + outcome + ")]\n" + output + "\n")
+			n.optionalText(object, "outcome", prefix+"codeExecutionResult.")
+			n.optionalText(object, "output", prefix+"codeExecutionResult.")
+			text.WriteString("\n" + string(marshal(map[string]any{"codeExecutionResult": object})) + "\n")
 		case hasText:
 			body := n.text(part["text"], prefix+"text")
 			if !thought {

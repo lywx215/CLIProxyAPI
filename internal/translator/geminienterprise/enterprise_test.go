@@ -38,10 +38,8 @@ func TestEnterpriseNormalizeProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			query := gjson.GetBytes(input.Body, "query.text").String()
-			for _, text := range []string{"policy", "old", "previous", "https://example.com", "Python", "JSON", "actually"} {
-				if !strings.Contains(strings.ToLower(query), strings.ToLower(text)) {
-					t.Fatalf("missing context/instruction %q", text)
-				}
+			if query != "policy\nold\nprevious\nread https://example.com" {
+				t.Fatalf("content changed or proxy instructions added: %q", query)
 			}
 			if !gjson.GetBytes(input.Body, "toolsSpec.webGroundingSpec").Exists() || !input.JSON || len(input.Ignored) == 0 {
 				t.Fatalf("missing adaptations: %+v", input)

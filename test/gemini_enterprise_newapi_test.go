@@ -3,7 +3,6 @@ package test
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -140,7 +139,7 @@ func TestEnterpriseMultiMiBContinuationPublicRoutes(t *testing.T) {
 						t.Fatalf("large continuation rejected: status=%d body=%s", response.Code, response.Body.String())
 					}
 					query := gjson.GetBytes(transport.requestBody(), "query.text").String()
-					if len(query) <= 1024*1024 || !strings.Contains(query, "Continue the last nonempty assistant") {
+					if len(query) <= 1024*1024 {
 						t.Fatal("fixture did not exercise a large assistant continuation")
 					}
 					enterpriseAssertExactHistory(t, query, want)
@@ -152,14 +151,12 @@ func TestEnterpriseMultiMiBContinuationPublicRoutes(t *testing.T) {
 
 func enterpriseAssertExactHistory(t *testing.T, query string, want []map[string]string) {
 	t.Helper()
-	var context struct {
-		History []map[string]string `json:"conversation"`
+	texts := make([]string, 0, len(want))
+	for _, entry := range want {
+		texts = append(texts, entry["text"])
 	}
-	if err := json.Unmarshal([]byte(query[strings.LastIndex(query, "\n")+1:]), &context); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(context.History, want) {
-		t.Fatal("forwarded context lost or changed history entries, roles or text")
+	if query != strings.Join(texts, "\n") {
+		t.Fatal("forwarded content changed or a proxy wrapper/instruction was added")
 	}
 }
 
@@ -181,13 +178,6 @@ func TestEnterpriseContinuationPlaceholdersPublicRoutes(t *testing.T) {
 					}
 					query := gjson.GetBytes(transport.requestBody(), "query.text").String()
 					enterpriseAssertExactHistory(t, query, want)
-					mode := "Answer the last nonempty user"
-					if strings.TrimSpace(tail) != "" {
-						mode = "Continue the last nonempty assistant"
-					}
-					if !strings.Contains(query, mode) {
-						t.Fatal("incorrect continuation mode")
-					}
 				}
 			}
 		}

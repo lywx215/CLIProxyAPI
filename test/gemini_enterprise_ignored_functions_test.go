@@ -62,20 +62,14 @@ func TestEnterpriseIgnoredFunctionsPublicAllModels(t *testing.T) {
 						}
 						wire := transport.requestBody()
 						query := gjson.GetBytes(wire, "query.text").String()
-						if !strings.Contains(query, "custom functions are unavailable") || gjson.GetBytes(wire, "tools").Exists() || strings.Contains(string(wire), "unused-private-") || strings.Contains(ignored, "unused-private-") {
-							t.Fatal("ignored declaration was forwarded or downgrade was not explained")
+						if strings.Contains(query, "custom functions are unavailable") || gjson.GetBytes(wire, "tools").Exists() || strings.Contains(string(wire), "unused-private-") || strings.Contains(ignored, "unused-private-") {
+							t.Fatal("ignored declaration or proxy-authored instruction was forwarded")
 						}
 						if strings.Contains(response.Body.String(), `"tool_calls"`) || strings.Contains(response.Body.String(), `"functionCall"`) || strings.Contains(response.Body.String(), `"finish_reason":"tool_calls"`) {
 							t.Fatal("text response fabricated a client function call")
 						}
 						if scenario.history {
-							var context struct {
-								History []map[string]string `json:"conversation"`
-							}
-							if err := json.Unmarshal([]byte(query[strings.LastIndex(query, "\n")+1:]), &context); err != nil {
-								t.Fatal(err)
-							}
-							if len(context.History) != 3 || context.History[0]["text"] != "history-question" || !strings.Contains(context.History[1]["text"], "historical_add") || !strings.Contains(context.History[2]["text"], "history-call-17") || !strings.Contains(context.History[2]["text"], "前🙂") {
+							if !strings.HasPrefix(query, "history-question\n") || strings.Index(query, "historical_add") <= 0 || !strings.Contains(query, "history-call-17") || !strings.Contains(query, "前🙂") {
 								t.Fatal("history entries, calls or supplied function results were lost")
 							}
 						}
@@ -105,8 +99,10 @@ func TestEnterpriseIgnoredFunctionsFinalPayloadAndJSON(t *testing.T) {
 				if mode == "json" {
 					if protocol == "openai" {
 						fields["response_format"] = map[string]string{"type": "json_object"}
+						fields["messages"].([]map[string]any)[0]["content"] = "Return a JSON object"
 					} else {
 						fields["generationConfig"] = map[string]string{"responseMimeType": "application/json"}
+						fields["contents"].([]map[string]any)[0]["parts"] = []map[string]string{{"text": "Return a JSON object"}}
 					}
 				}
 				path, body := enterprisePublicRequest(t, "gemini-3.1-pro-preview", protocol, stream, fields)

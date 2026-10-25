@@ -28,14 +28,11 @@ func TestEnterpriseUnsupportedFunctionDeclarationsBecomeText(t *testing.T) {
 				t.Fatal(err)
 			}
 			query := gjson.GetBytes(input.Body, "query.text").String()
-			if !strings.Contains(query, "Client-provided custom functions are unavailable") || strings.Contains(query, "private-") {
-				t.Fatal("unused function definitions leaked or unavailable functions were not explained")
+			if query != "question" {
+				t.Fatal("unused function definitions leaked or proxy instructions were added")
 			}
 			if strings.Contains(scenario.body, "googleSearch") && !gjson.GetBytes(input.Body, "toolsSpec.webGroundingSpec").Exists() {
 				t.Fatal("discarding a function also discarded the supported search tool")
-			}
-			if strings.Contains(scenario.body, "code_execution") && !strings.Contains(query, "Python execution") {
-				t.Fatal("supported built-in code execution hint was lost")
 			}
 		}
 	}
@@ -75,18 +72,14 @@ func TestEnterpriseHistoricalFunctionsRemainClientContext(t *testing.T) {
 		if original != string(body) || !slices.Contains(input.Ignored, scenario.field) {
 			t.Fatal("source mutated or ignored native function fields not reported")
 		}
-		context := readEnterpriseContext(t, input.Body)
-		var text strings.Builder
-		for _, item := range context.History {
-			text.WriteString(item["text"])
-		}
-		for _, want := range []string{"historical_add", "5", "前🙂", "Historical client function", "not executed by this proxy"} {
-			if !strings.Contains(text.String(), want) {
+		text := gjson.GetBytes(input.Body, "query.text").String()
+		for _, want := range []string{"historical_add", "5", "前🙂"} {
+			if !strings.Contains(text, want) {
 				t.Fatalf("historical context lost %q", want)
 			}
 		}
-		if strings.Contains(string(input.Body), "private-signature") || context.History[len(context.History)-1]["role"] != "user" {
-			t.Fatal("signature leaked or result role was not adapted to text")
+		if strings.Contains(string(input.Body), "private-signature") || strings.Contains(text, "Historical client function") || strings.Contains(text, "not executed by this proxy") {
+			t.Fatal("signature leaked or proxy-authored history instruction added")
 		}
 	}
 }

@@ -23,7 +23,7 @@
 - **AIS**：`GeminiExecutor` 及 Gemini 到 Gemini 的归一化逻辑，通常访问 Generative Language API。它会修复角色、签名、工具 Schema、函数结果名称，追加必要的边界 user，并按模型封顶输出长度，不能概括成完全原样透传。
 - **Gemini CLI**：`GeminiCLIExecutor` 访问 Cloud Code Assist。此快照中未找到 Gemini 到 `gemini-cli` 的内建翻译注册；没有匹配翻译器且没有插件时，注册表只更新根级 model 后回退原请求。CLI 执行器却按 `request.*` 处理字段。因此 CLI 列是执行器代码参考，必须先核验实际运行环境是否由插件或其他入口补齐转换链。
 - **Antigravity**：保留 Gemini 请求的主体结构并作包装、Schema 清理、签名及函数回传修复。Gemini 路径内建逻辑会在最终 Payload 规则之前删除 `request.generationConfig.maxOutputTokens`，并删除 `request.safetySettings`；最终用户 Payload 规则仍可能重新设置这些值。已有结束原因可被保留，缺省时也可能合成 STOP。
-- **Enterprise**：独立的文本 normalizer 将历史、系统指令打包为 `query.text`，再重建 Gemini 响应。当前限制主要来自这一适配合同，不能全部推断为 Google Enterprise 产品的能力上限。
+- **Enterprise**：独立的文本 normalizer 将历史、系统指令连接为 `query.text`，再重建 Gemini 响应。当前实现已取消代理附加说明和对话 JSON 包装；单条文本原样传递，多条文本以换行连接。下文针对旧版本 role-labelled JSON 上下文的上游观察仍是历史证据，不代表已复核取消包装后的角色语义。当前限制主要来自这一适配合同，不能全部推断为 Google Enterprise 产品的能力上限。
 
 依据：[AIS 归一化][src-ais-normalize]、[AIS 执行器][src-ais-executor]、[CLI 执行器][src-cli]、[翻译注册表回退][src-registry]、[内建翻译注册][src-translator-init]、[Antigravity 输入转换][src-ag-normalize]、[Antigravity 最终请求][src-ag-request]、[Enterprise 请求构建][src-ge-executor]。
 
