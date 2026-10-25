@@ -6,6 +6,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
@@ -58,6 +60,8 @@ type ErrorDetail struct {
 	Param any `json:"param,omitempty"`
 	// Retryable optionally indicates whether a retry might fix the issue automatically.
 	Retryable *bool `json:"retryable,omitempty"`
+	// SkipReasons contains only recognized Google assistant skip reason enums.
+	SkipReasons []string `json:"skip_reasons,omitempty"`
 }
 
 const idempotencyKeyMetadataKey = "idempotency_key"
@@ -251,7 +255,16 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 			}
 		}
 	}
-	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable}})
+	var skipReasons []string
+	var skipped *ge.SkippedError
+	if !coreauth.IsTerminalAuthError(err) && errors.As(err, &skipped) && status == skipped.StatusCode() {
+		// A typed, locally sanitized rejection is the only source of public reasons.
+		// Never trust skip fields or messages supplied in an arbitrary JSON string.
+		fixedMessage, code, errType, param = skipped.SkipMessage(), "upstream_skipped", "invalid_request_error", nil
+		value := false
+		retryable, skipReasons = &value, skipped.SkipReasons()
+	}
+	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable, SkipReasons: skipReasons}})
 	if errMarshal != nil {
 		return []byte(`{"error":{"message":"internal error","type":"server_error","code":"internal_server_error"}}`)
 	}

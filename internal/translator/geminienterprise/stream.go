@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 )
 
 type Source struct{ URI, Title string }
@@ -47,6 +49,10 @@ type Parser struct {
 func (p *Parser) Parse(reader io.Reader, emit func(Event) error) (parseErr error) {
 	tracked := &streamReadTracker{Reader: reader}
 	defer func() {
+		if _, skipped := parseErr.(*ge.SkippedError); skipped {
+			// A complete request rejection must survive a simultaneous transport error.
+			return
+		}
 		if parseErr != nil && tracked.err != nil && p.ReadError != nil {
 			parseErr = p.ReadError(tracked.err, p.Started)
 		}
@@ -249,8 +255,9 @@ func (p *Parser) item(raw []byte) error {
 		return p.wrap("invalid_upstream_stream", "answer received after terminal state")
 	}
 	var answer struct {
-		State   string `json:"state"`
-		Replies []struct {
+		State          string          `json:"state"`
+		SkippedReasons json.RawMessage `json:"assistSkippedReasons"`
+		Replies        []struct {
 			Content         json.RawMessage `json:"content"`
 			GroundedContent struct {
 				Content  json.RawMessage `json:"content"`
@@ -369,6 +376,9 @@ func (p *Parser) item(raw []byte) error {
 	case "", "IN_PROGRESS", "STATE_UNSPECIFIED":
 	case "SUCCEEDED":
 		p.terminal = answer.State
+	case "SKIPPED":
+		p.terminal = answer.State
+		return ge.NewSkippedError(answer.SkippedReasons, p.Started)
 	default:
 		p.terminal = answer.State
 		return p.wrap("upstream_failed", "Google generation ended with "+answer.State)

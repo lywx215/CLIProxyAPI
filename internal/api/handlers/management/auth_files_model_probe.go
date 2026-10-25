@@ -212,6 +212,11 @@ func enterpriseModelTestError(result enterpriseModelTestResult, err error) enter
 		}
 	}
 	var generation *ge.GenerationError
+	var skipped *ge.SkippedError
+	if errors.As(err, &skipped) {
+		result.Code, result.Message = "upstream_skipped", skipped.SkipMessage()
+		return result
+	}
 	if errors.As(err, &generation) && generation.ModelNotEnabled {
 		result.Code, result.Message = "MODEL_NOT_ENABLED", "Google has not enabled this model for the selected application"
 		return result

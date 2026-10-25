@@ -152,6 +152,10 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		log.WithField("provider", e.Identifier()).Warn("client function fields ignored; continuing as text without client function execution")
 	}
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
+	input.Body, err = helps.ApplyEnterpriseAssistDefaults(input.Body)
+	if err != nil {
+		return nil, input, err
+	}
 	if kind == "" {
 		input.Body, err = helps.ApplyEnterpriseThinking(input.Body, req, opts)
 		if err != nil {

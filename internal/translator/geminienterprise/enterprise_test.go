@@ -140,8 +140,8 @@ func TestEnterpriseTerminalErrorsAndThoughtFencing(t *testing.T) {
 		p := &Parser{}
 		var text strings.Builder
 		err := p.Parse(strings.NewReader(test.body), func(e Event) error { text.WriteString(e.Text); return nil })
-		var failure *Error
-		if !errors.As(err, &failure) || failure.Scoped != test.scoped {
+		var failure interface{ IsRequestScoped() bool }
+		if !errors.As(err, &failure) || failure.IsRequestScoped() != test.scoped {
 			t.Fatalf("error=%v, want scoped=%v for %s", err, test.scoped, test.body)
 		}
 		if strings.Contains(text.String(), "secret") {
