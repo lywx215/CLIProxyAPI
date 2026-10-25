@@ -155,7 +155,7 @@ func quotaTiers(ctx context.Context, client *http.Client, binding config.GeminiE
 }
 
 func quotaTimeSeries(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token, metric string, start, end time.Time) ([]quotaSeries, string) {
-	filter := fmt.Sprintf("metric.type = %q AND project = %q AND resource.type = %q AND resource.labels.location = %q", metric, binding.ProjectID, "discoveryengine.googleapis.com/Location", binding.Location)
+	filter := fmt.Sprintf("metric.type = %q AND project = %q AND resource.type = %q AND metric.labels.regional_location = %q", metric, binding.ProjectID, "discoveryengine.googleapis.com/Location", binding.Location)
 	params := url.Values{"filter": {filter}, "interval.startTime": {start.UTC().Format(time.RFC3339Nano)}, "interval.endTime": {end.UTC().Format(time.RFC3339Nano)}, "view": {"FULL"}, "pageSize": {"100000"}}
 	endpoint := "https://monitoring.googleapis.com/v3/projects/" + binding.ProjectID + "/timeSeries"
 	var series []quotaSeries
@@ -192,7 +192,9 @@ func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, e
 	latest := time.Time{}
 	limitName := ""
 	validSeries := func(s quotaSeries, suffix, kind string) bool {
-		return s.Metric.Type == metric+suffix && s.Kind == kind && s.Resource.Type == "discoveryengine.googleapis.com/Location" && s.Resource.Labels["location"] == location && s.Metric.Labels["regional_location"] == location && strings.Contains(s.Metric.Labels["limit_name"], "PerDayPerProject")
+		// The monitored resource can be global for EU/US quota pools. Only the
+		// metric's regional_location identifies the quota region.
+		return s.Metric.Type == metric+suffix && s.Kind == kind && s.Resource.Type == "discoveryengine.googleapis.com/Location" && s.Metric.Labels["regional_location"] == location && strings.Contains(s.Metric.Labels["limit_name"], "PerDayPerProject")
 	}
 	for _, s := range limits {
 		if !validSeries(s, "/limit", "GAUGE") {

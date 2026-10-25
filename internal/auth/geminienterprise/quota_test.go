@@ -36,8 +36,16 @@ func quotaFixture(suffix, kind, value string, start, end time.Time) quotaSeries 
 
 func TestEnterpriseRegionalQuotaEndpointsAndUsageIsolation(t *testing.T) {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
-	for _, region := range []string{"global", "us", "eu"} {
-		t.Run(region, func(t *testing.T) {
+	for _, tc := range []struct {
+		region, limit, used string
+		remaining           int64
+	}{
+		{"global", "10000", "100", 9900},
+		{"us", "20000", "200", 19800},
+		{"eu", "30000", "300", 29700},
+	} {
+		t.Run(tc.region, func(t *testing.T) {
+			region := tc.region
 			binding := config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", Location: region, EngineID: "app"}
 			calls := 0
 			client := &http.Client{Transport: quotaTransport(func(r *http.Request) (*http.Response, error) {
@@ -51,21 +59,30 @@ func TestEnterpriseRegionalQuotaEndpointsAndUsageIsolation(t *testing.T) {
 					}
 					return quotaResponse(200, map[string]any{"licenseConfigs": []any{map[string]string{"subscriptionTier": "SEARCH_AND_ASSISTANT", "state": "ACTIVE"}}}), nil
 				}
-				if r.URL.Host != "monitoring.googleapis.com" || !strings.Contains(r.URL.Query().Get("filter"), `resource.labels.location = "`+region+`"`) {
+				filter := r.URL.Query().Get("filter")
+				if r.URL.Host != "monitoring.googleapis.com" || !strings.Contains(filter, `project = "123"`) || !strings.Contains(filter, `metric.labels.regional_location = "`+region+`"`) || strings.Contains(filter, "resource.labels.location") {
 					t.Fatal("Monitoring filter used the wrong region", r.URL)
 				}
-				suffix, kind, value := "usage", "DELTA", "7"
-				if strings.Contains(r.URL.Query().Get("filter"), "/limit") {
-					suffix, kind, value = "limit", "GAUGE", "100"
+				suffix, kind, value := "usage", "DELTA", tc.used
+				if strings.Contains(filter, "/limit") {
+					suffix, kind, value = "limit", "GAUGE", tc.limit
 				}
 				known := quotaFixture(suffix, kind, value, now.Add(-time.Minute), now)
-				known.Resource.Labels["location"], known.Metric.Labels["regional_location"] = region, region
-				other := quotaFixture(suffix, kind, "999", now.Add(-time.Minute), now)
-				other.Resource.Labels["location"], other.Metric.Labels["regional_location"] = "foreign", "foreign"
-				return quotaResponse(200, map[string]any{"timeSeries": []quotaSeries{known, other}}), nil
+				// Google stores all three regional pools under a global monitored resource.
+				known.Metric.Labels["regional_location"] = region
+				series := []quotaSeries{known}
+				for _, otherRegion := range []string{"global", "us", "eu"} {
+					if otherRegion == region {
+						continue
+					}
+					other := quotaFixture(suffix, kind, "999", now.Add(-time.Minute), now)
+					other.Metric.Labels["regional_location"] = otherRegion
+					series = append(series, other)
+				}
+				return quotaResponse(200, map[string]any{"timeSeries": series}), nil
 			})}
 			result := FetchQuota(context.Background(), client, binding, "synthetic", now)
-			if result.Status != "ok" || result.Location != region || len(result.Pools) != 1 || result.Pools[0].Remaining == nil || *result.Pools[0].Remaining != 93 || calls != 3 {
+			if result.Status != "ok" || result.Location != region || len(result.Pools) != 1 || result.Pools[0].Remaining == nil || *result.Pools[0].Remaining != tc.remaining || calls != 3 {
 				t.Fatalf("incorrect regional quota: %+v calls=%d", result, calls)
 			}
 		})
@@ -79,7 +96,7 @@ func TestEnterpriseQuotaSumsPagedDeltaAndSeparatesRegions(t *testing.T) {
 	otherMethod := quotaFixture("usage", "DELTA", "1", now.Add(-2*time.Minute), now.Add(-time.Minute))
 	otherMethod.Metric.Labels["method"] = "StreamAssist"
 	otherRegion := quotaFixture("usage", "DELTA", "999", now.Add(-2*time.Minute), now.Add(-time.Minute))
-	otherRegion.Resource.Labels["location"] = "us"
+	otherRegion.Metric.Labels["regional_location"] = "us"
 	requests := 0
 	client := &http.Client{Transport: quotaTransport(func(r *http.Request) (*http.Response, error) {
 		requests++
@@ -94,7 +111,7 @@ func TestEnterpriseQuotaSumsPagedDeltaAndSeparatesRegions(t *testing.T) {
 			}}), nil
 		}
 		filter := r.URL.Query().Get("filter")
-		if r.URL.Host != "monitoring.googleapis.com" || !strings.Contains(filter, `project = "123456789"`) || !strings.Contains(filter, `resource.labels.location = "global"`) {
+		if r.URL.Host != "monitoring.googleapis.com" || !strings.Contains(filter, `project = "123456789"`) || !strings.Contains(filter, `metric.labels.regional_location = "global"`) {
 			t.Fatal("quota request did not constrain its monitored project and region")
 		}
 		if strings.Contains(filter, "/limit") {
@@ -117,6 +134,33 @@ func TestEnterpriseQuotaSumsPagedDeltaAndSeparatesRegions(t *testing.T) {
 	pool := result.Pools[0]
 	if pool.Limit == nil || *pool.Limit != 10000 || pool.Used == nil || *pool.Used != 6 || pool.Remaining == nil || *pool.Remaining != 9994 || pool.UsageUpdatedAt == nil || !pool.UsageUpdatedAt.Equal(now.Add(-time.Minute)) {
 		t.Fatalf("incorrect pool totals: %+v", pool)
+	}
+}
+
+func TestEnterpriseQuotaRequiresMatchingRegionalLabel(t *testing.T) {
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	start := now.Add(-time.Hour)
+	for _, region := range []string{"global", "us", "eu"} {
+		t.Run(region, func(t *testing.T) {
+			for _, label := range []string{"", "other-region"} {
+				limitSeries := quotaFixture("limit", "GAUGE", "10000", now, now)
+				usageSeries := quotaFixture("usage", "DELTA", "999", now.Add(-time.Minute), now)
+				for _, series := range []*quotaSeries{&limitSeries, &usageSeries} {
+					// A matching resource location cannot substitute for a missing or foreign quota label.
+					series.Resource.Labels["location"] = region
+					if label == "" {
+						delete(series.Metric.Labels, "regional_location")
+					} else {
+						series.Metric.Labels["regional_location"] = label
+					}
+				}
+				metric := strings.TrimSuffix(limitSeries.Metric.Type, "/limit")
+				limit, used, updated := quotaAmounts([]quotaSeries{limitSeries}, []quotaSeries{usageSeries}, region, metric, start, now)
+				if limit != nil || used != nil || updated != nil {
+					t.Fatalf("missing or foreign quota region became known: region=%q label=%q", region, label)
+				}
+			}
+		})
 	}
 }
 
