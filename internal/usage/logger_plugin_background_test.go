@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 )
 
@@ -69,6 +72,49 @@ func TestUsageBackgroundContextRecordsSuccessWithoutResponseWriter(t *testing.T)
 			}
 			if again := stats.Snapshot(); again.TotalRequests != 1 || again.TotalTokens != 9 {
 				t.Fatal("snapshotting changed usage accounting")
+			}
+		})
+	}
+}
+
+func TestUsageRequestSnapshotsSurviveGinContextReuse(t *testing.T) {
+	for _, status := range []int{0, http.StatusOK, http.StatusInternalServerError} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ginCtx.Request = httptest.NewRequest(http.MethodPost, "/original", nil)
+			ctx := context.WithValue(context.Background(), "gin", ginCtx)
+			ctx = logging.WithEndpoint(ctx, "POST /original")
+			ctx = logging.WithResponseStatusHolder(ctx)
+			logging.SetResponseStatus(ctx, status)
+			ctx = coreauth.WithAntigravityCreditsUsage(ctx)
+
+			// A queued usage record can outlive the handler and its pooled Gin context.
+			ginCtx.Request = httptest.NewRequest(http.MethodGet, "/recycled", nil)
+			ginCtx.Writer = nil
+			changed := make(chan struct{})
+			go func() {
+				defer close(changed)
+				for range 1000 {
+					ginCtx.Request = httptest.NewRequest(http.MethodDelete, "/another-request", nil)
+					ginCtx.Writer = nil
+				}
+			}()
+			stats := NewRequestStatistics()
+			for range 1000 {
+				stats.Record(ctx, coreusage.Record{Provider: "fixture", Model: "model"})
+			}
+			<-changed
+			snapshot := stats.Snapshot()
+			api := snapshot.APIs["POST /original"]
+			if api.TotalRequests != 1000 {
+				t.Fatalf("request endpoint changed after Gin reuse: %+v", snapshot.APIs)
+			}
+			wantFailures := int64(0)
+			if status >= http.StatusBadRequest {
+				wantFailures = 1000
+			}
+			if snapshot.FailureCount != wantFailures || snapshot.SuccessCount != 1000-wantFailures {
+				t.Fatalf("request outcome changed after Gin reuse: %+v", snapshot)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 )
@@ -410,6 +411,9 @@ func dedupKey(apiName, modelName string, detail RequestDetail) string {
 }
 
 func resolveAPIIdentifier(ctx context.Context, record coreusage.Record) string {
+	if endpoint := logging.GetEndpoint(ctx); endpoint != "" {
+		return endpoint
+	}
 	if ctx != nil {
 		if ginCtx, ok := ctx.Value("gin").(*gin.Context); ok && ginCtx != nil {
 			path := ginCtx.FullPath()
@@ -437,6 +441,10 @@ func resolveAPIIdentifier(ctx context.Context, record coreusage.Record) string {
 func resolveSuccess(ctx context.Context) bool {
 	if ctx == nil {
 		return true
+	}
+	if logging.HasResponseStatusHolder(ctx) {
+		status := logging.GetResponseStatus(ctx)
+		return status == 0 || status < httpStatusBadRequest
 	}
 	ginCtx, ok := ctx.Value("gin").(*gin.Context)
 	if !ok || ginCtx == nil || ginCtx.Writer == nil {

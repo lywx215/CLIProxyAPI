@@ -160,6 +160,15 @@ func GetResponseStatus(ctx context.Context) int {
 	return int(holder.status.Load())
 }
 
+// HasResponseStatusHolder reports whether the request owns a concurrency-safe status snapshot.
+func HasResponseStatusHolder(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	holder, ok := ctx.Value(responseStatusKey{}).(*responseStatusHolder)
+	return ok && holder != nil
+}
+
 func GetResponseHeaders(ctx context.Context) http.Header {
 	if ctx == nil {
 		return nil

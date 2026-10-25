@@ -454,7 +454,7 @@ func TestHandleAuthUpdates_ModelRegistrationDoesNotHoldAuthUpdateLock(t *testing
 	started := make(chan struct{})
 	block := make(chan struct{})
 	var first atomic.Bool
-	modelRegistrationTaskHook = func() {
+	modelRegistrationTaskHook = func(_ string) {
 		if first.CompareAndSwap(false, true) {
 			close(started)
 			<-block
@@ -620,7 +620,7 @@ func TestHandleAuthUpdates_StaleDisableRegistrationDoesNotDropNewerEnable(t *tes
 	started := make(chan struct{})
 	block := make(chan struct{})
 	var first atomic.Bool
-	modelRegistrationTaskHook = func() {
+	modelRegistrationTaskHook = func(_ string) {
 		if first.CompareAndSwap(false, true) {
 			close(started)
 			<-block
@@ -719,20 +719,21 @@ func TestHandleAuthUpdates_SameRevisionWaitDoesNotWaitForOtherAuthInBatch(t *tes
 
 	bStarted := make(chan struct{})
 	bBlock := make(chan struct{})
-	var started atomic.Int32
-	modelRegistrationTaskHook = func() {
-		if started.Add(1) == 2 {
+	finishedBatch := make(chan struct{})
+	modelRegistrationTaskHook = func(authID string) {
+		if authID == authBID {
 			close(bStarted)
 			<-bBlock
 		}
 	}
 	t.Cleanup(func() {
-		modelRegistrationTaskHook = nil
 		select {
 		case <-bBlock:
 		default:
 			close(bBlock)
 		}
+		<-finishedBatch
+		modelRegistrationTaskHook = nil
 	})
 
 	updateA := watcher.AuthUpdate{Action: watcher.AuthUpdateActionModify, ID: authAID, Auth: authA}
@@ -740,7 +741,6 @@ func TestHandleAuthUpdates_SameRevisionWaitDoesNotWaitForOtherAuthInBatch(t *tes
 	updateB := watcher.AuthUpdate{Action: watcher.AuthUpdateActionModify, ID: authBID, Auth: authB}
 	updateB.SetRevision(1)
 
-	finishedBatch := make(chan struct{})
 	go func() {
 		defer close(finishedBatch)
 		service.handleAuthUpdates(context.Background(), []watcher.AuthUpdate{updateA, updateB})
