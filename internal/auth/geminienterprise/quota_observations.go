@@ -41,6 +41,7 @@ func MergeQuotaObservations(previous, current QuotaSnapshot) QuotaSnapshot {
 		for i := range result.Pools {
 			result.Pools[i].Status = "stale"
 		}
+		result.Status = quotaStatus(result.Pools, result.Status)
 		result.ObservedAt = previous.ObservedAt
 		return result
 	}
@@ -80,6 +81,7 @@ func MergeQuotaObservations(previous, current QuotaSnapshot) QuotaSnapshot {
 			break
 		}
 	}
+	result.Status = quotaStatus(result.Pools, result.Status)
 	return result
 }
 

@@ -2,6 +2,7 @@ package geminienterprise
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -95,12 +96,13 @@ func TestQuotaObservationMergePreservesZeroAndDailyBoundary(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	start := now.Add(-5 * time.Hour)
 	limit, used := int64(1000), int64(0)
-	previous := QuotaSnapshot{ProjectID: "123", Location: "global", ObservedAt: now, PeriodStart: &start, Pools: []QuotaPool{{Tier: "enterprise_plus", Status: "ok", Limit: &limit, Used: &used, UsageUpdatedAt: &now}}}
+	previous := QuotaSnapshot{Status: "ok", ProjectID: "123", Location: "global", ObservedAt: now, PeriodStart: &start, Pools: []QuotaPool{{Tier: "enterprise_plus", Status: "ok", Limit: &limit, Used: &used, UsageUpdatedAt: &now}}}
 	current := CloneQuotaSnapshot(previous)
+	current.Status = "partial"
 	current.ObservedAt = now.Add(time.Minute)
 	current.Pools[0].Used, current.Pools[0].Remaining, current.Pools[0].Status = nil, nil, "partial"
 	got := MergeQuotaObservations(previous, current)
-	if got.Pools[0].Used == nil || *got.Pools[0].Used != 0 || got.Pools[0].Remaining == nil || *got.Pools[0].Remaining != 1000 || got.Pools[0].Status != "stale" {
+	if got.Status != "stale" || got.Pools[0].Used == nil || *got.Pools[0].Used != 0 || got.Pools[0].Remaining == nil || *got.Pools[0].Remaining != 1000 || got.Pools[0].Status != "stale" {
 		t.Fatalf("zero was lost: %+v", got)
 	}
 	*got.Pools[0].Used = 99
@@ -124,5 +126,89 @@ func TestQuotaObservationMergePreservesZeroAndDailyBoundary(t *testing.T) {
 	current.Pools[0].Limit = &newLimit
 	if got = MergeQuotaObservations(previous, current); got.Pools[0].Used != nil || got.Pools[0].Remaining != nil {
 		t.Fatal("a new limit version reused old usage")
+	}
+}
+
+func TestQuotaPartialPoolIsNotHiddenByFreshPool(t *testing.T) {
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	for _, failedTier := range []string{"enterprise_plus", "enterprise_standard"} {
+		t.Run(failedTier, func(t *testing.T) {
+			client := &http.Client{Transport: quotaTransport(func(r *http.Request) (*http.Response, error) {
+				if strings.HasSuffix(r.URL.Path, "/licenseConfigs") {
+					return quotaResponse(200, map[string]any{"licenseConfigs": []any{
+						map[string]string{"subscriptionTier": "SEARCH_AND_ASSISTANT", "state": "ACTIVE"},
+						map[string]string{"subscriptionTier": "ENTERPRISE", "state": "ACTIVE"},
+					}}), nil
+				}
+				filter := r.URL.Query().Get("filter")
+				tier := "enterprise_plus"
+				if strings.Contains(filter, "tier_enterprise_standard_regional") {
+					tier = "enterprise_standard"
+				}
+				suffix, kind, value := "usage", "DELTA", "0"
+				if strings.Contains(filter, "/limit") {
+					suffix, kind, value = "limit", "GAUGE", "1000"
+				} else if tier == failedTier {
+					return quotaResponse(403, map[string]any{}), nil
+				}
+				series := quotaFixture(suffix, kind, value, now.Add(-time.Minute), now)
+				series.Metric.Type = strings.ReplaceAll(series.Metric.Type, "enterprise_plus", tier)
+				return quotaResponse(200, map[string]any{"timeSeries": []quotaSeries{series}}), nil
+			})}
+			got := FetchQuota(context.Background(), client, config.GeminiEnterpriseOAuth{ClientID: "fixture", ProjectID: "123", EngineID: "engine"}, "synthetic", now)
+			if got.Status != "partial" || len(got.Pools) != 2 {
+				t.Fatalf("partial pool was hidden: %+v", got)
+			}
+			for _, pool := range got.Pools {
+				if pool.Tier == failedTier {
+					if pool.Status != "partial" || pool.Used != nil || pool.Remaining != nil || pool.Limit == nil {
+						t.Fatalf("partial fields changed: %+v", pool)
+					}
+				} else if pool.Status != "ok" || pool.Used == nil || *pool.Used != 0 || pool.Remaining == nil || *pool.Remaining != 1000 {
+					t.Fatalf("fresh zero reading changed: %+v", pool)
+				}
+			}
+		})
+	}
+}
+
+func TestQuotaStaleSnapshotJSONKeepsZeroAndStatus(t *testing.T) {
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	start := now.Add(-5 * time.Hour)
+	limit, used, remaining := int64(1000), int64(0), int64(1000)
+	previous := QuotaSnapshot{Status: "ok", ProjectID: "123", Location: "global", ObservedAt: now, PeriodStart: &start, Pools: []QuotaPool{{Tier: "enterprise_plus", Status: "ok", Limit: &limit, Used: &used, Remaining: &remaining, UsageUpdatedAt: &now, Version: "internal-only"}}}
+	for _, status := range []string{"partial", "unavailable", "no_permission"} {
+		t.Run(status, func(t *testing.T) {
+			current := CloneQuotaSnapshot(previous)
+			current.Status, current.ObservedAt = status, now.Add(time.Minute)
+			if status == "partial" {
+				current.Pools[0].Status, current.Pools[0].Used = status, nil
+				current.Pools[0].Remaining = nil
+			} else {
+				current.Pools = nil
+			}
+			merged := MergeQuotaObservations(previous, current)
+			data, err := json.Marshal(merged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw struct {
+				Status string `json:"status"`
+				Pools  []struct {
+					Status    string `json:"status"`
+					Used      *int64 `json:"used"`
+					Remaining *int64 `json:"remaining"`
+				} `json:"pools"`
+			}
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatal(err)
+			}
+			if raw.Status != "stale" || len(raw.Pools) != 1 || raw.Pools[0].Status != "stale" || raw.Pools[0].Used == nil || *raw.Pools[0].Used != 0 || raw.Pools[0].Remaining == nil || *raw.Pools[0].Remaining != 1000 {
+				t.Fatalf("stale JSON lost its observations: %s", data)
+			}
+			if strings.Contains(string(data), "internal-only") || strings.Contains(string(data), "selected_pool") {
+				t.Fatalf("standalone quota leaked internal fields: %s", data)
+			}
+		})
 	}
 }

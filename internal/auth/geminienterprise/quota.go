@@ -104,11 +104,24 @@ func FetchQuota(ctx context.Context, client *http.Client, binding config.GeminiE
 			pool.Remaining = &remaining
 		}
 		result.Pools = append(result.Pools, pool)
-		if pool.Status == "ok" || (pool.Status == "partial" && result.Status != "ok") || result.Status == "no_data" {
+		if result.Status == "no_data" {
 			result.Status = pool.Status
 		}
 	}
+	result.Status = quotaStatus(result.Pools, result.Status)
 	return result
+}
+
+// quotaStatus keeps stale and partial readings visible alongside fresh pools.
+func quotaStatus(pools []QuotaPool, fallback string) string {
+	for _, status := range []string{"stale", "partial", "ok"} {
+		for _, pool := range pools {
+			if pool.Status == status {
+				return status
+			}
+		}
+	}
+	return fallback
 }
 
 func quotaTiers(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string) ([]string, string) {
