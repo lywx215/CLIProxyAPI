@@ -69,6 +69,10 @@ type EnterpriseTokenCounter struct {
 
 func NewEnterpriseTokenCounter(finalPayload []byte) *EnterpriseTokenCounter {
 	c := &EnterpriseTokenCounter{count: countEnterpriseText}
+	// Text tokenization cannot account for uploaded media or parsed attachments.
+	if len(gjson.GetBytes(finalPayload, "fileIds").Array()) > 0 {
+		return c
+	}
 	value := gjson.GetBytes(finalPayload, "query.text")
 	if value.Type == gjson.String {
 		var err error

@@ -82,6 +82,14 @@ func TestEnterpriseTokenCounterFailureWithoutText(t *testing.T) {
 	}
 }
 
+func TestEnterpriseTokenCounterDoesNotClaimMediaInputCounts(t *testing.T) {
+	counter := NewEnterpriseTokenCounter([]byte(`{"query":{"text":"read this image"},"fileIds":["file"]}`))
+	detail := counter.Detail([]map[string]any{{"text": "answer"}})
+	if detail.TokenPresence.InputTokens || detail.TokenPresence.TotalTokens || !detail.TokenPresence.OutputTokens || detail.OutputTokens <= 0 {
+		t.Fatal("text-only tokenization claimed to count attached media")
+	}
+}
+
 func TestEnterpriseThoughtVisibilityDoesNotChangeVisibleTokenCount(t *testing.T) {
 	counter := NewEnterpriseTokenCounter([]byte(`{"query":{"text":"hi"}}`))
 	want := counter.Detail([]map[string]any{{"text": "hello world"}})
