@@ -377,6 +377,22 @@ OpenAI 和 Gemini 视频任务共用单服务实例的内存缓存。创建请�
 
 本机证据目录为 `enterprise-video-429-recovery-20261024`：[MEDIA_ACCEPTANCE.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/MEDIA_ACCEPTANCE.json) 记录核心媒体验收与统计瑕疵，[PLAYBACK_VERIFICATION-first.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/PLAYBACK_VERIFICATION-first.json) 和 [PLAYBACK_VERIFICATION.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/PLAYBACK_VERIFICATION.json) 分别保留两次完整播放证据；[最终验收截图](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/playback-verification-final.jpg) 显示复核播放及统计修复说明。[原始失败报告 native_async-report.json](C:/Users/lywx2/.codex/visualizations/2026/10/23/01a1692d-dcd4-7e81-ba37-0a8773960b30/enterprise-video-429-recovery-20261024/native_async-report.json) 未改写。
 
+## inlineData 附件输入开发验证（2026-10-25）
+
+**开发状态：附件实验代码单独保存在 `codex/file`，尚未完成真实附件读取验收，不代表当前主开发分支已支持附件输入。本节保留 2026-10-25 的调查结果，不作为 Google 当前可用性的新复核。**
+
+`codex/file` 中的实验适配增加了 Gemini `inlineData` / `inline_data` 输入路径：校验 MIME 和 Base64 后保留原始文件字节，新建独立会话，以 `POST /upload/v1alpha/{session}:uploadFile` 及原始字节上传。历史中的附件也会上传，文本在原 Part 位置保留对应文件名。每次请求不跨用户、账号、区域或后续请求缓存文件引用。结束或部分失败后，对已确认属于本次请求的会话异步尝试删除；网络故障时不能保证清理完成。上传字节不写入请求日志，最终 Payload 规则仍为最后一道语义处理；不伪造媒体输入的 token 数。
+
+**真实附件读取验收尚未通过，不能作为已修复发布。** 早期按文档调用 `addContextFile`，c05 启用的 US、global 账号均返回 HTTP 404、`Method not found.`；v1、v1beta 和旧验证账号也未成功。这只证明该方法不可调用，不能据此判断所有上传能力不可用。后续直连验证已找到上述媒体上传入口：两个区域均能上传 PNG、PDF，下载并解码后与原文件逐字节一致。但是，同一会话中以真实 `fileIds` 调用 `streamAssist` 虽返回 200、`SUCCEEDED`，模型未读出图片和 PDF 中未出现在提示词的随机码，反而提示没有附件。只有文件引用而没有 query 的负面对照返回缺少有效输入；不能把这些 HTTP 200 计作附件验收成功。
+
+为防止静默丢弃内容，上传后还须由 `listSessionFileMetadata` 确认每个文件 ID 的 MIME 和原始字节数，再构造本次会话的 `session`、`fileIds`。缺少任何文件或上下文接口不可用时直接失败，不发送只有附件名称的文本推理。该轮测试中两个账号的上下文查询接口返回 404，因此这条保护会阻止不完整请求。普通、流式、33 条历史中的附件保留、最终 Payload 规则及失败清理由本地回归覆盖；真实代理请求仍受该上下文问题阻塞。
+
+该轮配置核对时：Discovery Engine API 已启用，应用类型为 `APP_TYPE_INTRANET`；两个账号的项目级 `testIamPermissions` 均返回已授予 `discoveryengine.sessions.addContextFile`、`discoveryengine.sessions.uploadFile`、`discoveryengine.assistants.assist`。官方管理文档未列出通用本地附件上传开关；Drive/OneDrive 文件选择器为独立功能。Cloud Billing API 查询因该 API 未启用而返回 403，这不能用来判断项目结算未开启。没有据此修改结算、许可、IAM、应用配置或生产部署。
+
+该轮取得的 Google Discovery 定义 revision 为 `20261022`，未登记 `addContextFile` 和 `fileIds`，但 v1alpha 实际仍校验 `fileIds` 的类型，因此定义缺失不能单独证明字段完全不被解析。当前证据仅能确认公开文档与该调用链存在差异；可见性限制、预览开放条件或服务发布问题仍需网页请求进一步验证。官方 [RPC 文档](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rpc/google.cloud.discoveryengine.v1alpha) 将部分网页推理方法标为 `ASSISTANT_USER`，[API 可见性说明](https://google.aip.dev/185#visibility-based-versioning) 说明这些标签由服务提供方授予；不能由此直接断言本次问题一定是缺少某个标签，也不能承诺升级收费版本即可解决。网页实际请求尚未抓取到可验证的有效样本。
+
+实验代码将上下文方法不可用响应转换为请求级 `attachment_upload_unavailable`，不把它标记为文本模型不可用。官方流程见 [上传内容](https://docs.cloud.google.com/gemini/enterprise/docs/upload-content)、[addContextFile](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.sessions/addContextFile) 和 [listSessionFileMetadata](https://docs.cloud.google.com/gemini/enterprise/docs/reference/rest/v1alpha/projects.locations.collections.engines.sessions/listSessionFileMetadata)。
+
 ## 工具、历史和输出边界
 
 每次请求使用完整文本历史和新的上游会话，宿主会话亲和不会作为 Google session。系统指令和角色历史转换为有角色标记的文本上下文。
