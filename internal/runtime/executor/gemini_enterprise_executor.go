@@ -157,6 +157,10 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		return nil, input, err
 	}
 	if kind == "" {
+		input.Body, err = helps.ApplyEnterpriseGreetingCompatibility(input, req.Payload, opts.SourceFormat.String())
+		if err != nil {
+			return nil, input, err
+		}
 		input.Body, err = helps.ApplyEnterpriseThinking(input.Body, req, opts)
 		if err != nil {
 			return nil, input, err
