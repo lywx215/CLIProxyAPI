@@ -824,7 +824,7 @@ func isAuthBlockedForModel(auth *Auth, model string, now time.Time) (bool, block
 	if auth == nil {
 		return true, blockReasonOther, time.Time{}
 	}
-	if auth.Disabled || auth.Status == StatusDisabled {
+	if auth.Disabled || auth.Status == StatusDisabled || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
 		return true, blockReasonDisabled, time.Time{}
 	}
 	if blocked, next := auth.enterpriseQuota.blocked(now); blocked {

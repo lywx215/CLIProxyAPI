@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -83,6 +84,20 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	if auth == nil {
 		return nil, nil
 	}
+	if IsEnterpriseCollectionAuth(auth) {
+		current, ok := m.GetByID(auth.ID)
+		if !ok {
+			return nil, ErrEnterpriseAccountChanged
+		}
+		return current, nil
+	}
+	if IsEnterpriseAccountAuth(auth) {
+		projected, errProject := ProjectEnterpriseAuth(auth)
+		if errProject != nil {
+			return nil, errProject
+		}
+		auth = projected[0]
+	}
 	NormalizeCredentialMetadata(auth.Metadata)
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
 		return nil, fmt.Errorf("register auth: %w", errWeight)
@@ -109,9 +124,18 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	auth.EnsureIndex()
 	m.mu.Lock()
+	if existing := m.auths[auth.ID]; IsEnterpriseAccountAuth(auth) && IsEnterpriseAccountAuth(existing) {
+		var errAuthorization error
+		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
+		if errAuthorization != nil {
+			m.mu.Unlock()
+			return nil, errAuthorization
+		}
+	}
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
 	}
+	registrationEpochBefore := m.authEpochs[auth.ID]
 	if existing, exists := m.auths[auth.ID]; exists && existing != nil && existing.RegistrationEpoch > m.authEpochs[auth.ID] {
 		m.authEpochs[auth.ID] = existing.RegistrationEpoch
 	}
@@ -126,10 +150,16 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 		auth.CredentialVersion = 1
 	}
 	auth.Generation = 1
+	m.applyEnterpriseRetirementLocked(auth)
 	// Serialize this credential, but release the manager lock during store I/O.
 	// Persist failures stay non-fatal, but must not be silent: a restart would
 	// lose the credential that only exists in memory.
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
+		if IsEnterpriseAccountAuth(auth) {
+			m.authEpochs[auth.ID] = registrationEpochBefore
+			m.mu.Unlock()
+			return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
+		}
 		log.WithFields(log.Fields{"auth_id": auth.ID, "credential": auth.ID, "provider": auth.Provider}).Warnf("failed to persist registered auth %s (%s): %v", auth.Provider, auth.ID, errPersist)
 	}
 	if m.authEpochs[auth.ID] != auth.RegistrationEpoch {
@@ -142,6 +172,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
+	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
 	// Snapshot before unlocking: MarkResult mutates the published auth in place.
 	var schedulerSnapshot *Auth
 	if m.scheduler != nil {
@@ -149,6 +180,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	m.mu.Unlock()
 	releaseMutation()
+	m.publishEnterpriseSnapshots(enterpriseSnapshots)
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	}
@@ -158,6 +190,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	m.structuralEpoch.Add(1)
 	m.queueRefreshReschedule(auth.ID)
 	m.hook.OnAuthRegistered(ctx, auth.Clone())
+	m.enterpriseAccountPublished(ctx, authClone)
 	if cooldownStateChanged {
 		m.persistCooldownStates(context.Background())
 	}
@@ -171,6 +204,7 @@ const (
 	updateModeRefresh
 	updateModePrepare
 	updateModeEnterpriseResources
+	updateModeEnterpriseReauthorize
 )
 
 // UpdatePreparedAuth atomically merges request preparation results into the latest runtime auth
@@ -194,6 +228,23 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	if auth == nil || auth.ID == "" {
 		return nil, nil
 	}
+	if IsEnterpriseCollectionAuth(auth) {
+		if mode == updateModePrepare {
+			return m.updatePreparedEnterpriseCollection(ctx, base, auth)
+		}
+		current, ok := m.GetByID(auth.ID)
+		if !ok {
+			return nil, ErrEnterpriseAccountChanged
+		}
+		return current, nil
+	}
+	if IsEnterpriseAccountAuth(auth) {
+		projected, errProject := ProjectEnterpriseAuth(auth)
+		if errProject != nil {
+			return nil, errProject
+		}
+		auth = projected[0]
+	}
 	NormalizeCredentialMetadata(auth.Metadata)
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
 		return nil, fmt.Errorf("update auth: %w", errWeight)
@@ -213,6 +264,15 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		return nil, nil
 	}
 	resourcesRebound := false
+	var enterprisePersistError error
+	if mode == updateModeEnterpriseReauthorize {
+		var errAuthorization error
+		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
+		if errAuthorization != nil {
+			m.mu.Unlock()
+			return nil, errAuthorization
+		}
+	}
 	if mode == updateModeEnterpriseResources {
 		if !sameEnterpriseResourceSnapshot(base, existing) {
 			m.mu.Unlock()
@@ -327,6 +387,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	auth.EnsureIndex()
 	// Save before publication, including the transactional Meta mint path.
+	m.applyEnterpriseRetirementLocked(auth)
 	// Runtime-only changes made during I/O are merged below, never overwritten.
 	existingBeforeSave := existing.Clone()
 	persistMetaMint := (mode == updateModePrepare || mode == updateModeRefresh) && strings.EqualFold(strings.TrimSpace(auth.Provider), "meta")
@@ -340,8 +401,23 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise resources: %w", errPersist)
 		}
+		if IsEnterpriseAccountAuth(auth) {
+			if mode != updateModeRefresh {
+				m.mu.Unlock()
+				return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
+			}
+			// Keep already-rotated OAuth in memory and retry only its save. Losing
+			// this token would force a second acquisition with a consumed token.
+			enterprisePersistError = fmt.Errorf("persist enterprise account: %w", errPersist)
+			if m.enterpriseAccounts.pendingSaves == nil {
+				m.enterpriseAccounts.pendingSaves = make(map[string]bool)
+			}
+			m.enterpriseAccounts.pendingSaves[auth.ID] = true
+		}
 		// Ordinary persistence failures remain non-fatal, but never silent.
 		log.WithFields(log.Fields{"auth_id": auth.ID, "credential": auth.ID, "provider": auth.Provider}).Warnf("failed to persist updated auth %s (%s): %v", auth.Provider, auth.ID, errPersist)
+	} else if IsEnterpriseAccountAuth(auth) && !shouldSkipPersist(ctx) {
+		delete(m.enterpriseAccounts.pendingSaves, auth.ID)
 	}
 	if m.authEpochs[auth.ID] != auth.RegistrationEpoch {
 		m.mu.Unlock()
@@ -362,6 +438,11 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
+	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
+	if IsEnterpriseAccountAuth(authClone) && !IsEnterpriseAccountAuth(existing) {
+		m.transferEnterpriseLegacyStateLocked(existing, authClone, &enterpriseSnapshots)
+		authClone.Success, authClone.Failed, authClone.recentRequests = 0, 0, recentRequestRing{}
+	}
 	// Snapshot before unlocking: MarkResult mutates the published auth in place.
 	var schedulerSnapshot *Auth
 	if m.scheduler != nil {
@@ -369,6 +450,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	m.mu.Unlock()
 	releaseMutation()
+	m.publishEnterpriseSnapshots(enterpriseSnapshots)
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	}
@@ -378,10 +460,11 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	m.structuralEpoch.Add(1)
 	m.queueRefreshReschedule(auth.ID)
 	m.hook.OnAuthUpdated(ctx, auth.Clone())
+	m.enterpriseAccountPublished(ctx, authClone)
 	if cooldownStateChanged {
 		m.persistCooldownStates(context.Background())
 	}
-	return auth.Clone(), nil
+	return auth.Clone(), enterprisePersistError
 }
 
 // Remove deletes an auth from runtime state without persisting.
@@ -405,6 +488,20 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 		return
 	}
 	provider := strings.TrimSpace(existing.Provider)
+	var removedChildren []*Auth
+	for childID, child := range m.auths {
+		if IsEnterpriseCollectionAuth(child) && EnterpriseOwnerID(child) == id {
+			delete(m.auths, childID)
+			delete(m.modelPoolOffsets, childID)
+			m.enterpriseQuota.mu.Lock()
+			m.enterpriseQuota.releaseGateLocked(m.enterpriseQuota.bindings[childID])
+			delete(m.enterpriseQuota.bindings, childID)
+			m.enterpriseQuota.mu.Unlock()
+			m.authEpochs[childID] = max(m.authEpochs[childID], child.RegistrationEpoch) + 1
+			m.notifyAuthChangeLocked(childID)
+			removedChildren = append(removedChildren, &Auth{ID: childID, RegistrationEpoch: m.authEpochs[childID]})
+		}
+	}
 	delete(m.auths, id)
 	m.enterpriseQuota.mu.Lock()
 	m.enterpriseQuota.releaseGateLocked(m.enterpriseQuota.bindings[id])
@@ -433,6 +530,17 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	tombstoneEpoch := m.authEpochs[id]
 	m.mu.Unlock()
 	releaseMutation()
+	for _, child := range removedChildren {
+		registry.GetGlobalRegistry().UnregisterClient(child.ID)
+		if m.scheduler != nil {
+			m.scheduler.RecordRemovalTombstone(child.ID, child.RegistrationEpoch)
+		}
+		m.queueRefreshUnschedule(child.ID)
+		m.invalidateSessionAffinity(child.ID)
+	}
+	if IsEnterpriseAccountAuth(existing) {
+		registry.GetGlobalRegistry().UnregisterClient(id)
+	}
 
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
@@ -493,7 +601,12 @@ func (m *Manager) Load(ctx context.Context) error {
 		m.authEpochs = make(map[string]uint64, len(items))
 	}
 	for _, auth := range items {
-		if auth == nil || auth.ID == "" {
+		if auth == nil || auth.ID == "" || IsEnterpriseCollectionAuth(auth) {
+			continue
+		}
+		if projected, errProject := ProjectEnterpriseAuth(auth); errProject == nil && len(projected) > 0 {
+			auth = projected[0]
+		} else {
 			continue
 		}
 		NormalizeCredentialMetadata(auth.Metadata)
@@ -515,6 +628,24 @@ func (m *Manager) Load(ctx context.Context) error {
 		}
 		m.attachEnterpriseQuotaLocked(auth)
 		m.auths[auth.ID] = auth.Clone()
+	}
+	for id, previous := range previousAuths {
+		if IsEnterpriseCollectionAuth(previous) && IsEnterpriseAccountAuth(m.auths[EnterpriseOwnerID(previous)]) {
+			m.auths[id] = previous.Clone()
+		}
+	}
+	var enterpriseParents []*Auth
+	for _, auth := range m.auths {
+		if IsEnterpriseAccountAuth(auth) && !enterpriseRetired(auth) {
+			enterpriseParents = append(enterpriseParents, auth)
+		}
+	}
+	for _, parent := range enterpriseParents {
+		current := m.auths[parent.ID]
+		if !enterpriseRetired(current) {
+			m.suppressMergedEnterpriseSourcesLocked(current)
+			m.reconcileEnterpriseAccountLocked(current)
+		}
 	}
 
 	type removalTombstone struct {
@@ -565,6 +696,9 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	if store == nil || auth == nil {
 		return nil
 	}
+	if IsEnterpriseCollectionAuth(auth) {
+		return nil
+	}
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
 		return fmt.Errorf("persist auth: %w", errWeight)
 	}
@@ -592,12 +726,16 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 		if auth.RegistrationEpoch < pLock.lastEpoch || (auth.RegistrationEpoch == pLock.lastEpoch && auth.Generation < pLock.lastGeneration) {
 			return nil
 		}
+		previousEpoch, previousGeneration := pLock.lastEpoch, pLock.lastGeneration
 		pLock.lastEpoch = auth.RegistrationEpoch
 		pLock.lastGeneration = auth.Generation
 		if shouldSkipPersist(ctx) {
 			return nil
 		}
 		_, err := store.Save(ctx, auth)
+		if err != nil && IsEnterpriseAccountAuth(auth) {
+			pLock.lastEpoch, pLock.lastGeneration = previousEpoch, previousGeneration
+		}
 		return err
 	}
 

@@ -41,7 +41,10 @@ func (GeminiEnterpriseAuthenticator) Login(ctx context.Context, cfg *config.Conf
 	if opts.CallbackPort > 0 {
 		port = opts.CallbackPort
 	}
-	oauth, err := ge.OAuth(binding, fmt.Sprintf("http://localhost:%d/oauth-callback", port))
+	if errValidate := binding.ValidateLogin(); errValidate != nil {
+		return nil, errValidate
+	}
+	oauth, err := ge.ApplicationOAuth(binding, fmt.Sprintf("http://localhost:%d/oauth-callback", port))
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +86,7 @@ func (GeminiEnterpriseAuthenticator) Login(ctx context.Context, cfg *config.Conf
 	if err != nil {
 		return nil, err
 	}
+	defer client.CloseIdleConnections()
 	credentialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	credentialCtx = context.WithValue(credentialCtx, oauth2.HTTPClient, client)
@@ -97,19 +101,20 @@ func (GeminiEnterpriseAuthenticator) Login(ctx context.Context, cfg *config.Conf
 	if err != nil {
 		return nil, err
 	}
-	// Refresh credentials may be retained only for the exact same account/application/resource.
+	// Only the verified Google principal and OAuth client own refresh credentials.
 	var existing []*coreauth.Auth
-	if token.RefreshToken == "" {
-		if store := GetTokenStore(); store != nil {
-			if setter, ok := store.(interface{ SetBaseDir(string) }); ok {
-				setter.SetBaseDir(cfg.AuthDir)
-			}
-			if records, errList := store.List(ctx); errList == nil {
-				existing = records
-			}
+	if store := GetTokenStore(); store != nil {
+		if setter, ok := store.(interface{ SetBaseDir(string) }); ok {
+			setter.SetBaseDir(cfg.AuthDir)
+		}
+		if records, errList := store.List(ctx); errList == nil {
+			existing = records
 		}
 	}
-	record := NewGeminiEnterpriseRecord(binding, email, token, existing)
+	record, err := NewGeminiEnterpriseAccountRecord(binding, email, token, existing)
+	if err != nil {
+		return nil, err
+	}
 	if ge.String(record.Metadata, "refresh_token") != "" {
 		fmt.Println("Gemini Enterprise automatic renewal is ready.")
 	} else {
@@ -118,8 +123,8 @@ func (GeminiEnterpriseAuthenticator) Login(ctx context.Context, cfg *config.Conf
 	return record, nil
 }
 
-// PostLogin runs after the manager has completed its selected persistence contract.
-// Discovery has no response deadline and must never delay saving acquired credentials.
+// PostLogin runs after the manager has saved authorization. It updates the graph
+// in memory; PostLoginNeedsPersistence tells the manager to save it with its store.
 func (GeminiEnterpriseAuthenticator) PostLogin(ctx context.Context, cfg *config.Config, record *coreauth.Auth) {
 	if cfg == nil || record == nil || record.Provider != ge.Provider || cfg.Home.Enabled {
 		return
@@ -127,7 +132,32 @@ func (GeminiEnterpriseAuthenticator) PostLogin(ctx context.Context, cfg *config.
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	fmt.Println("OAuth completed; discovering upstream-selectable models...")
+	fmt.Println("OAuth saved; discovering projects and collections...")
+	result, err := DiscoverGeminiEnterpriseAccount(ctx, cfg, record)
+	if err != nil {
+		fmt.Printf("Login succeeded; resource discovery failed: %v\n", err)
+		return
+	}
+	fmt.Printf("Discovered %d collection bindings across %d projects (%s).\n", len(result.Collections), len(result.Projects), result.Status)
+}
+
+// PostLoginNeedsPersistence applies only to this authenticator's graph update.
+func (GeminiEnterpriseAuthenticator) PostLoginNeedsPersistence() bool { return true }
+
+// DiscoverGeminiEnterpriseAccount updates the supplied record only after callers
+// have saved OAuth. Management callers should merge results into current state
+// through the runtime manager instead when concurrent edits are possible.
+func DiscoverGeminiEnterpriseAccount(ctx context.Context, cfg *config.Config, record *coreauth.Auth) (ge.DiscoveryResult, error) {
+	if cfg == nil || record == nil || record.Provider != ge.Provider {
+		return ge.DiscoveryResult{}, fmt.Errorf("gemini-enterprise: account record and configuration are required")
+	}
+	account, err := ge.ReadAccount(record.Metadata)
+	if err != nil {
+		return ge.DiscoveryResult{}, err
+	}
+	if account == nil {
+		return ge.DiscoveryResult{}, fmt.Errorf("gemini-enterprise: an account credential is required")
+	}
 	proxy := record.ProxyURL
 	if proxy == "" {
 		proxy = ge.String(record.Metadata, "proxy_url")
@@ -137,16 +167,13 @@ func (GeminiEnterpriseAuthenticator) PostLogin(ctx context.Context, cfg *config.
 	}
 	client, err := ge.Client(proxy)
 	if err != nil {
-		fmt.Printf("Login succeeded; model discovery failed: %v\n", err)
-		return
+		return ge.DiscoveryResult{}, err
 	}
 	defer client.CloseIdleConnections()
-	models, errDiscover := ge.Discover(ctx, client, ge.FromMetadata(record.Metadata), ge.String(record.Metadata, "access_token"))
-	if errDiscover != nil {
-		fmt.Printf("Login succeeded; model discovery failed: %v\n", errDiscover)
-	} else {
-		fmt.Printf("Discovered %d upstream-selectable models. Client preset: gemini-4-argon (when advertised).\n", len(models))
-	}
+	result, errDiscover := ge.DiscoverResources(ctx, client, ge.FromMetadata(record.Metadata), ge.String(record.Metadata, "access_token"), account.Collections)
+	merged, _ := ge.MergeDiscoveredCollections(*account, result)
+	record.Metadata = ge.PutAccount(record.Metadata, merged)
+	return result, errDiscover
 }
 
 func enterpriseRecordID(email string, binding config.GeminiEnterpriseOAuth) string {

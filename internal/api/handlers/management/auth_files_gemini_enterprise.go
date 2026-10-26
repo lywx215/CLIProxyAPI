@@ -72,7 +72,11 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 			oauth, err = ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
 		}
 	} else {
-		oauth, err = ge.OAuth(binding, geminiEnterpriseCallbackURL)
+		discover = binding.Validate() != nil
+		oauth, err = ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
+		if err == nil {
+			err = binding.ValidateLogin()
+		}
 	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -116,7 +120,8 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok", "url": ge.AuthorizationURL(oauth, state, verifier), "state": state,
 		"callback_url": geminiEnterpriseCallbackURL, "manual_callback_required": !automatic,
-		"resource_inputs_supported": true,
+		"resource_inputs_supported":    true,
+		"automatic_resource_discovery": discover,
 	})
 }
 
@@ -181,32 +186,85 @@ func (h *Handler) finishGeminiEnterpriseLoginWithDiscovery(ctx context.Context, 
 		SetOAuthSessionError(state, "Failed to read the authorized Google account")
 		return
 	}
+	var existing []*coreauth.Auth
+	if h.authManager != nil {
+		existing = h.authManager.List()
+	} else if store := h.tokenStoreWithBaseDir(); store != nil {
+		existing, _ = store.List(ctx)
+	}
+	record := sdkAuth.NewGeminiEnterpriseRecord(binding, email, token, existing)
 	if discover {
-		// Resource reads have no deadline; cancellation still invalidates this login.
-		resourceCtx, cancelResources := context.WithCancel(ctx)
-		defer cancelResources()
-		go watchOAuthSessionCancel(resourceCtx, cancelResources, state, ge.Provider)
-		binding, err = ge.ResolveResources(resourceCtx, client, binding, token.AccessToken)
+		record, err = sdkAuth.NewGeminiEnterpriseAccountRecord(binding, email, token, existing)
 		if err != nil {
-			if IsOAuthSessionPending(state, ge.Provider) {
-				SetOAuthSessionError(state, err.Error())
-			}
+			SetOAuthSessionError(state, "Could not create the authorized account record")
 			return
 		}
 	}
-	var existing []*coreauth.Auth
-	if token.RefreshToken == "" {
-		if store := h.tokenStoreWithBaseDir(); store != nil {
-			existing, _ = store.List(ctx)
-		}
-	}
-	record := sdkAuth.NewGeminiEnterpriseRecord(binding, email, token, existing)
 	if !oauthSessions.ClaimSave(state, ge.Provider) {
 		return
 	}
-	if _, errSave := h.saveTokenRecord(ctx, record); errSave != nil {
-		SetOAuthSessionError(state, "Failed to save Gemini Enterprise credentials")
-		return
+	accountSaved := false
+	if discover && h.authManager != nil {
+		if h.postAuthHook != nil {
+			if errHook := h.postAuthHook(ctx, record); errHook != nil {
+				SetOAuthSessionError(state, "Failed to prepare Gemini Enterprise authorization")
+				return
+			}
+		}
+		var errSave error
+		record, errSave = h.authManager.ReauthorizeEnterpriseAccount(ctx, record)
+		if errSave != nil {
+			SetOAuthSessionError(state, "Failed to save Gemini Enterprise authorization; existing settings were retained")
+			return
+		}
+		if errHook := h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{record}); errHook != nil {
+			SetOAuthSessionError(state, "Authorization saved, but runtime synchronization failed; refresh the account")
+			return
+		}
+		accountSaved = true
+	}
+	if !accountSaved {
+		if _, errSave := h.saveTokenRecord(ctx, record); errSave != nil {
+			SetOAuthSessionError(state, "Failed to save Gemini Enterprise credentials")
+			return
+		}
+	}
+	if discover {
+		// Authorization is durable before any optional metadata call. Discovery
+		// cancellation cannot discard that authorization or claim a second save.
+		cancel()
+		oauthSessions.mu.Lock()
+		if session, ok := oauthSessions.sessions[state]; ok {
+			session.Saving = false
+			if session.Metadata == nil {
+				session.Metadata = map[string]any{}
+			}
+			session.Metadata["enterprise_authorization_saved"] = true
+			oauthSessions.sessions[state] = session
+		}
+		oauthSessions.mu.Unlock()
+		resourceCtx, cancelResources := context.WithCancel(ctx)
+		defer cancelResources()
+		go watchOAuthSessionCancel(resourceCtx, cancelResources, state, ge.Provider)
+		if h.authManager != nil {
+			if _, exists := h.authManager.GetByID(record.ID); !exists {
+				_, _ = h.authManager.Register(coreauth.WithSkipPersist(resourceCtx), record)
+			}
+			_, _, _, _, _ = h.discoverEnterpriseAccount(resourceCtx, record)
+		} else {
+			graph, errGraph := ge.ReadAccount(record.Metadata)
+			if errGraph == nil && graph != nil {
+				result, _ := ge.DiscoverResources(resourceCtx, client, binding, token.AccessToken, graph.Collections)
+				if resourceCtx.Err() == nil {
+					merged, _ := ge.MergeDiscoveredCollections(*graph, result)
+					record.Metadata = ge.PutAccount(record.Metadata, merged)
+					_, _ = h.saveTokenRecord(resourceCtx, record)
+				}
+			}
+		}
+		if resourceCtx.Err() != nil {
+			return
+		}
 	}
 	CompleteOAuthSession(state)
 }

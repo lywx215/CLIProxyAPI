@@ -15,6 +15,9 @@ import (
 
 var resourcePart = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
+// Bound metadata traffic across simultaneous discovery operations as well.
+var resourceRequests = make(chan struct{}, 3)
+
 // Probe known locations with Engine.Get; end users need no list permission.
 var discoveryLocations = []string{"global", "us", "eu", "ca", "in", "asia-northeast1", "sg", "europe-west2"}
 
@@ -75,6 +78,9 @@ func ResolveResources(ctx context.Context, client *http.Client, binding config.G
 		return binding, err
 	}
 	binding = binding.WithDefaults()
+	if !resourcePart.MatchString(binding.EngineID) {
+		return binding, fmt.Errorf("gemini-enterprise: a valid engine ID is required for legacy resource resolution")
+	}
 	projects, err := visibleProjects(ctx, client, token)
 	if err != nil {
 		return binding, err
@@ -159,6 +165,9 @@ func visibleProjects(ctx context.Context, client *http.Client, token string) ([]
 }
 
 func resourceJSON(ctx context.Context, client *http.Client, endpoint, token, quotaProject string, value any) (int, error) {
+	if client == nil {
+		return 0, fmt.Errorf("gemini-enterprise: resource HTTP client is required")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return 0, fmt.Errorf("gemini-enterprise: invalid resource request")
@@ -166,12 +175,22 @@ func resourceJSON(ctx context.Context, client *http.Client, endpoint, token, quo
 	if req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Opaque != "" || req.URL.Fragment != "" || (!OfficialResource(req) && req.URL.Host != "cloudresourcemanager.googleapis.com") {
 		return 0, fmt.Errorf("gemini-enterprise: untrusted resource discovery origin")
 	}
+	if budget, ok := ctx.Value(discoveryBudgetKey{}).(*discoveryBudget); ok && budget.remaining.Add(-1) < 0 {
+		return 0, &discoveryListError{"request_limit", "Resource discovery exceeded its request limit."}
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	if quotaProject != "" {
 		req.Header.Set("X-Goog-User-Project", quotaProject)
 	}
 	copyClient := *client
+	copyClient.Timeout = 0
 	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	select {
+	case resourceRequests <- struct{}{}:
+		defer func() { <-resourceRequests }()
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 	response, err := copyClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

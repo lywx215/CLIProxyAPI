@@ -15,8 +15,15 @@ import (
 
 // Manager aggregates authenticators and coordinates persistence via a token store.
 type Manager struct {
-	authenticators map[string]Authenticator
-	store          coreauth.Store
+	authenticators    map[string]Authenticator
+	store             coreauth.Store
+	enterpriseManager *coreauth.Manager
+}
+
+// SetEnterpriseAccountManager shares the live account mutation sequence with
+// login, so authorization and discovery cannot replay an old collection graph.
+func (m *Manager) SetEnterpriseAccountManager(manager *coreauth.Manager) {
+	m.enterpriseManager = manager
 }
 
 // NewManager constructs a manager with the provided token store and authenticators.
@@ -65,7 +72,9 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 
 	if m.store == nil {
 		if post, ok := auth.(PostLoginAuthenticator); ok {
-			post.PostLogin(ctx, cfg, record)
+			if durable, needsSave := auth.(interface{ PostLoginNeedsPersistence() bool }); !needsSave || !durable.PostLoginNeedsPersistence() {
+				post.PostLogin(ctx, cfg, record)
+			}
 		}
 		return record, "", nil
 	}
@@ -98,7 +107,12 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 		coreauth.MergeExistingAuthMetadata(record, legacyClaudeCredential.Metadata)
 	}
 
-	savedPath, err := m.store.Save(coreauth.WithAuthCreationIntent(ctx), record)
+	var savedPath string
+	if coreauth.IsEnterpriseAccountAuth(record) {
+		record, savedPath, err = m.saveEnterpriseAuthorization(ctx, record)
+	} else {
+		savedPath, err = m.store.Save(coreauth.WithAuthCreationIntent(ctx), record)
+	}
 	if err != nil {
 		return record, "", err
 	}
@@ -114,8 +128,33 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 			return record, savedPath, fmt.Errorf("cliproxy auth: canonical Claude credential saved but legacy credential cleanup failed: %w", errDelete)
 		}
 	}
+	if coreauth.IsEnterpriseAccountAuth(record) {
+		consolidated, errConsolidate := m.consolidateEnterpriseLogin(ctx, cfg, record)
+		if consolidated != nil {
+			record = consolidated
+		}
+		if errConsolidate != nil {
+			// The new authorization is durable. Optional source verification must
+			// not erase it or prevent discovery of the selected account.
+			fmt.Fprintln(os.Stderr, "Login succeeded; some legacy credentials were retained because consolidation did not complete.")
+		}
+	}
 	if post, ok := auth.(PostLoginAuthenticator); ok {
+		postBase := record.Clone()
 		post.PostLogin(ctx, cfg, record)
+		if durable, needsSave := auth.(interface{ PostLoginNeedsPersistence() bool }); needsSave && durable.PostLoginNeedsPersistence() {
+			saveCtx := ctx
+			if saveCtx == nil {
+				saveCtx = context.Background()
+			}
+			updated, errSave := m.saveEnterpriseDiscovery(context.WithoutCancel(saveCtx), postBase, record)
+			if errSave != nil {
+				return record, savedPath, fmt.Errorf("cliproxy auth: authorization saved but post-login account persistence failed: %w", errSave)
+			}
+			if updated != nil {
+				record = updated
+			}
+		}
 	}
 	return record, savedPath, nil
 }

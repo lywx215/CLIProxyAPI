@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
@@ -129,6 +131,9 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 	if pagination.enabled {
 		matching := make([]*coreauth.Auth, 0, len(auths))
 		for _, auth := range auths {
+			if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
+				continue
+			}
 			if !matchesAuthFileLookup(auth, nameFilter, authIndexFilter) || !isAuthFileListable(auth) {
 				continue
 			}
@@ -143,6 +148,9 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		for _, auth := range matching[start:end] {
 			if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 				addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
+				if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
+					h.addEnterpriseAccountSummary(entry, auth)
+				}
 				entry["cooldowns"] = nil
 				if cooldownsKnown {
 					entry["cooldowns"] = coreauth.CooldownSnapshotForAuth(auth, observedAt)
@@ -155,11 +163,17 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 	}
 	files := make([]gin.H, 0, len(auths))
 	for _, auth := range auths {
+		if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
+			continue
+		}
 		if !matchesAuthFileLookup(auth, nameFilter, authIndexFilter) {
 			continue
 		}
 		if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 			addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
+			if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
+				h.addEnterpriseAccountSummary(entry, auth)
+			}
 			entry["cooldowns"] = nil
 			if cooldownsKnown {
 				entry["cooldowns"] = coreauth.CooldownSnapshotForAuth(auth, observedAt)
@@ -341,7 +355,20 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 
 	// Try to find auth ID via authManager
 	var authID string
-	if h.authManager != nil {
+	if c.GetBool(ConfigV8ContextKey) && h.authManager != nil {
+		if auth, ok := h.lookupAuthFile(name, ""); ok && auth.Provider == ge.Provider {
+			target, found := h.enterpriseTarget(name, c.Query("auth_index"), c.Query("binding_id"))
+			if !found {
+				enterpriseManagementFailure(c, http.StatusConflict, "collection_required", "Select a specific current collection to list models")
+				return
+			}
+			authID = target.ID
+		} else if c.Query("binding_id") != "" {
+			enterpriseManagementFailure(c, http.StatusConflict, "credential_changed", "Collection changed; reload and try again")
+			return
+		}
+	}
+	if authID == "" && h.authManager != nil {
 		auths := h.authManager.List()
 		for _, auth := range auths {
 			if auth.FileName == name || auth.ID == name {

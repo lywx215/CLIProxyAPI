@@ -95,7 +95,7 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	}
 	if enterprise := cfg.OAuth.Providers.GeminiEnterprise; enterprise != nil {
 		*enterprise = enterprise.WithDefaults()
-		if errValidate := enterprise.Validate(); errValidate != nil {
+		if errValidate := enterprise.ValidateLogin(); errValidate != nil {
 			return nil, errValidate
 		}
 	}

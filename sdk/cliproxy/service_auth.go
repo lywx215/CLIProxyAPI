@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
@@ -389,6 +390,11 @@ func (s *Service) prepareCoreAuthForModelRegistration(ctx context.Context, auth 
 		}
 		auth = current
 	}
+	if coreauth.IsEnterpriseAccountAuth(auth) || coreauth.IsEnterpriseCollectionAuth(auth) {
+		if current, ok := s.coreManager.GetByID(auth.ID); ok {
+			auth = current
+		}
+	}
 	s.cancelStaleAntigravityProbes(auth.ID)
 	return auth
 }
@@ -482,6 +488,20 @@ func isStaleCoreAuth(existing, incoming *coreauth.Auth) bool {
 	if existing == nil || incoming == nil {
 		return false
 	}
+	if coreauth.IsEnterpriseAccountAuth(existing) && coreauth.IsEnterpriseAccountAuth(incoming) {
+		currentAccount, currentErr := ge.ReadAccount(existing.Metadata)
+		incomingAccount, incomingErr := ge.ReadAccount(incoming.Metadata)
+		if currentErr == nil && incomingErr == nil && currentAccount != nil && incomingAccount != nil && currentAccount.ID == incomingAccount.ID {
+			if incomingAccount.Revision < currentAccount.Revision {
+				return true
+			}
+			currentRefresh, currentTimeErr := time.Parse(time.RFC3339Nano, ge.String(existing.Metadata, "last_refresh"))
+			incomingRefresh, incomingTimeErr := time.Parse(time.RFC3339Nano, ge.String(incoming.Metadata, "last_refresh"))
+			if currentTimeErr == nil && incomingTimeErr == nil && incomingRefresh.Before(currentRefresh) {
+				return true
+			}
+		}
+	}
 	// If incoming has an explicit registration epoch that is older than existing, it's stale.
 	if incoming.RegistrationEpoch > 0 && incoming.RegistrationEpoch < existing.RegistrationEpoch {
 		return true
@@ -509,6 +529,15 @@ func (s *Service) completeModelRegistrationForAuthWithCache(ctx context.Context,
 	if latest, ok := s.latestAuthForModelRegistration(auth.ID); ok && latest != nil {
 		targetAuth = latest
 	}
+	if coreauth.IsEnterpriseAccountAuth(targetAuth) {
+		s.cancelEnterpriseProbes(targetAuth.ID)
+		GlobalModelRegistry().UnregisterClient(targetAuth.ID)
+		for _, child := range s.coreManager.EnterpriseCollections(targetAuth.ID) {
+			s.ensureExecutorsForAuthWithContext(ctx, child, false)
+			s.completeModelRegistrationForAuthWithCache(ctx, child, compatCache)
+		}
+		return targetAuth.Generation
+	}
 	s.registerModelsForAuthWithCache(ctx, targetAuth, compatCache)
 	if ctx != nil && ctx.Err() != nil {
 		return 0
@@ -532,6 +561,7 @@ func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
 	}
 	id = strings.TrimSpace(id)
 	var provider string
+	children := s.coreManager.EnterpriseCollections(id)
 	if existing, ok := s.coreManager.GetByID(id); ok && existing != nil {
 		provider = strings.TrimSpace(existing.Provider)
 	}
@@ -539,6 +569,13 @@ func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
 	// refresh can adopt the tombstone epoch while the auth still exists and
 	// republish its cached models after the registry has been cleared.
 	s.coreManager.Remove(ctx, id)
+	for _, child := range children {
+		if !coreauth.IsEnterpriseCollectionAuth(child) {
+			continue
+		}
+		s.cancelEnterpriseProbes(child.ID)
+		GlobalModelRegistry().UnregisterClient(child.ID)
+	}
 	s.cancelEnterpriseProbes(id)
 	GlobalModelRegistry().UnregisterClient(id)
 	s.cancelStaleAntigravityProbes(id)

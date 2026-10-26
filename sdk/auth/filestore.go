@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
@@ -76,6 +77,14 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 	if auth == nil {
 		return "", fmt.Errorf("auth filestore: auth is nil")
 	}
+	if cliproxyauth.IsEnterpriseCollectionAuth(auth) {
+		return "", fmt.Errorf("auth filestore: enterprise collection projections cannot be persisted")
+	}
+	if cliproxyauth.IsEnterpriseAccountAuth(auth) {
+		// The parent metadata owns OAuth and the complete collection graph.
+		// A legacy TokenStorage must not overwrite either with an old snapshot.
+		auth.Storage = nil
+	}
 	cliproxyauth.NormalizeCredentialMetadata(auth.Metadata)
 	if errWeight := cliproxyauth.ValidateAuthWeight(auth); errWeight != nil {
 		return "", fmt.Errorf("auth filestore: %w", errWeight)
@@ -94,12 +103,51 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 	// save when creating a missing disabled credential is intentional.
 	if auth.Disabled && !cliproxyauth.HasAuthCreationIntent(ctx) {
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			if cliproxyauth.IsEnterpriseAccountAuth(auth) {
+				return "", fmt.Errorf("auth filestore: enterprise account source file is missing")
+			}
 			return "", nil
 		}
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if expected, hasExpected := cliproxyauth.EnterpriseAccountStoreRevision(ctx); hasExpected && cliproxyauth.IsEnterpriseAccountAuth(auth) && !cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
+		if data, errRead := os.ReadFile(path); errRead == nil {
+			var metadata map[string]any
+			if json.Unmarshal(data, &metadata) != nil {
+				return "", cliproxyauth.ErrEnterpriseAccountChanged
+			}
+			graph, errGraph := ge.ReadAccount(metadata)
+			if errGraph != nil || (graph != nil && graph.Revision != expected) {
+				return "", cliproxyauth.ErrEnterpriseAccountChanged
+			}
+		} else if !os.IsNotExist(errRead) {
+			return "", fmt.Errorf("auth filestore: read enterprise account revision failed: %w", errRead)
+		}
+	}
+	if cliproxyauth.IsEnterpriseAccountAuth(auth) && cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
+		if data, errRead := os.ReadFile(path); errRead == nil {
+			var currentMetadata map[string]any
+			if json.Unmarshal(data, &currentMetadata) != nil {
+				return "", fmt.Errorf("auth filestore: existing enterprise account is invalid")
+			}
+			if graph, errAccount := ge.ReadAccount(currentMetadata); errAccount != nil {
+				return "", errAccount
+			} else if graph != nil {
+				current := auth.Clone()
+				current.Metadata = currentMetadata
+				current.Disabled, _ = currentMetadata["disabled"].(bool)
+				rebased, errRebase := cliproxyauth.RebaseEnterpriseAuthorization(current, auth)
+				if errRebase != nil {
+					return "", errRebase
+				}
+				*auth = *rebased
+			}
+		} else if !os.IsNotExist(errRead) {
+			return "", fmt.Errorf("auth filestore: read enterprise account for authorization failed: %w", errRead)
+		}
+	}
 
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("auth filestore: create dir failed: %w", err)
@@ -127,6 +175,12 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 		raw, errMarshal := json.Marshal(auth.Metadata)
 		if errMarshal != nil {
 			return "", fmt.Errorf("auth filestore: marshal metadata failed: %w", errMarshal)
+		}
+		if cliproxyauth.IsEnterpriseAccountAuth(auth) || cliproxyauth.IsEnterpriseRetiredAuth(auth) {
+			if errWrite := writeEnterpriseAccountFile(path, raw); errWrite != nil {
+				return "", errWrite
+			}
+			break
 		}
 		if existing, errRead := os.ReadFile(path); errRead == nil {
 			if jsonEqual(existing, raw) {
@@ -358,7 +412,33 @@ func (s *FileTokenStore) readAuthFiles(path, baseDir string) ([]*cliproxyauth.Au
 		auth.Attributes["email"] = email
 	}
 	cliproxyauth.ApplyCustomHeadersFromMetadata(auth)
-	return []*cliproxyauth.Auth{auth}, nil
+	return cliproxyauth.ProjectEnterpriseAuth(auth)
+}
+
+func writeEnterpriseAccountFile(path string, data []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".enterprise-account-*.tmp")
+	if err != nil {
+		return fmt.Errorf("auth filestore: create account transaction failed: %w", err)
+	}
+	temporary := file.Name()
+	defer func() { _ = os.Remove(temporary) }()
+	if err = file.Chmod(0o600); err == nil {
+		_, err = file.Write(data)
+	}
+	if err == nil {
+		err = file.Sync()
+	}
+	errClose := file.Close()
+	if err != nil {
+		return fmt.Errorf("auth filestore: write account transaction failed: %w", err)
+	}
+	if errClose != nil {
+		return fmt.Errorf("auth filestore: close account transaction failed: %w", errClose)
+	}
+	if err = os.Rename(temporary, path); err != nil {
+		return fmt.Errorf("auth filestore: publish account transaction failed: %w", err)
+	}
+	return nil
 }
 
 func (s *FileTokenStore) readAuthFile(path, baseDir string) (*cliproxyauth.Auth, error) {

@@ -30,6 +30,9 @@ func (c GeminiEnterpriseOAuth) WithDefaults() GeminiEnterpriseOAuth {
 	c.ClientSecretEnv = strings.TrimSpace(c.ClientSecretEnv)
 	c.ProjectID = strings.TrimSpace(c.ProjectID)
 	c.EngineID = strings.TrimSpace(c.EngineID)
+	c.Location = strings.TrimSpace(c.Location)
+	c.CollectionID = strings.TrimSpace(c.CollectionID)
+	c.AssistantID = strings.TrimSpace(c.AssistantID)
 	if c.Location == "" {
 		c.Location = "global"
 	}
@@ -60,6 +63,7 @@ func (c GeminiEnterpriseOAuth) Validate() error {
 
 // ValidateApplication permits OAuth before an account's resource is known.
 func (c GeminiEnterpriseOAuth) ValidateApplication() error {
+	c = c.WithDefaults()
 	if strings.TrimSpace(c.ClientID) == "" {
 		return fmt.Errorf("oauth.providers.gemini-enterprise.client-id is required")
 	}
@@ -69,16 +73,22 @@ func (c GeminiEnterpriseOAuth) ValidateApplication() error {
 	return nil
 }
 
-// ValidateDiscovery requires the user-supplied application and assistant only.
-func (c GeminiEnterpriseOAuth) ValidateDiscovery() error {
+// ValidateLogin accepts automatic account discovery without a resource binding.
+// Optional resource hints must still be safe components when supplied.
+func (c GeminiEnterpriseOAuth) ValidateLogin() error {
 	c = c.WithDefaults()
 	if err := c.ValidateApplication(); err != nil {
 		return err
 	}
-	for _, value := range []string{c.EngineID, c.AssistantID} {
-		if !enterpriseResourceComponent.MatchString(value) {
-			return fmt.Errorf("gemini-enterprise: a valid engine ID and assistant ID are required")
+	for _, item := range []struct{ name, value string }{{"project-id", c.ProjectID}, {"location", c.Location}, {"collection-id", c.CollectionID}, {"engine-id", c.EngineID}, {"assistant-id", c.AssistantID}} {
+		if item.value != "" && !enterpriseResourceComponent.MatchString(item.value) {
+			return fmt.Errorf("oauth.providers.gemini-enterprise.%s must be a resource component", item.name)
 		}
 	}
 	return nil
+}
+
+// ValidateDiscovery permits automatic enumeration without an engine hint.
+func (c GeminiEnterpriseOAuth) ValidateDiscovery() error {
+	return c.ValidateLogin()
 }

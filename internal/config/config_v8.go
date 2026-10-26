@@ -259,7 +259,7 @@ func (cfg *Config) UnmarshalYAML(node *yaml.Node) error {
 	}
 	if enterprise := decoded.OAuth.Providers.GeminiEnterprise; enterprise != nil {
 		*enterprise = enterprise.WithDefaults()
-		if errValidate := enterprise.Validate(); errValidate != nil {
+		if errValidate := enterprise.ValidateLogin(); errValidate != nil {
 			return errValidate
 		}
 	}

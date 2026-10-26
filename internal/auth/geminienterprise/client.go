@@ -108,10 +108,13 @@ func TokenError(err error) error {
 }
 
 func Refresh(ctx context.Context, c config.GeminiEnterpriseOAuth, refreshToken, proxy string) (*oauth2.Token, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if refreshToken == "" {
 		return nil, fmt.Errorf("gemini-enterprise: no refresh token; Google authorization must be renewed")
 	}
-	oauth, err := OAuth(c, "")
+	oauth, err := ApplicationOAuth(c, "")
 	if err != nil {
 		return nil, err
 	}
@@ -142,28 +145,19 @@ type Model struct {
 }
 
 func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpriseOAuth, token string) ([]Model, error) {
+	if client == nil {
+		return nil, fmt.Errorf("gemini-enterprise: model discovery HTTP client is required")
+	}
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, OriginForLocation(c.WithDefaults().Location)+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", nil)
+	var data json.RawMessage
+	status, err := resourceJSON(ctx, client, OriginForLocation(c.WithDefaults().Location)+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", token, c.ProjectID, &data)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Goog-User-Project", c.ProjectID)
-	clientCopy := *client
-	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	response, err := clientCopy.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("gemini-enterprise: model discovery transport failed")
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gemini-enterprise: model discovery returned HTTP %d", response.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
-	if err != nil || len(data) > 4*1024*1024 {
-		return nil, fmt.Errorf("gemini-enterprise: invalid model discovery body")
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("gemini-enterprise: model discovery returned HTTP %d", status)
 	}
 	return ParseModels(data)
 }
@@ -242,22 +236,36 @@ func ParseModels(data []byte) ([]Model, error) {
 
 // Email uses only the fixed Google user-info origin and never follows redirects.
 func Email(ctx context.Context, client *http.Client, token string) (string, error) {
+	if client == nil {
+		return "", fmt.Errorf("gemini-enterprise: user info HTTP client is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	clientCopy := *client
+	clientCopy.Timeout = 0
 	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	select {
+	case resourceRequests <- struct{}{}:
+		defer func() { <-resourceRequests }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	r, err := clientCopy.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("gemini-enterprise: user info request failed")
 	}
 	defer func() { _ = r.Body.Close() }()
 	var body struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Verified bool   `json:"verified_email"`
 	}
-	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 1024*1024)).Decode(&body) != nil || body.Email == "" {
-		return "", fmt.Errorf("gemini-enterprise: Google did not return an account email")
+	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 1024*1024)).Decode(&body) != nil || !body.Verified || strings.TrimSpace(body.Email) == "" || strings.ContainsAny(body.Email, "\r\n\x00") {
+		return "", fmt.Errorf("gemini-enterprise: Google did not return a verified account email")
 	}
-	return body.Email, nil
+	return strings.ToLower(strings.TrimSpace(body.Email)), nil
 }
 
 // AuthorizationURL requests offline access with S256 PKCE and a random caller-owned state.

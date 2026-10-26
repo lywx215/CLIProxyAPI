@@ -47,6 +47,10 @@ func (h *Handler) PatchGeminiEnterpriseResources(c *gin.Context) {
 		fail(http.StatusNotFound, "credential_not_found", "Gemini Enterprise credential not found")
 		return
 	}
+	if coreauth.IsEnterpriseAccountAuth(auth) || coreauth.IsEnterpriseCollectionAuth(auth) {
+		fail(http.StatusConflict, "collection_required", "Use the collection editor with its binding identity and revision")
+		return
+	}
 	binding := ge.FromMetadata(auth.Metadata)
 	if ge.Resources(req.Expected.Apply(binding)) != ge.Resources(binding) {
 		fail(http.StatusConflict, "credential_changed", "Credential resources changed; reload and try again")

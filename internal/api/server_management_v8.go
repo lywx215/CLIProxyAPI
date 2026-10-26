@@ -57,6 +57,8 @@ func (s *Server) registerManagementV8Routes() {
 	v8.PATCH("/credentials/status", s.mgmt.PatchAuthFileStatus)
 	v8.PATCH("/credentials/fields", s.mgmt.PatchAuthFileFields)
 	v8.PATCH("/credentials/gemini-enterprise/resources", s.mgmt.PatchGeminiEnterpriseResources)
+	v8.POST("/credentials/gemini-enterprise/discover", s.mgmt.DiscoverGeminiEnterpriseResources)
+	v8.PATCH("/credentials/gemini-enterprise/collections", s.mgmt.PatchGeminiEnterpriseCollection)
 	v8.POST("/credentials/refresh", s.mgmt.RefreshAuthFiles)
 	v8.GET("/credentials/api-keys/gemini/snapshot", s.mgmt.GeminiAPIKeysSnapshot)
 	v8.POST("/credentials/api-keys/gemini/batch", s.mgmt.GeminiAPIKeysBatch)

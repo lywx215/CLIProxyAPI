@@ -261,6 +261,9 @@ func (s *oauthSessionStore) ClaimSave(state, provider string) bool {
 	if !ok || session.Completed || session.Saving || session.Status != "" || !strings.EqualFold(session.Provider, provider) {
 		return false
 	}
+	if saved, _ := session.Metadata["enterprise_authorization_saved"].(bool); saved {
+		return false
+	}
 	session.Saving = true
 	s.sessions[state] = session
 	return true

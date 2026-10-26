@@ -24,7 +24,7 @@ func TestEnterpriseIdentityRequiresAssignedUserLicense(t *testing.T) {
 				status := 200
 				switch {
 				case r.URL.Host == "www.googleapis.com":
-					body = `{"email":"oauth@example.test"}`
+					body = `{"email":"oauth@example.test","verified_email":true}`
 				case r.URL.Host == "cloudresourcemanager.googleapis.com":
 					body = `{"name":"projects/12345","projectId":"my-project","state":"ACTIVE"}`
 				case strings.Contains(r.URL.Path, "/userLicenses"):

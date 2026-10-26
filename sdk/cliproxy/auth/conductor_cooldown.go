@@ -338,6 +338,7 @@ func (m *Manager) RestoreCooldownStates(ctx context.Context) error {
 
 	m.mu.Lock()
 	for _, record := range records {
+		record.AuthID = m.resolveEnterpriseInferenceIDLocked(strings.TrimSpace(record.AuthID))
 		if strings.TrimSpace(record.Model) == "" {
 			authLevelRecords = append(authLevelRecords, record)
 			continue
@@ -372,7 +373,10 @@ func (m *Manager) restoreCooldownRecordLocked(record CooldownStateRecord, now ti
 		return false
 	}
 	auth := m.auths[authID]
-	if auth == nil || auth.Disabled || auth.Status == StatusDisabled || m.cooldownDisabledForAuth(auth) || hasUnauthorizedAuthFailure(auth) {
+	if auth == nil || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsEnterpriseCollectionAuth(auth)) || m.cooldownDisabledForAuth(auth) || hasUnauthorizedAuthFailure(auth) {
+		return false
+	}
+	if auth.Provider == ge.Provider && record.EnterpriseBinding != "" && record.EnterpriseBinding != ge.Binding(ge.FromMetadata(auth.Metadata)) {
 		return false
 	}
 	updatedAt := record.UpdatedAt
@@ -389,6 +393,9 @@ func (m *Manager) restoreCooldownRecordLocked(record CooldownStateRecord, now ti
 	if model == "" {
 		auth.Unavailable = true
 		auth.Status = StatusError
+		if auth.Disabled {
+			auth.Status = StatusDisabled
+		}
 		auth.NextRetryAfter = record.NextRetryAfter
 		applyCooldownFields(&auth.Quota, quota)
 		auth.Quota = mergeQuotaObservation(auth.Quota, quota)
@@ -652,7 +659,7 @@ func (m *Manager) cooldownStateRecordsSnapshot() []CooldownStateRecord {
 }
 
 func (m *Manager) cooldownStateRecordsForAuthLocked(auth *Auth, now time.Time) []CooldownStateRecord {
-	if auth == nil || auth.ID == "" || auth.Disabled || auth.Status == StatusDisabled || m.cooldownDisabledForAuth(auth) {
+	if auth == nil || auth.ID == "" || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsEnterpriseCollectionAuth(auth)) || m.cooldownDisabledForAuth(auth) {
 		return nil
 	}
 	records := make([]CooldownStateRecord, 0, 1+len(auth.ModelStates))
@@ -662,6 +669,11 @@ func (m *Manager) cooldownStateRecordsForAuthLocked(auth *Auth, now time.Time) [
 	for model, state := range auth.ModelStates {
 		if record, ok := modelCooldownStateRecord(auth, model, state, now); ok {
 			records = append(records, record)
+		}
+	}
+	if auth.Provider == ge.Provider {
+		for i := range records {
+			records[i].EnterpriseBinding = ge.Binding(ge.FromMetadata(auth.Metadata))
 		}
 	}
 	sort.Slice(records, func(i, j int) bool {
@@ -686,6 +698,7 @@ func cooldownStateRecordEqual(a, b CooldownStateRecord) bool {
 	if a.Provider != b.Provider ||
 		a.AuthID != b.AuthID ||
 		a.AuthFile != b.AuthFile ||
+		a.EnterpriseBinding != b.EnterpriseBinding ||
 		a.Model != b.Model ||
 		a.Status != b.Status ||
 		a.Reason != b.Reason ||
@@ -781,6 +794,9 @@ func isStaleExecutionResult(result Result, current *Auth) bool {
 
 // MarkResult records an execution result and notifies hooks.
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
+	if m.recordEnterpriseHistoricalResult(ctx, result) {
+		return
+	}
 	if result.AuthID == "" {
 		return
 	}

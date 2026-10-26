@@ -315,7 +315,7 @@ func (a *Auth) Clone() *Auth {
 	if a.Metadata != nil {
 		copyAuth.Metadata = make(map[string]any, len(a.Metadata))
 		for key, value := range a.Metadata {
-			copyAuth.Metadata[key] = value
+			copyAuth.Metadata[key] = cloneAuthMetadataValue(value)
 		}
 	}
 	if a.ModelStates != nil {

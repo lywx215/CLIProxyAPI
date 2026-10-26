@@ -22,6 +22,11 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	if a == nil || a.ID == "" {
 		return
 	}
+	if coreauth.IsEnterpriseAccountAuth(a) {
+		s.cancelEnterpriseProbes(a.ID)
+		GlobalModelRegistry().UnregisterClient(a.ID)
+		return
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

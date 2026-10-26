@@ -259,7 +259,16 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) ([
 			}
 		}
 	}
-	return []*coreauth.Auth{a}, nil
+	projected, errProject := coreauth.ProjectEnterpriseAuth(a)
+	if errProject != nil {
+		return nil, errProject
+	}
+	for _, auth := range projected {
+		if coreauth.IsEnterpriseCollectionAuth(auth) {
+			ApplyAuthExcludedModelsMeta(auth, cfg, extractExcludedModelsFromMetadata(auth.Metadata), "oauth")
+		}
+	}
+	return projected, nil
 }
 
 func parsePluginFileAuths(parser PluginAuthParser, req pluginapi.AuthParseRequest) ([]*coreauth.Auth, bool, error) {

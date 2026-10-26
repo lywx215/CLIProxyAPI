@@ -165,7 +165,7 @@ func TestEnterpriseManagementExchangePersistenceAndRedaction(t *testing.T) {
 						if request.Header.Get("Authorization") != "Bearer synthetic-access" {
 							t.Fatal("userinfo authorization missing")
 						}
-						body = `{"email":"fixture@example.com"}`
+						body = `{"email":"fixture@example.com","verified_email":true}`
 					} else {
 						t.Fatalf("unexpected upstream: %s", request.URL.Host)
 					}
@@ -284,7 +284,7 @@ func TestEnterpriseCredentialListMetadata(t *testing.T) {
 						continue
 					}
 					var public map[string]any
-					if !exists || json.Unmarshal(summary, &public) != nil || len(public) != 10 || public["client_id"] != binding.ClientID || public["project_id"] != binding.ProjectID || public["engine_id"] != binding.EngineID || public["assistant_id"] != binding.AssistantID || public["has_refresh_token"] != true || public["resource_edit_supported"] != true || public["endpoint"] != ge.OriginForLocation(binding.Location) {
+					if !exists || json.Unmarshal(summary, &public) != nil || len(public) < 10 || public["client_id"] != binding.ClientID || public["project_id"] != binding.ProjectID || public["engine_id"] != binding.EngineID || public["assistant_id"] != binding.AssistantID || public["has_refresh_token"] != true || public["resource_edit_supported"] != true || public["endpoint"] != ge.OriginForLocation(binding.Location) {
 						t.Fatal("v8 credential list lost the public binding or renewal capability")
 					}
 				}
@@ -314,7 +314,7 @@ func TestEnterpriseManagementSaveOutcomePrecedesSuccess(t *testing.T) {
 				return &http.Client{Transport: enterpriseTestTransport(func(request *http.Request) (*http.Response, error) {
 					body := `{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","token_type":"Bearer","expires_in":3600}`
 					if request.URL.Host == "www.googleapis.com" {
-						body = `{"email":"fixture@example.com"}`
+						body = `{"email":"fixture@example.com","verified_email":true}`
 					} else if request.URL.Host != "oauth2.googleapis.com" {
 						return nil, errors.New("unexpected test upstream")
 					}

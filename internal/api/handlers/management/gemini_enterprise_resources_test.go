@@ -44,7 +44,28 @@ func TestEnterpriseSessionResourceInputsWithoutGlobalBinding(t *testing.T) {
 	}
 }
 
-func TestEnterpriseDiscoveredBindingSavedOnlyAfterSuccessfulResolution(t *testing.T) {
+func TestEnterpriseDefaultLoginHintsUseAccountDiscovery(t *testing.T) {
+	for _, hint := range []config.GeminiEnterpriseOAuth{
+		{ClientID: "fixture-client", EngineID: "optional-engine"},
+		{ClientID: "fixture-client", ProjectID: "optional-project"},
+	} {
+		h := &Handler{cfg: &config.Config{AuthDir: t.TempDir(), OAuth: config.OAuthConfig{Providers: config.OAuthProviders{GeminiEnterprise: &hint}}}}
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		h.RequestGeminiEnterpriseToken(c)
+		var result struct {
+			State     string `json:"state"`
+			Automatic bool   `json:"automatic_resource_discovery"`
+		}
+		if recorder.Code != 200 || json.Unmarshal(recorder.Body.Bytes(), &result) != nil || !result.Automatic {
+			t.Fatalf("partial config skipped discovery: %d %s", recorder.Code, recorder.Body.String())
+		}
+		CancelOAuthSession(result.State)
+	}
+}
+
+func TestEnterpriseAuthorizationIsSavedBeforeOptionalDiscovery(t *testing.T) {
 	for _, scenario := range []string{"success", "missing", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
 			binding := config.GeminiEnterpriseOAuth{ClientID: "session-app", EngineID: "manual-engine", AssistantID: "custom-assistant"}.WithDefaults()
@@ -61,17 +82,24 @@ func TestEnterpriseDiscoveredBindingSavedOnlyAfterSuccessfulResolution(t *testin
 					case "oauth2.googleapis.com":
 						body = `{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","expires_in":3600,"token_type":"Bearer"}`
 					case "www.googleapis.com":
-						body = `{"email":"account@example.com"}`
+						body = `{"email":"account@example.com","verified_email":true}`
 					case "cloudresourcemanager.googleapis.com":
 						body = `{"projects":[{"name":"projects/222","state":"ACTIVE"}]}`
 					case "discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com":
 						if scenario == "cancelled" {
 							CancelOAuthSession(state)
 						}
-						if scenario == "missing" || !strings.Contains(req.URL.Path, "/locations/global/") {
-							status, body = 404, `{}`
-						} else {
-							body = `{"name":"projects/222/locations/global/collections/default_collection/engines/manual-engine"}`
+						body = `{}`
+						if scenario == "success" && strings.Contains(req.URL.Path, "/locations/global/") {
+							parent := "projects/222/locations/global/collections/default_collection"
+							switch {
+							case strings.HasSuffix(req.URL.Path, "/collections"):
+								body = `{"collections":[{"name":"` + parent + `"}]}`
+							case strings.HasSuffix(req.URL.Path, "/engines"):
+								body = `{"engines":[{"name":"` + parent + `/engines/manual-engine"}]}`
+							case strings.HasSuffix(req.URL.Path, "/assistants"):
+								body = `{"assistants":[{"name":"` + parent + `/engines/manual-engine/assistants/custom-assistant"}]}`
+							}
 						}
 					default:
 						t.Fatalf("unexpected credential destination: %s", req.URL.Host)
@@ -88,19 +116,30 @@ func TestEnterpriseDiscoveredBindingSavedOnlyAfterSuccessfulResolution(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario != "success" {
-				if len(files) != 0 {
-					t.Fatal("unresolved or cancelled credentials were persisted")
-				}
-				return
-			}
 			if len(files) != 1 {
-				t.Fatal("resolved credentials missing")
+				t.Fatal("authorization was not retained independently of discovery")
 			}
 			data, _ := os.ReadFile(filepath.Join(h.cfg.AuthDir, files[0].Name()))
 			var record map[string]any
-			if json.Unmarshal(data, &record) != nil || record["project_id"] != "222" || record["location"] != "global" || record["collection_id"] != "default_collection" || record["assistant_id"] != "custom-assistant" {
-				t.Fatal("saved account did not retain discovered resources and manual assistant")
+			if json.Unmarshal(data, &record) != nil || ge.String(record, "refresh_token") != "synthetic-refresh" {
+				t.Fatal("saved authorization missing")
+			}
+			graph, errGraph := ge.ReadAccount(record)
+			if errGraph != nil || graph == nil {
+				t.Fatal("shared account graph missing")
+			}
+			wantCollections := 0
+			if scenario == "success" {
+				wantCollections = 1
+			}
+			if len(graph.Collections) != wantCollections {
+				t.Fatalf("incorrect discovery graph: %+v", graph)
+			}
+			if scenario == "success" && (graph.Collections[0].ProjectID != "222" || graph.Collections[0].AssistantID != "custom-assistant") {
+				t.Fatal("discovered application or assistant missing")
+			}
+			if scenario == "cancelled" {
+				return
 			}
 			_, _, _, _, completed, ok := GetOAuthSessionDetails(state)
 			if !ok || !completed {

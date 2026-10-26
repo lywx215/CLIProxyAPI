@@ -146,3 +146,27 @@ func TestEnterpriseRefreshPreservesCancellationAndSanitizesWrappedErrors(t *test
 		t.Fatal("wrapped OAuth error leaked detail or lost invalid_grant")
 	}
 }
+
+func TestEnterpriseApplicationOnlyRefreshAndVerifiedEmail(t *testing.T) {
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	http.DefaultTransport = roundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://oauth2.googleapis.com/token" {
+			t.Fatal("refresh left fixed OAuth origin")
+		}
+		return resourceResponse(200, `{"access_token":"synthetic-new","expires_in":3600,"token_type":"Bearer"}`), nil
+	})
+	if token, err := Refresh(context.Background(), config.GeminiEnterpriseOAuth{ClientID: "client"}, "synthetic-refresh", ""); err != nil || token.AccessToken != "synthetic-new" {
+		t.Fatalf("application-only token refresh failed: %v", err)
+	}
+	for _, test := range []struct {
+		body  string
+		valid bool
+	}{{`{"email":" Fixture@Example.com ","verified_email":true}`, true}, {`{"email":"fixture@example.com","verified_email":false}`, false}, {`{"email":"fixture@example.com"}`, false}} {
+		client := &http.Client{Timeout: time.Nanosecond, Transport: roundTrip(func(req *http.Request) (*http.Response, error) { return resourceResponse(200, test.body), nil })}
+		email, err := Email(context.Background(), client, "synthetic")
+		if (err == nil) != test.valid || (test.valid && email != "fixture@example.com") {
+			t.Fatalf("email verification result=%q err=%v", email, err)
+		}
+	}
+}

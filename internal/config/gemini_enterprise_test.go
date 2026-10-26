@@ -64,11 +64,22 @@ oauth:
 }
 
 func TestEnterpriseConfigRejectsInvalidBinding(t *testing.T) {
-	for _, fields := range []string{"client-id: own-client\n      project-id: project", "client-id: own-client\n      project-id: ../bad\n      engine-id: engine", "client-id: own-client\n      project-id: project\n      engine-id: engine\n      client-secret-env: 'not an env name'"} {
+	for _, fields := range []string{"project-id: project", "client-id: own-client\n      project-id: ../bad\n      engine-id: engine", "client-id: own-client\n      project-id: project\n      engine-id: engine\n      client-secret-env: 'not an env name'"} {
 		var cfg Config
 		err := yaml.Unmarshal([]byte("oauth:\n  providers:\n    gemini-enterprise:\n      "+fields+"\n"), &cfg)
 		if err == nil || !strings.Contains(err.Error(), "gemini-enterprise") {
 			t.Fatalf("invalid binding accepted: %v", err)
 		}
+	}
+}
+
+func TestEnterpriseAutomaticLoginConfigurationDoesNotRequireEngine(t *testing.T) {
+	var cfg Config
+	if err := yaml.Unmarshal([]byte("oauth:\n  providers:\n    gemini-enterprise:\n      client-id: own-client\n"), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	application := cfg.OAuth.Providers.GeminiEnterprise
+	if application == nil || application.ValidateLogin() != nil || application.ValidateDiscovery() != nil || application.Validate() == nil {
+		t.Fatal("automatic OAuth and strict inference binding validation were conflated")
 	}
 }

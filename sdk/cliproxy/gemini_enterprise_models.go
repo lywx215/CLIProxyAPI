@@ -79,7 +79,7 @@ func enterpriseFailureKey(key string, auth *coreauth.Auth) string {
 }
 
 func (s *Service) enterpriseActive(auth *coreauth.Auth, key string) bool {
-	if auth == nil || s.coreManager == nil || s.antigravityHomeEnabled() {
+	if auth == nil || coreauth.IsEnterpriseAccountAuth(auth) || s.coreManager == nil || s.antigravityHomeEnabled() {
 		return false
 	}
 	current, ok := s.coreManager.GetByID(auth.ID)
@@ -185,7 +185,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 }
 
 func (s *Service) queueEnterpriseDiscovery(ctx context.Context, auth *coreauth.Auth) {
-	if auth == nil || auth.Provider != ge.Provider || auth.Disabled || auth.Status == coreauth.StatusDisabled || s.antigravityHomeEnabled() {
+	if auth == nil || coreauth.IsEnterpriseAccountAuth(auth) || auth.Provider != ge.Provider || auth.Disabled || auth.Status == coreauth.StatusDisabled || s.antigravityHomeEnabled() {
 		return
 	}
 	auth = auth.Clone()
@@ -325,7 +325,7 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 	}
 	d := s.enterpriseState()
 	for _, auth := range s.coreManager.List() {
-		if auth == nil || auth.Provider != ge.Provider || auth.Disabled || auth.Status == coreauth.StatusDisabled {
+		if auth == nil || coreauth.IsEnterpriseAccountAuth(auth) || auth.Provider != ge.Provider || auth.Disabled || auth.Status == coreauth.StatusDisabled {
 			continue
 		}
 		key := s.enterpriseKey(auth)

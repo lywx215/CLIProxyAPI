@@ -93,7 +93,7 @@ func TestEnterpriseModelProbeValidationExecutionAndSanitization(t *testing.T) {
 				if selected.ID != auth.ID || opts.Metadata[coreexec.PinnedAuthMetadataKey] != auth.ID {
 					t.Fatalf("probe escaped selected credential: %q", selected.ID)
 				}
-				if req.Model != modelID || opts.SourceFormat.String() != "gemini" || strings.Contains(string(req.Payload), "maxOutputTokens") || !strings.Contains(string(req.Payload), "Reply with only OK.") {
+				if req.Model != modelID || opts.SourceFormat.String() != "gemini" || strings.Contains(string(req.Payload), "maxOutputTokens") || !strings.Contains(string(req.Payload), "请只回复 OK。") {
 					t.Fatalf("unexpected probe request: %q %s", req.Model, req.Payload)
 				}
 				usageContext, ok := ctx.Value("gin").(*gin.Context)
@@ -238,16 +238,33 @@ func (f enterpriseProbeUsageFunc) HandleUsage(ctx context.Context, record usage.
 }
 
 func TestEnterpriseModelProbeUsesNormalExecutorUsage(t *testing.T) {
+	for _, accountMode := range []bool{false, true} {
+		t.Run(fmt.Sprint("account=", accountMode), func(t *testing.T) { testEnterpriseProbeExecutorUsage(t, accountMode) })
+	}
+}
+
+func testEnterpriseProbeExecutorUsage(t *testing.T, accountMode bool) {
 	const modelID = "enterprise-probe-usage-integration"
 	manager := coreauth.NewManager(nil, nil, nil)
 	binding := (config.GeminiEnterpriseOAuth{ClientID: "probe-client", ProjectID: "123", Location: "global", EngineID: "probe-engine"}).WithDefaults()
 	metadata := ge.Metadata(binding, "fixture@example.test", &oauth2.Token{AccessToken: "synthetic-access", RefreshToken: "synthetic-refresh", Expiry: time.Now().Add(time.Hour)})
+	if accountMode {
+		graph, err := ge.AccountFromLegacy(metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata = ge.PutAccount(metadata, graph)
+	}
 	auth, errRegister := manager.Register(t.Context(), &coreauth.Auth{
 		ID: modelID + ".json", FileName: modelID + ".json", Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata,
 		EnterpriseQuotaIdentity: &ge.QuotaIdentity{Binding: ge.Binding(binding), CheckedAt: time.Now()},
 	})
 	if errRegister != nil {
 		t.Fatal(errRegister)
+	}
+	parentID := auth.ID
+	if accountMode {
+		auth = manager.EnterpriseCollections(auth.ID)[0]
 	}
 	registry.GetGlobalRegistry().RegisterClient(auth.ID, ge.Provider, []*registry.ModelInfo{{ID: modelID, Type: "gemini"}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
@@ -264,6 +281,11 @@ func TestEnterpriseModelProbeUsesNormalExecutorUsage(t *testing.T) {
 	})
 	calls := 0
 	transport := enterpriseTestTransport(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "www.googleapis.com" {
+			// Optional quota identity is unavailable in this synthetic fixture.
+			// Generation and its usage attribution must still work normally.
+			return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+		}
 		calls++
 		if request.Header.Get("Authorization") != "Bearer synthetic-access" || request.URL.Host != "discoveryengine.googleapis.com" || !strings.HasSuffix(request.URL.Path, ":streamAssist") {
 			t.Fatal("probe was sent to an unexpected resource")
@@ -280,12 +302,23 @@ func TestEnterpriseModelProbeUsesNormalExecutorUsage(t *testing.T) {
 		c.Set("userApiKey", "management-secret")
 		handler.TestGeminiEnterpriseModel(c)
 	})
-	payload, _ := json.Marshal(map[string]any{"name": auth.FileName, "auth_index": auth.Index, "model": modelID, "expected": ge.Resources(binding)})
+	requestBody := map[string]any{"name": auth.FileName, "auth_index": auth.Index, "model": modelID, "expected": ge.Resources(binding)}
+	if accountMode {
+		requestBody["binding_id"], requestBody["expected_revision"] = coreauth.EnterpriseBindingID(auth), 1
+	}
+	payload, _ := json.Marshal(requestBody)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/probe", strings.NewReader(string(payload))).WithContext(ctx))
 	var result enterpriseModelTestResult
 	if json.Unmarshal(response.Body.Bytes(), &result) != nil || response.Code != 200 || result.Status != "ok" || calls != 1 {
 		t.Fatalf("real executor probe failed: %d %s, calls=%d", response.Code, response.Body, calls)
+	}
+	if accountMode {
+		parent, _, ok := manager.EnterpriseAccountSnapshot(parentID)
+		child, found := manager.GetByID(auth.ID)
+		if !ok || !found || parent.Success != 0 || child.Success != 1 || result.BindingID != coreauth.EnterpriseBindingID(child) {
+			t.Fatal("model probe usage or request count escaped the selected collection")
+		}
 	}
 	// Queue a sentinel behind the synchronous executor's usage publication. Seeing
 	// it proves all preceding records were delivered without timing-based sleeps.

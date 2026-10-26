@@ -63,6 +63,7 @@ type Handler struct {
 	pluginStoreHTTPClient   pluginstore.HTTPDoer
 	pluginStoreRateLimiter  *pluginstore.GitHubRateLimiter
 	pluginReleases          pluginReleaseCache
+	enterpriseQuotas        enterpriseQuotaCache
 }
 
 type configReloadSnapshot struct {

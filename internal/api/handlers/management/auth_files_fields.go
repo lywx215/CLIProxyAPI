@@ -67,6 +67,10 @@ func (h *Handler) PatchAuthFileStatus(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "auth file not found"})
 		return
 	}
+	if c.GetBool(ConfigV8ContextKey) && coreauth.IsEnterpriseCollectionAuth(targetAuth) {
+		enterpriseManagementFailure(c, http.StatusConflict, "collection_required", "Use the collection switch with its binding identity and revision")
+		return
+	}
 	if coreauth.IsPluginVirtualAuth(targetAuth) {
 		// Allow status changes only when targeting the source auth file name, matching delete semantics.
 		// Expanded virtual project auths still cannot be modified independently.

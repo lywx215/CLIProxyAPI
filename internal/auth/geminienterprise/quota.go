@@ -34,6 +34,7 @@ type QuotaPool struct {
 	Used           *int64     `json:"used"`
 	Remaining      *int64     `json:"remaining"`
 	UsageUpdatedAt *time.Time `json:"usage_updated_at"`
+	Version        string     `json:"-"`
 }
 
 type quotaSeries struct {
@@ -84,23 +85,26 @@ func FetchQuota(ctx context.Context, client *http.Client, binding config.GeminiE
 		pool := QuotaPool{Tier: tier, Status: "no_data"}
 		limits, limitStatus := quotaTimeSeries(ctx, client, binding, token, metric+"/limit", now.Add(-24*time.Hour), now)
 		usage, usageStatus := quotaTimeSeries(ctx, client, binding, token, metric+"/usage", start, now)
+		pool.Limit, pool.Used, pool.UsageUpdatedAt, pool.Version = quotaAmountsWithVersion(limits, usage, binding.Location, metric, start, now)
 		if limitStatus != "ok" || usageStatus != "ok" {
 			pool.Status = "unavailable"
 			if limitStatus == "no_permission" || usageStatus == "no_permission" {
 				pool.Status = "no_permission"
 			}
+			if pool.Limit != nil || pool.Used != nil {
+				pool.Status = "partial"
+			}
 		} else {
-			pool.Limit, pool.Used, pool.UsageUpdatedAt = quotaAmounts(limits, usage, binding.Location, metric, start, now)
 			if pool.Limit != nil || pool.Used != nil {
 				pool.Status = "ok"
 			}
-			if pool.Limit != nil && pool.Used != nil {
-				remaining := max(int64(0), *pool.Limit-*pool.Used)
-				pool.Remaining = &remaining
-			}
+		}
+		if pool.Limit != nil && pool.Used != nil {
+			remaining := max(int64(0), *pool.Limit-*pool.Used)
+			pool.Remaining = &remaining
 		}
 		result.Pools = append(result.Pools, pool)
-		if pool.Status == "ok" || result.Status == "no_data" {
+		if pool.Status == "ok" || (pool.Status == "partial" && result.Status != "ok") || result.Status == "no_data" {
 			result.Status = pool.Status
 		}
 	}
@@ -188,9 +192,15 @@ func quotaTimeSeries(ctx context.Context, client *http.Client, binding config.Ge
 }
 
 func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, end time.Time) (limit, used *int64, updated *time.Time) {
+	limit, used, updated, _ = quotaAmountsWithVersion(limits, usage, location, metric, start, end)
+	return
+}
+
+func quotaAmountsWithVersion(limits, usage []quotaSeries, location, metric string, start, end time.Time) (limit, used *int64, updated *time.Time, version string) {
 	// Keep edition pools and regions separate; never sum duplicate limit gauges.
 	latest := time.Time{}
 	limitName := ""
+	conflictingLimit := false
 	validSeries := func(s quotaSeries, suffix, kind string) bool {
 		// The monitored resource can be global for EU/US quota pools. Only the
 		// metric's regional_location identifies the quota region.
@@ -202,12 +212,41 @@ func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, e
 		}
 		for _, p := range s.Points {
 			value, err := strconv.ParseInt(p.Value.Int64, 10, 64)
-			if err == nil && value >= 0 && p.Interval.End.After(latest) && !p.Interval.End.After(end) {
+			if err != nil || value < 0 || p.Interval.End.After(end) || p.Interval.End.IsZero() {
+				continue
+			}
+			if p.Interval.End.After(latest) {
 				limit, latest, limitName = &value, p.Interval.End, s.Metric.Labels["limit_name"]
+				conflictingLimit = false
+			} else if p.Interval.End.Equal(latest) && (limit == nil || *limit != value || limitName != s.Metric.Labels["limit_name"]) {
+				conflictingLimit = true
 			}
 		}
 	}
-	seen := map[string]bool{}
+	if conflictingLimit {
+		return nil, nil, nil, ""
+	}
+	if limitName == "" {
+		for _, s := range usage {
+			if !validSeries(s, "/usage", "DELTA") {
+				continue
+			}
+			for _, p := range s.Points {
+				if p.Interval.Start.Before(start) || !p.Interval.End.After(start) || p.Interval.End.After(end) || p.Interval.End.Before(p.Interval.Start) {
+					continue
+				}
+				name := s.Metric.Labels["limit_name"]
+				if limitName != "" && limitName != name {
+					return nil, nil, nil, ""
+				}
+				limitName = name
+			}
+		}
+	}
+	seen := map[string]string{}
+	type interval struct{ start, end time.Time }
+	intervals := map[string][]interval{}
+	version = limitName
 	for _, s := range usage {
 		if !validSeries(s, "/usage", "DELTA") || (limitName != "" && limitName != s.Metric.Labels["limit_name"]) {
 			continue
@@ -218,13 +257,17 @@ func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, e
 				continue
 			}
 			key := string(identity) + p.Interval.Start.String() + p.Interval.End.String()
-			if seen[key] {
+			if previous, exists := seen[key]; exists {
+				if previous != p.Value.Int64 {
+					return limit, nil, nil, version
+				}
 				continue
 			}
-			seen[key] = true
+			seen[key] = p.Value.Int64
+			intervals[string(identity)] = append(intervals[string(identity)], interval{p.Interval.Start, p.Interval.End})
 			value, err := strconv.ParseInt(p.Value.Int64, 10, 64)
 			if err != nil || value < 0 || (used != nil && value > (1<<63-1)-*used) {
-				return limit, nil, nil
+				return limit, nil, nil, version
 			}
 			if used == nil {
 				used = new(int64)
@@ -233,6 +276,19 @@ func quotaAmounts(limits, usage []quotaSeries, location, metric string, start, e
 			if updated == nil || p.Interval.End.After(*updated) {
 				t := p.Interval.End
 				updated = &t
+			}
+		}
+	}
+	for _, points := range intervals {
+		sort.Slice(points, func(i, j int) bool {
+			if points[i].start.Equal(points[j].start) {
+				return points[i].end.Before(points[j].end)
+			}
+			return points[i].start.Before(points[j].start)
+		})
+		for i := 1; i < len(points); i++ {
+			if points[i-1].end.After(points[i].start) {
+				return limit, nil, nil, version
 			}
 		}
 	}

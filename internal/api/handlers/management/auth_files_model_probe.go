@@ -29,6 +29,8 @@ type enterpriseModelTestResult struct {
 	Code              string             `json:"code"`
 	Message           string             `json:"message"`
 	RetryAfterSeconds int64              `json:"retry_after_seconds,omitempty"`
+	BindingID         string             `json:"binding_id,omitempty"`
+	Revision          uint64             `json:"revision,omitempty"`
 }
 
 // TestGeminiEnterpriseModel performs one credential-pinned text generation.
@@ -39,10 +41,12 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		c.JSON(status, gin.H{"error": code, "code": code, "message": message})
 	}
 	var req struct {
-		Name      string              `json:"name"`
-		AuthIndex string              `json:"auth_index"`
-		Model     string              `json:"model"`
-		Expected  *ge.ResourceBinding `json:"expected"`
+		Name             string              `json:"name"`
+		AuthIndex        string              `json:"auth_index"`
+		Model            string              `json:"model"`
+		Expected         *ge.ResourceBinding `json:"expected"`
+		BindingID        string              `json:"binding_id"`
+		ExpectedRevision uint64              `json:"expected_revision"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
 	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.AuthIndex) == "" || strings.TrimSpace(req.Model) == "" || req.Expected == nil {
@@ -65,14 +69,31 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		fail(http.StatusConflict, "home_managed", "Gemini Enterprise model testing is unavailable in Home mode")
 		return
 	}
-	auth, ok := h.lookupAuthFile(req.Name, req.AuthIndex)
+	auth, ok := h.enterpriseTarget(req.Name, req.AuthIndex, req.BindingID)
 	if !ok || auth == nil || auth.Provider != ge.Provider || coreauth.IsPluginVirtualAuth(auth) {
 		fail(http.StatusNotFound, "credential_not_found", "Gemini Enterprise credential not found")
+		return
+	}
+	if req.BindingID != "" && lockedAuthIndex(auth) != req.AuthIndex {
+		fail(http.StatusConflict, "credential_changed", "The collection index changed; reload and try again")
 		return
 	}
 	if auth.Disabled || auth.Status == coreauth.StatusDisabled {
 		fail(http.StatusConflict, "credential_disabled", "Enable this credential before testing a model")
 		return
+	}
+	revision := uint64(0)
+	if _, graph, exists := h.authManager.EnterpriseAccountSnapshot(auth.ID); exists {
+		for _, collection := range graph.Collections {
+			if collection.ID == coreauth.EnterpriseBindingID(auth) {
+				revision = collection.Revision
+				break
+			}
+		}
+		if (len(graph.Collections) > 1 && (req.BindingID == "" || req.ExpectedRevision == 0)) || (req.ExpectedRevision != 0 && req.ExpectedRevision != revision) {
+			fail(http.StatusConflict, "credential_changed", "Collection changed; reload and try again")
+			return
+		}
 	}
 	binding := ge.FromMetadata(auth.Metadata)
 	if binding.Validate() != nil || ge.Resources(req.Expected.Apply(binding)) != ge.Resources(binding) {
@@ -114,7 +135,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	usageContext.Set("userApiKey", "")
 	ctx := context.WithValue(c.Request.Context(), "gin", usageContext)
 	ctx = coreauth.WithEnterpriseModelProbe(ctx, auth.ID, ge.Resources(binding), actualModel)
-	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"Reply with only OK."}]}]}`)
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"请只回复 OK。"}]}]}`)
 	started := time.Now()
 	response, errExec := h.authManager.Execute(ctx, []string{ge.Provider}, coreexec.Request{
 		Model: modelID, Payload: body, Format: sdktranslator.Format("gemini"),
@@ -125,15 +146,32 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	if c.Request.Context().Err() != nil {
 		return
 	}
-	current, exists := h.lookupAuthFile(req.Name, req.AuthIndex)
+	current, exists := h.enterpriseTarget(req.Name, req.AuthIndex, req.BindingID)
 	if !exists || current == nil || current.Disabled || current.Status == coreauth.StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || ge.Resources(ge.FromMetadata(current.Metadata)) != ge.Resources(binding) {
 		fail(http.StatusConflict, "credential_changed", "Credential resources changed during testing; reload and try again")
 		return
+	}
+	if revision != 0 {
+		_, currentGraph, found := h.authManager.EnterpriseAccountSnapshot(current.ID)
+		currentRevision := uint64(0)
+		if found {
+			for _, collection := range currentGraph.Collections {
+				if collection.ID == coreauth.EnterpriseBindingID(current) {
+					currentRevision = collection.Revision
+					break
+				}
+			}
+		}
+		if currentRevision != revision {
+			fail(http.StatusConflict, "credential_changed", "Collection settings changed during testing; reload and try again")
+			return
+		}
 	}
 	result := enterpriseModelTestResult{
 		Status: "ok", Model: modelID, AuthIndex: lockedAuthIndex(auth), Resources: ge.Resources(binding),
 		CheckedAt: time.Now().UTC(), ElapsedMS: time.Since(started).Milliseconds(), HTTPStatus: http.StatusOK,
 		Code: "ok", Message: "Model completed a text generation successfully",
+		BindingID: req.BindingID, Revision: revision,
 	}
 	if errExec != nil {
 		var conflict *coreauth.EnterpriseModelProbeError
@@ -195,6 +233,7 @@ func enterpriseModelTestError(result enterpriseModelTestResult, err error) enter
 	var cooldown interface{ IsModelCooldown() bool }
 	if errors.As(err, &cooldown) && cooldown.IsModelCooldown() {
 		result.Status, result.HTTPStatus = "cooling", http.StatusTooManyRequests
+		result.ElapsedMS = 0
 		result.Code, result.Message = "model_cooldown", "The model is cooling down; test again after the cooldown expires"
 		var headers interface{ Headers() http.Header }
 		if errors.As(err, &headers) {

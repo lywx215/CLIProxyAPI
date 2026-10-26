@@ -268,6 +268,7 @@ func (b *Builder) Build() (*Service, error) {
 	// Attach a default RoundTripper provider so providers can opt-in per-auth transports.
 	coreManager.SetRoundTripperProvider(newDefaultRoundTripperProvider())
 	coreManager.SetConfig(b.cfg)
+	authManager.SetEnterpriseAccountManager(coreManager)
 	coreManager.SetOAuthModelAlias(b.cfg.OAuthModelAlias)
 	if pluginHost != nil {
 		coreManager.SetPluginScheduler(pluginHost)
@@ -292,6 +293,11 @@ func (b *Builder) Build() (*Service, error) {
 		appliedRoutingState: appliedRoutingState,
 		serverOptions:       append([]api.ServerOption(nil), b.serverOptions...),
 	}
+	coreManager.SetEnterpriseAccountSyncHook(func(ctx context.Context, auth *coreauth.Auth) error {
+		service.ensureExecutorsForAuthWithContext(ctx, auth, false)
+		service.completeModelRegistrationForAuth(ctx, auth)
+		return nil
+	})
 	if b.postAuthHook != nil {
 		service.serverOptions = append(service.serverOptions, api.WithPostAuthHook(b.postAuthHook))
 	}

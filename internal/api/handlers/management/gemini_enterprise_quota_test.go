@@ -15,12 +15,18 @@ import (
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
-	"golang.org/x/oauth2"
 )
 
 func TestEnterpriseQuotaHandlerKeepsPermissionFailuresOutOfCredentialHealth(t *testing.T) {
 	previous := newGeminiEnterpriseQuotaClient
-	t.Cleanup(func() { newGeminiEnterpriseQuotaClient = previous })
+	previousIdentity := resolveGeminiEnterpriseQuotaIdentity
+	t.Cleanup(func() {
+		newGeminiEnterpriseQuotaClient = previous
+		resolveGeminiEnterpriseQuotaIdentity = previousIdentity
+	})
+	resolveGeminiEnterpriseQuotaIdentity = func(context.Context, *http.Client, config.GeminiEnterpriseOAuth, string, time.Time) *ge.QuotaIdentity {
+		return nil
+	}
 	newGeminiEnterpriseQuotaClient = func(string) (*http.Client, error) {
 		return &http.Client{Transport: enterpriseTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 403, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"never-expose-upstream-details"}}`))}, nil
@@ -60,11 +66,16 @@ func TestEnterpriseQuotaHandlerKeepsPermissionFailuresOutOfCredentialHealth(t *t
 	}
 }
 
-func TestEnterpriseQuotaHandlerRefreshUsesSavedBindingWithoutMutatingAuth(t *testing.T) {
-	previousClient, previousRefresh := newGeminiEnterpriseQuotaClient, refreshGeminiEnterpriseQuotaToken
+func TestEnterpriseQuotaHandlerUsesUnifiedSavedTokenRefresh(t *testing.T) {
+	previousClient, previousRefresh := newGeminiEnterpriseQuotaClient, ensureGeminiEnterpriseManagementToken
+	previousIdentity := resolveGeminiEnterpriseQuotaIdentity
 	t.Cleanup(func() {
-		newGeminiEnterpriseQuotaClient, refreshGeminiEnterpriseQuotaToken = previousClient, previousRefresh
+		newGeminiEnterpriseQuotaClient, ensureGeminiEnterpriseManagementToken = previousClient, previousRefresh
+		resolveGeminiEnterpriseQuotaIdentity = previousIdentity
 	})
+	resolveGeminiEnterpriseQuotaIdentity = func(context.Context, *http.Client, config.GeminiEnterpriseOAuth, string, time.Time) *ge.QuotaIdentity {
+		return nil
+	}
 	for _, fail := range []bool{false, true} {
 		name := "success"
 		if fail {
@@ -84,15 +95,19 @@ func TestEnterpriseQuotaHandlerRefreshUsesSavedBindingWithoutMutatingAuth(t *tes
 			auth.EnsureIndex()
 			before, _ := json.Marshal(auth.Metadata)
 			refreshes, reads := 0, 0
-			refreshGeminiEnterpriseQuotaToken = func(ctx context.Context, binding config.GeminiEnterpriseOAuth, refresh, proxy string) (*oauth2.Token, error) {
+			ensureGeminiEnterpriseManagementToken = func(ctx context.Context, manager *coreauth.Manager, id string) (*coreauth.Auth, error) {
 				refreshes++
-				if binding.ClientID != "saved-client" || binding.ProjectID != "saved-project" || binding.EngineID != "saved-engine" || refresh != "saved-synthetic-refresh" || proxy != auth.ProxyURL {
+				current, _ := manager.GetByID(id)
+				binding := ge.FromMetadata(current.Metadata)
+				if binding.ClientID != "saved-client" || binding.ProjectID != "saved-project" || binding.EngineID != "saved-engine" || ge.String(current.Metadata, "refresh_token") != "saved-synthetic-refresh" || current.ProxyURL != auth.ProxyURL {
 					t.Fatal("quota refresh inherited another credential or global binding")
 				}
 				if fail {
 					return nil, errors.New("never-expose-refresh-secret")
 				}
-				return &oauth2.Token{AccessToken: "renewed-synthetic"}, nil
+				current.Metadata["access_token"] = "renewed-synthetic"
+				current.Metadata["refresh_token"] = "rotated-synthetic-refresh"
+				return manager.Update(ctx, current)
 			}
 			newGeminiEnterpriseQuotaClient = func(proxy string) (*http.Client, error) {
 				if proxy != auth.ProxyURL {
@@ -123,8 +138,8 @@ func TestEnterpriseQuotaHandlerRefreshUsesSavedBindingWithoutMutatingAuth(t *tes
 			}
 			after, _ := manager.GetByID(auth.ID)
 			afterMetadata, _ := json.Marshal(after.Metadata)
-			if string(before) != string(afterMetadata) || after.LastError != nil || after.Unavailable != auth.Unavailable || after.Status != auth.Status {
-				t.Fatal("quota refresh changed persisted credentials or routing health")
+			if (fail && string(before) != string(afterMetadata)) || (!fail && ge.String(after.Metadata, "refresh_token") != "rotated-synthetic-refresh") || after.LastError != nil || after.Unavailable != auth.Unavailable || after.Status != auth.Status {
+				t.Fatal("shared refresh lost the rotated token or changed routing health")
 			}
 		})
 	}
