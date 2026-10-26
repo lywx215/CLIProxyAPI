@@ -26,6 +26,7 @@ import (
 func enterpriseAccountFixture(t *testing.T) (*Handler, *coreauth.Auth, []*coreauth.Auth) {
 	t.Helper()
 	metadata := ge.Metadata((config.GeminiEnterpriseOAuth{ClientID: "collection-fixture", ProjectID: "123", EngineID: "app"}).WithDefaults(), "account@example.test", &oauth2.Token{AccessToken: "synthetic-private-access", RefreshToken: "synthetic-private-refresh", Expiry: time.Now().Add(time.Hour)})
+	metadata["model_policy"] = "catalog"
 	graph, err := ge.AccountFromLegacy(metadata)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +35,12 @@ func enterpriseAccountFixture(t *testing.T) (*Handler, *coreauth.Auth, []*coreau
 		resources := graph.Collections[0].ResourceBinding
 		resources.Location = region
 		graph.Collections = append(graph.Collections, ge.Collection{ID: ge.CollectionID(resources), Revision: 1, ResourceBinding: resources})
+	}
+	for i := range graph.Collections {
+		if graph.Collections[i].Settings == nil {
+			graph.Collections[i].Settings = map[string]any{}
+		}
+		graph.Collections[i].Settings["model_policy"] = "catalog"
 	}
 	graph.Collections[1].Disabled = true
 	metadata = ge.PutAccount(metadata, graph)

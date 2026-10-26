@@ -570,10 +570,26 @@ func (m *Manager) availableAuthsForRouteModelWithPriorityMode(auths []*Auth, pro
 	unauthorizedCount := 0
 	var earliest time.Time
 	evaluatedAuths := make([]*Auth, 0, len(auths))
+	deferEnterpriseModelAdmission := false
+	if cfg := m.runtimeConfigSnapshot(); cfg != nil {
+		p := cfg.Payload
+		deferEnterpriseModelAdmission = len(p.Default)+len(p.DefaultRaw)+len(p.Override)+len(p.OverrideRaw)+len(p.Filter) > 0
+	}
 	for _, candidate := range auths {
 		candidate = m.geminiBudgetSelectionAuth(candidate, routeModel)
 		evaluatedAuths = append(evaluatedAuths, candidate)
 		checkModel := m.selectionModelForAuth(candidate, routeModel)
+		if candidate != nil && candidate.Provider == "gemini-enterprise" {
+			policyModel := checkModel
+			if deferEnterpriseModelAdmission {
+				// Payload rules can replace the actual model. Keep paused collections
+				// out of scheduling and validate the final model at the executor barrier.
+				policyModel = ""
+			}
+			if errPolicy := m.validateEnterprisePolicy(candidate, policyModel, false); errPolicy != nil {
+				continue
+			}
+		}
 		candidate = m.enterpriseModelSelectionAuth(candidate, checkModel)
 		evaluatedAuths[len(evaluatedAuths)-1] = candidate
 		blocked, reason, next := isAuthBlockedForModel(candidate, checkModel, now)

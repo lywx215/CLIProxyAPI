@@ -101,6 +101,17 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		return
 	}
 	modelID := strings.TrimSpace(req.Model)
+	policy := h.authManager.EnterpriseModelPolicyView(auth)
+	if policy.Status == "blocked" {
+		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until its subscription or model policy is confirmed")
+		return
+	}
+	for _, entry := range policy.CatalogModels {
+		if entry.ID == modelID && !entry.Allowed {
+			fail(http.StatusConflict, "model_not_allowed", "This collection's model policy does not allow the selected model")
+			return
+		}
+	}
 	var model *registry.ModelInfo
 	for _, candidate := range registry.GetGlobalRegistry().GetModelsForClient(auth.ID) {
 		if candidate != nil && candidate.ID == modelID {
@@ -128,6 +139,10 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 			fail(http.StatusConflict, "model_excluded", "The selected model is excluded for this credential")
 			return
 		}
+	}
+	if !policy.Allows(actualModel) {
+		fail(http.StatusConflict, "model_not_allowed", "This collection's model policy does not allow the selected upstream model")
+		return
 	}
 	// A detached Gin context supplies normal usage attribution without exposing the
 	// management bearer key as a model API key, or sharing mutable handler state.
@@ -230,6 +245,12 @@ func enterpriseModelTestHasText(payload []byte) bool {
 func enterpriseModelTestError(result enterpriseModelTestResult, err error) enterpriseModelTestResult {
 	result.Status, result.HTTPStatus = "failed", http.StatusBadGateway
 	result.Code, result.Message = "generation_failed", "Google did not complete the model test"
+	var policy *coreauth.EnterpriseModelPolicyError
+	if errors.As(err, &policy) {
+		result.Code, result.Message, result.HTTPStatus = policy.Code, policy.Message, policy.HTTPStatus
+		result.ElapsedMS = 0
+		return result
+	}
 	var cooldown interface{ IsModelCooldown() bool }
 	if errors.As(err, &cooldown) && cooldown.IsModelCooldown() {
 		result.Status, result.HTTPStatus = "cooling", http.StatusTooManyRequests

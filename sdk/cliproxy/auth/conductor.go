@@ -155,6 +155,7 @@ type resultPolicyHolder struct {
 type Manager struct {
 	enterpriseAccounts        enterpriseAccountCoordinator
 	enterpriseModels          enterpriseModelCoordinator
+	enterprisePolicies        enterprisePolicyCoordinator
 	enterpriseQuota           enterpriseQuotaCoordinator
 	geminiBudgetMu            sync.Mutex
 	geminiBudget              *budget.Engine

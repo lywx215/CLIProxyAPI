@@ -3,6 +3,7 @@ package cliproxy
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -24,6 +25,7 @@ type enterpriseCatalog struct {
 	expires         time.Time
 	appliedEpoch    uint64
 	appliedRevision uint64
+	appliedPolicy   string
 	credential      string
 }
 type enterpriseFailure struct {
@@ -36,17 +38,19 @@ type enterpriseProbe struct {
 	revision  uint64
 }
 type enterpriseDiscovery struct {
-	mu       sync.Mutex
-	catalogs map[string]enterpriseCatalog
-	failures map[string]enterpriseFailure
-	pending  map[string]enterpriseProbe
-	sequence uint64
-	closed   bool
-	slots    chan struct{}
-	wg       sync.WaitGroup
-	now      func() time.Time
+	mu                  sync.Mutex
+	catalogs            map[string]enterpriseCatalog
+	failures            map[string]enterpriseFailure
+	pending             map[string]enterpriseProbe
+	subscriptionPending map[string]enterpriseProbe
+	sequence            uint64
+	closed              bool
+	slots               chan struct{}
+	wg                  sync.WaitGroup
+	now                 func() time.Time
 	// The injected fetch function makes lifecycle tests independent of Google credentials.
-	fetch func(context.Context, *coreauth.Auth, string) ([]ge.Model, error)
+	fetch             func(context.Context, *coreauth.Auth, string) ([]ge.Model, error)
+	fetchSubscription func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation
 }
 
 func (s *Service) enterpriseState() *enterpriseDiscovery {
@@ -98,14 +102,25 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	if ctx.Err() != nil || !catalog.known || !s.enterpriseActive(auth, key) {
 		return false
 	}
+	currentAuth, ok := s.coreManager.GetByID(auth.ID)
+	if !ok || !s.enterpriseActive(currentAuth, key) {
+		return false
+	}
+	auth = currentAuth
 	s.cfgMu.RLock()
 	if s.cfg == nil || s.cfg.Home.Enabled {
 		s.cfgMu.RUnlock()
 		return false
 	}
 	cfg := s.cfg
+	policy := s.coreManager.EnterpriseModelPolicyView(auth)
+	policyData, _ := json.Marshal(policy.ModelPolicy)
+	policySignature := string(policyData)
 	models := make([]*ModelInfo, 0, len(catalog.models))
 	for _, model := range catalog.models {
+		if !policy.Allows(model.ID) || policy.Restricted() && strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto") {
+			continue
+		}
 		info := &ModelInfo{ID: model.ID, Object: "model", OwnedBy: ge.Provider, Type: "gemini", Name: "models/" + model.ID, DisplayName: model.DisplayName, EnterpriseMedia: model.MediaKind, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}
 		info.Thinking = registry.EnterpriseThinkingSupport(model.ID)
 		if model.MediaKind != "" {
@@ -138,6 +153,7 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	if updated {
 		current.appliedEpoch = appliedEpoch
 		current.appliedRevision = catalog.revision
+		current.appliedPolicy = policySignature
 		d.catalogs[key] = current
 	}
 	d.mu.Unlock()
@@ -155,6 +171,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		log.Warn("gemini-enterprise is not supported in CLIProxyAPIHome mode")
 		return
 	}
+	s.queueEnterpriseSubscription(ctx, auth)
 	key := s.enterpriseKey(auth)
 	if !s.enterpriseActive(auth, key) {
 		return
@@ -287,6 +304,7 @@ func (s *Service) queueEnterpriseDiscovery(ctx context.Context, auth *coreauth.A
 		d.catalogs[key] = catalog
 		delete(d.failures, failureKey)
 		d.mu.Unlock()
+		s.coreManager.PublishEnterprisePolicyCatalog(auth, models)
 		s.publishEnterpriseCatalog(probeCtx, auth, key, catalog, epoch)
 	}()
 }
@@ -301,6 +319,12 @@ func (s *Service) cancelEnterpriseProbes(id string) {
 			delete(d.pending, authID)
 		}
 	}
+	for authID, probe := range d.subscriptionPending {
+		if id == "" || id == authID {
+			probe.cancel()
+			delete(d.subscriptionPending, authID)
+		}
+	}
 }
 
 func (s *Service) stopEnterpriseDiscovery(ctx context.Context) {
@@ -308,6 +332,9 @@ func (s *Service) stopEnterpriseDiscovery(ctx context.Context) {
 	d.mu.Lock()
 	d.closed = true
 	for _, probe := range d.pending {
+		probe.cancel()
+	}
+	for _, probe := range d.subscriptionPending {
 		probe.cancel()
 	}
 	d.mu.Unlock()
@@ -325,7 +352,11 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 	}
 	d := s.enterpriseState()
 	for _, auth := range s.coreManager.List() {
-		if auth == nil || coreauth.IsEnterpriseAccountAuth(auth) || auth.Provider != ge.Provider || auth.Disabled || auth.Status == coreauth.StatusDisabled {
+		if auth == nil || coreauth.IsEnterpriseAccountAuth(auth) || auth.Provider != ge.Provider {
+			continue
+		}
+		s.queueEnterpriseSubscription(ctx, auth)
+		if auth.Disabled || auth.Status == coreauth.StatusDisabled {
 			continue
 		}
 		key := s.enterpriseKey(auth)
@@ -334,7 +365,7 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 		due := !catalog.known || !d.now().Before(catalog.expires) || catalog.credential != enterpriseFailureKey(key, auth)
 		d.mu.Unlock()
 		epoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
-		if catalog.known && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision) {
+		if catalog.known && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
 			s.publishEnterpriseCatalog(ctx, auth, key, catalog, epoch)
 		}
 		if due {

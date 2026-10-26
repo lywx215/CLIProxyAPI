@@ -19,11 +19,20 @@ import (
 func enterpriseTestService(t *testing.T, id string) (*Service, *coreauth.Auth) {
 	t.Helper()
 	manager := coreauth.NewManager(nil, nil, nil)
+	// Catalog lifecycle tests use an explicit manual policy; automatic policy has separate fixtures.
 	auth, err := manager.Register(t.Context(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "project", EngineID: "engine"}, "test@example.com", &oauth2.Token{AccessToken: "old", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})})
 	if err != nil {
 		t.Fatal(err)
 	}
+	auth.Metadata["model_policy"] = "catalog"
+	auth, err = manager.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc := &Service{cfg: &config.Config{}, coreManager: manager, antigravityContext: t.Context()}
+	svc.enterpriseState().fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
+		return ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}
+	}
 	t.Cleanup(func() {
 		svc.cancelEnterpriseProbes("")
 		svc.enterpriseState().wg.Wait()

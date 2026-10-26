@@ -31,7 +31,7 @@ func TestEnterpriseIdentityRequiresAssignedUserLicense(t *testing.T) {
 					if r.URL.Host != "us-discoveryengine.googleapis.com" {
 						t.Fatal("regional license identity used the global host")
 					}
-					if !strings.Contains(r.URL.Path, "/userStores/default_user_store/") || r.URL.Query().Get("filter") != "userPrincipal = oauth@example.test" {
+					if !strings.Contains(r.URL.Path, "/userStores/default_user_store/") || r.URL.Query().Get("filter") != "" {
 						t.Fatal("identity lookup guessed user store or untrusted principal")
 					}
 					body = `{"userLicenses":[{"userPrincipal":"oauth@example.test","licenseAssignmentState":"ASSIGNED","licenseConfig":"projects/12345/locations/us/licenseConfigs/assigned"}]}`

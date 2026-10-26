@@ -1603,6 +1603,11 @@ func (m *Manager) prepareRequestAuth(ctx context.Context, executor ProviderExecu
 	if m == nil || executor == nil || auth == nil {
 		return auth, nil
 	}
+	// Enterprise subscription and quota identity are resolved by background discovery.
+	// Keep explicit administrative preparation available without adding inference latency.
+	if auth.Provider == "gemini-enterprise" {
+		return auth, nil
+	}
 	preparer, ok := executor.(RequestAuthPreparer)
 	if !ok {
 		return auth, nil

@@ -45,12 +45,16 @@ func (*enterpriseProbeExecutor) HttpRequest(context.Context, *coreauth.Auth, *ht
 }
 
 func TestEnterpriseModelProbeValidationExecutionAndSanitization(t *testing.T) {
-	for _, scenario := range []string{"ok", "disabled", "missing", "index", "home", "excluded", "global-excluded", "media", "media-unmarked", "binding", "rebind", "model-changed", "empty", "truncated", "thought-only", "incomplete", "google-disabled", "google-400", "google-403", "google-429", "continue-rule", "cooling", "cancel"} {
+	for _, scenario := range []string{"ok", "disabled", "missing", "index", "home", "excluded", "global-excluded", "policy-alias", "media", "media-unmarked", "binding", "rebind", "model-changed", "empty", "truncated", "thought-only", "incomplete", "google-disabled", "google-400", "google-403", "google-429", "continue-rule", "cooling", "cancel"} {
 		t.Run(scenario, func(t *testing.T) {
 			modelID := "enterprise-probe-" + scenario
 			manager := coreauth.NewManager(nil, nil, nil)
 			binding := (config.GeminiEnterpriseOAuth{ClientID: "test-client", ProjectID: "123", Location: "us", EngineID: "probe-engine"}).WithDefaults()
 			metadata := ge.Metadata(binding, "fixture@example.test", &oauth2.Token{AccessToken: "synthetic-access", RefreshToken: "synthetic-refresh", Expiry: time.Now().Add(time.Hour)})
+			metadata["model_policy"] = "catalog"
+			if scenario == "policy-alias" {
+				metadata["model_policy"] = "argon_only"
+			}
 			auth := &coreauth.Auth{ID: modelID + ".json", FileName: modelID + ".json", Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata, Attributes: map[string]string{"auth_kind": "oauth"}}
 			if scenario == "disabled" {
 				auth.Disabled = true
@@ -63,6 +67,9 @@ func TestEnterpriseModelProbeValidationExecutionAndSanitization(t *testing.T) {
 				t.Fatal(errRegister)
 			}
 			info := &registry.ModelInfo{ID: modelID, Type: "gemini"}
+			if scenario == "policy-alias" {
+				info.MetadataModelID = "gemini-3.8-flash"
+			}
 			if scenario == "media" {
 				info.EnterpriseMedia = "image"
 			}
@@ -170,10 +177,13 @@ func TestEnterpriseModelProbeValidationExecutionAndSanitization(t *testing.T) {
 					t.Fatalf("response leaked %q: %s", secret, response.Body)
 				}
 			}
-			rejected := map[string]int{"disabled": 409, "missing": 400, "index": 404, "home": 409, "excluded": 409, "global-excluded": 409, "media": 400, "media-unmarked": 400, "binding": 409}
+			rejected := map[string]int{"disabled": 409, "missing": 400, "index": 404, "home": 409, "excluded": 409, "global-excluded": 409, "policy-alias": 409, "media": 400, "media-unmarked": 400, "binding": 409}
 			if expectedHTTP, rejectedBeforeCall := rejected[scenario]; rejectedBeforeCall {
 				if response.Code != expectedHTTP || calls != 0 {
 					t.Fatalf("validation: HTTP %d, calls %d: %s", response.Code, calls, response.Body)
+				}
+				if scenario == "policy-alias" && !strings.Contains(response.Body.String(), `"code":"model_not_allowed"`) {
+					t.Fatalf("local policy rejection lost: %s", response.Body)
 				}
 				return
 			}
@@ -248,6 +258,7 @@ func testEnterpriseProbeExecutorUsage(t *testing.T, accountMode bool) {
 	manager := coreauth.NewManager(nil, nil, nil)
 	binding := (config.GeminiEnterpriseOAuth{ClientID: "probe-client", ProjectID: "123", Location: "global", EngineID: "probe-engine"}).WithDefaults()
 	metadata := ge.Metadata(binding, "fixture@example.test", &oauth2.Token{AccessToken: "synthetic-access", RefreshToken: "synthetic-refresh", Expiry: time.Now().Add(time.Hour)})
+	metadata["model_policy"] = "catalog"
 	if accountMode {
 		graph, err := ge.AccountFromLegacy(metadata)
 		if err != nil {

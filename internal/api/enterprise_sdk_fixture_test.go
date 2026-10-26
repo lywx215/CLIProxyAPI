@@ -49,7 +49,7 @@ func newEnterpriseSDKFixture(t *testing.T, media []byte) (*httptest.Server, stri
 	m := auth.NewManager(nil, nil, nil)
 	e := &enterpriseSDKFixtureExecutor{media: media}
 	m.RegisterExecutor(e)
-	credential := &auth.Auth{ID: model, Provider: "gemini-enterprise", Status: auth.StatusActive}
+	credential := &auth.Auth{ID: model, Provider: "gemini-enterprise", Status: auth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
 	if _, err := m.Register(t.Context(), credential); err != nil {
 		t.Fatal(err)
 	}

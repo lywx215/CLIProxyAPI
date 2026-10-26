@@ -25,7 +25,9 @@ type enterpriseTransport func(*http.Request) (*http.Response, error)
 
 func (f enterpriseTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func enterpriseExecutorAuth() *coreauth.Auth {
-	return &coreauth.Auth{ID: "enterprise-executor", Provider: ge.Provider, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "own-client", ProjectID: "project", EngineID: "engine"}, "test@example.com", &oauth2.Token{AccessToken: "access", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})}
+	auth := &coreauth.Auth{ID: "enterprise-executor", Provider: ge.Provider, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "own-client", ProjectID: "project", EngineID: "engine"}, "test@example.com", &oauth2.Token{AccessToken: "access", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})}
+	auth.Metadata["model_policy"] = "catalog"
+	return auth
 }
 func enterpriseOptions(format translator.Format) exec.Options {
 	op := "chat_completions"

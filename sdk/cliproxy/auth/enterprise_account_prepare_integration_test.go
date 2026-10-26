@@ -75,7 +75,7 @@ func TestEnterpriseAccountRealPreparationCachesIdentityAcrossRefreshAndClearsOnR
 			t.Fatalf("consecutive preparation repeated %s: %d", key, count)
 		}
 	}
-	if len(requests) != 4 || store.saves.Load() != 1 {
+	if len(requests) != 3 || store.saves.Load() != 1 {
 		t.Fatal("preparation skipped identity verification or persisted a child")
 	}
 	rotated := parent.Clone()

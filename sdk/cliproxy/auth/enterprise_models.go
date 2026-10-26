@@ -119,6 +119,10 @@ func enterpriseModelRejection(err error) *ge.GenerationError {
 }
 
 func isEnterpriseModelAvailabilityError(err error) bool {
+	var policy *EnterpriseModelPolicyError
+	if errors.As(err, &policy) {
+		return true
+	}
 	if enterpriseModelRejection(err) != nil {
 		return true
 	}
@@ -188,17 +192,28 @@ func validateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 	}
 	g := auth.enterpriseQuota
 	if g == nil {
+		if final {
+			return policyError(ge.ModelPolicyFor(auth.Metadata, ge.SubscriptionObservation{}), model)
+		}
 		return nil
 	}
 	// Validate the live resource snapshot at the actual dispatch boundary.
 	m := g.manager
 	m.mu.RLock()
 	current := m.auths[auth.ID]
-	changed := current == nil || current.Disabled || current.Status == StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || ge.ApplicationBinding(ge.FromMetadata(current.Metadata)) != ge.ApplicationBinding(binding)
+	changed := current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || EnterpriseSubscriptionKey(current) != EnterpriseSubscriptionKey(auth) || ge.ApplicationBinding(ge.FromMetadata(current.Metadata)) != ge.ApplicationBinding(binding)
 	disabledCooling := m.cooldownDisabledForAuth(current)
+	if current != nil {
+		current = current.Clone()
+	}
 	m.mu.RUnlock()
 	if changed {
 		return &EnterpriseModelProbeError{Code: "credential_changed", Message: "The credential application binding changed; reload the model list.", HTTPStatus: http.StatusConflict}
+	}
+	if final {
+		if err := m.validateEnterprisePolicy(current, model, true); err != nil {
+			return err
+		}
 	}
 	if final && !disabledCooling {
 		if until := m.enterpriseModels.retryAt(auth, model); !until.IsZero() {

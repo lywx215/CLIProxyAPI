@@ -53,7 +53,7 @@ func TestEnterpriseAsyncVideoRoutesIdentityAndDownloads(t *testing.T) {
 	executor := &enterpriseMediaAPIExecutor{}
 	manager.RegisterExecutor(executor)
 	model := "veo-3.1"
-	credential := &auth.Auth{ID: "enterprise-media-api", Provider: "gemini-enterprise", Status: auth.StatusActive}
+	credential := &auth.Auth{ID: "enterprise-media-api", Provider: "gemini-enterprise", Status: auth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
 	if _, err := manager.Register(context.Background(), credential); err != nil {
 		t.Fatal(err)
 	}

@@ -118,6 +118,47 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 	if err := e.PrepareRequest(req, auth); err != nil {
 		return nil, err
 	}
+	policy := coreauth.EnterpriseModelPolicyForRequest(auth)
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && !strings.HasSuffix(req.URL.Path, ":streamAssist") && (policy.Status == "blocked" || policy.Restricted()) {
+		return nil, &coreauth.EnterpriseModelPolicyError{Code: "model_policy_operation_unsupported", Message: "This operation cannot verify the upstream model required by the Enterprise collection policy", HTTPStatus: 400}
+	}
+	if strings.HasSuffix(req.URL.Path, ":streamAssist") {
+		binding := ge.FromMetadata(auth.Metadata)
+		parts := strings.SplitN(strings.TrimPrefix(req.URL.Path, "/"), "/", 2)
+		expected := ge.Engine(binding) + "/assistants/" + binding.WithDefaults().AssistantID + ":streamAssist"
+		if len(parts) != 2 || parts[1] != expected {
+			return nil, enterprise.Invalid("the generation endpoint must match the saved application and assistant")
+		}
+		if req.Body == nil {
+			return nil, enterprise.Invalid("an explicit generation payload is required")
+		}
+		body, errRead := io.ReadAll(io.LimitReader(req.Body, 16*1024*1024+1))
+		if errRead != nil || len(body) > 16*1024*1024 {
+			return nil, enterprise.Invalid("cannot validate the generation payload")
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		if !gjson.ValidBytes(body) {
+			return nil, enterprise.Invalid("the generation payload must be valid JSON")
+		}
+		models := []string{}
+		if model := gjson.GetBytes(body, "generationSpec.modelId").String(); model != "" {
+			models = append(models, model)
+		}
+		if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
+			models = append(models, "gemini-3-pro-image")
+		}
+		if gjson.GetBytes(body, "toolsSpec.videoGenerationSpec").Exists() {
+			models = append(models, "veo-3.1")
+		}
+		if len(models) == 0 {
+			return nil, enterprise.Invalid("an explicit upstream model is required")
+		}
+		for _, model := range models {
+			if errPolicy := coreauth.ValidateEnterpriseModelRequest(ctx, auth, model); errPolicy != nil {
+				return nil, errPolicy
+			}
+		}
+	}
 	client := newHTTPClient(ctx, e.cfg, auth, 0)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return client.Do(req)
@@ -179,7 +220,11 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	}
 	input.Body = body
 	input.IncludeThoughts = kind == "" && gjson.GetBytes(body, "generationSpec.thinkingConfig.includeThoughts").Type == gjson.True
-	if err := coreauth.ValidateEnterpriseModelRequest(ctx, auth, gjson.GetBytes(body, "generationSpec.modelId").String()); err != nil {
+	finalModel := gjson.GetBytes(body, "generationSpec.modelId").String()
+	if kind != "" {
+		finalModel = baseModel
+	}
+	if err := coreauth.ValidateEnterpriseModelRequest(ctx, auth, finalModel); err != nil {
 		return nil, input, err
 	}
 	if auth == nil {

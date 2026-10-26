@@ -2,10 +2,8 @@ package geminienterprise
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -44,71 +42,13 @@ func SubscriptionEdition(tier string) string {
 	return map[string]string{"SEARCH_AND_ASSISTANT": "enterprise_plus", "ENTERPRISE": "enterprise_standard", "ENTERPRISE_EMERGING": "enterprise_emerging", "FRONTLINE_WORKER": "frontline_worker", "FRONTLINE_STARTER": "frontline_starter", "AGENTSPACE_STARTER": "starter", "AGENTSPACE_BUSINESS": "business_standard", "EDU": "edu", "EDU_PRO": "edu_pro", "EDU_EMERGING": "edu_emerging", "EDU_PRO_EMERGING": "edu_pro_emerging"}[strings.TrimPrefix(tier, "SUBSCRIPTION_TIER_")]
 }
 
-// ResolveQuotaIdentity is optional and read-only. Failure never prevents inference.
+// ResolveQuotaIdentity shares the verified, paginated subscription resolver.
 func ResolveQuotaIdentity(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string, now time.Time) *QuotaIdentity {
-	result := &QuotaIdentity{Binding: Binding(binding), CheckedAt: now.UTC()}
-	if binding.Validate() != nil || client == nil || token == "" {
-		return result
+	binding = binding.WithDefaults()
+	observation := ResolveSubscription(ctx, client, binding, token, now)
+	result := &QuotaIdentity{Binding: Binding(binding), CheckedAt: now.UTC(), Invalidated: observation.Authoritative() && observation.Status != "ok"}
+	if observation.Status == "ok" {
+		result.Verified, result.ProjectNumber, result.Location, result.Edition, result.PrincipalHash = true, observation.ProjectNumber, binding.Location, observation.Edition, observation.PrincipalHash
 	}
-	email, errEmail := Email(ctx, client, token)
-	if errEmail != nil || strings.ContainsAny(email, "\"\\\r\n") {
-		return result
-	}
-	var project resourceProject
-	status, errGet := resourceJSON(ctx, client, "https://cloudresourcemanager.googleapis.com/v3/projects/"+url.PathEscape(binding.ProjectID), token, binding.ProjectID, &project)
-	number := strings.TrimPrefix(project.Name, "projects/")
-	if errGet != nil || status != 200 || !numberProject.MatchString(number) || (binding.ProjectID != number && binding.ProjectID != project.ProjectID) {
-		return result
-	}
-	parent := "projects/" + number + "/locations/" + binding.Location
-	params := url.Values{"filter": {"userPrincipal = " + email}, "pageSize": {"100"}}
-	var licenses struct {
-		Licenses []struct {
-			Principal string `json:"userPrincipal"`
-			State     string `json:"licenseAssignmentState"`
-			Config    string `json:"licenseConfig"`
-		} `json:"userLicenses"`
-		Next string `json:"nextPageToken"`
-	}
-	origin := OriginForLocation(binding.Location)
-	status, errGet = resourceJSON(ctx, client, origin+"/v1/"+parent+"/userStores/default_user_store/userLicenses?"+params.Encode(), token, binding.ProjectID, &licenses)
-	if errGet == nil && status == 200 && licenses.Next == "" && len(licenses.Licenses) == 0 {
-		result.Invalidated = true
-	}
-	if errGet != nil || status != 200 || licenses.Next != "" || len(licenses.Licenses) != 1 {
-		return result
-	}
-	license := licenses.Licenses[0]
-	if !strings.EqualFold(license.Principal, email) || license.State != "ASSIGNED" {
-		result.Invalidated = true
-		return result
-	}
-	parts := strings.Split(license.Config, "/")
-	if len(parts) != 6 || parts[0] != "projects" || (parts[1] != number && parts[1] != binding.ProjectID) || parts[2] != "locations" || parts[3] != binding.Location || parts[4] != "licenseConfigs" || !resourcePart.MatchString(parts[5]) {
-		return result
-	}
-	var subscription struct {
-		Name  string `json:"name"`
-		Tier  string `json:"subscriptionTier"`
-		State string `json:"state"`
-	}
-	status, errGet = resourceJSON(ctx, client, origin+"/v1/"+license.Config, token, binding.ProjectID, &subscription)
-	edition := SubscriptionEdition(subscription.Tier)
-	if errGet == nil && status == 200 && (edition == "" || (subscription.State != "ACTIVE" && subscription.State != "DEACTIVATING")) {
-		result.Invalidated = true
-	}
-	canonicalName := func(name string) string {
-		parts := strings.Split(name, "/")
-		if len(parts) == 6 && parts[0] == "projects" && (parts[1] == binding.ProjectID || parts[1] == number) {
-			parts[1] = number
-			return strings.Join(parts, "/")
-		}
-		return ""
-	}
-	if errGet != nil || status != 200 || canonicalName(subscription.Name) != canonicalName(license.Config) || canonicalName(subscription.Name) == "" || edition == "" || (subscription.State != "ACTIVE" && subscription.State != "DEACTIVATING") {
-		return result
-	}
-	hash := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
-	result.Verified, result.ProjectNumber, result.Location, result.Edition, result.PrincipalHash = true, number, binding.Location, edition, hex.EncodeToString(hash[:])
 	return result
 }

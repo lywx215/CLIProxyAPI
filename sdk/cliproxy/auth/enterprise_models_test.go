@@ -36,7 +36,7 @@ func registerEnterpriseModelTestAuth(t *testing.T, m *Manager, id, region, engin
 		ID: id, Provider: ge.Provider, Status: StatusActive,
 		Attributes: map[string]string{"auth_kind": "oauth"},
 		Metadata: map[string]any{
-			"client_id": "fixture-client", "project_id": "12345", "location": region,
+			"model_policy": "catalog", "client_id": "fixture-client", "project_id": "12345", "location": region,
 			"engine_id": engine, "refresh_token": "synthetic-" + id,
 		},
 	}
@@ -349,6 +349,7 @@ func TestEnterpriseModelAvailabilityUsesFinalUpstreamModel(t *testing.T) {
 		t.Fatal("availability was assigned to a logical alias instead of the final model")
 	}
 	other := registerEnterpriseModelTestAuth(t, m, "availability-final-other", "global", "engine-b", "route-alias")
+	m.PublishEnterprisePolicyCatalog(other, []ge.Model{{ID: "actual-upstream-model"}})
 	if err := ValidateEnterpriseModelRequest(ctx, other, "actual-upstream-model"); err != nil {
 		t.Fatal(err)
 	}

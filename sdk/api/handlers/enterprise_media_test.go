@@ -30,7 +30,7 @@ func newEnterpriseTaskHandler(t *testing.T, execute func(context.Context, *corea
 	m.RegisterExecutor(&interceptorCaptureExecutor{provider: "gemini-enterprise", execute: execute})
 	m.SetRetryConfig(3, 0, 2)
 	for i := 0; i < 2; i++ {
-		auth := &coreauth.Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Status: coreauth.StatusActive}
+		auth := &coreauth.Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Status: coreauth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
 		if _, err := m.Register(context.Background(), auth); err != nil {
 			t.Fatal(err)
 		}

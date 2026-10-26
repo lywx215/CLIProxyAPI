@@ -403,7 +403,39 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 		result = append(result, entry)
 	}
 
-	c.JSON(200, gin.H{"models": result})
+	response := gin.H{"models": result}
+	if c.GetBool(ConfigV8ContextKey) && h.authManager != nil {
+		if auth, found := h.authManager.GetByID(authID); found && auth.Provider == ge.Provider {
+			view := h.authManager.EnterpriseModelPolicyView(auth)
+			visible := make([]gin.H, 0, len(result))
+			for i, model := range models {
+				actual := model.MetadataModelID
+				if actual == "" {
+					actual = strings.TrimPrefix(model.ID, strings.TrimSpace(auth.Prefix)+"/")
+				}
+				allowed := view.Allows(actual)
+				if view.CatalogKnown {
+					allowed = false
+					for _, entry := range view.CatalogModels {
+						if entry.ID == actual && entry.Allowed {
+							allowed = true
+							break
+						}
+					}
+				}
+				if !allowed {
+					continue
+				}
+				result[i]["upstream_model"], result[i]["policy_allowed"] = actual, true
+				visible = append(visible, result[i])
+			}
+			response["models"] = visible
+			response["model_policy_supported"] = true
+			response["model_policy_state"] = view
+			response["catalog_models"] = view.CatalogModels
+		}
+	}
+	c.JSON(200, response)
 }
 
 // List auth files from disk when the auth manager is unavailable.

@@ -27,7 +27,7 @@ func TestEnterpriseGenerationStartedCannotBeOverriddenByContinueRule(t *testing.
 				m.SetConfig(cfg)
 				m.SetRetryConfig(3, 0, 2)
 				for i := 0; i < 2; i++ {
-					auth := &Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Status: StatusActive, Attributes: map[string]string{"auth_kind": "oauth"}}
+					auth := &Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Metadata: map[string]any{"model_policy": "catalog"}, Status: StatusActive, Attributes: map[string]string{"auth_kind": "oauth"}}
 					if _, err := m.Register(context.Background(), auth); err != nil {
 						t.Fatal(err)
 					}

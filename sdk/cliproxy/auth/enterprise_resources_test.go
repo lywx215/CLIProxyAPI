@@ -12,8 +12,10 @@ import (
 )
 
 func regionalTestAuth() *Auth {
-	return &Auth{ID: "regional.json", FileName: "regional.json", Provider: ge.Provider, Status: StatusActive,
+	auth := &Auth{ID: "regional.json", FileName: "regional.json", Provider: ge.Provider, Status: StatusActive,
 		Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", EngineID: "app"}, "fixture@example.test", &oauth2.Token{AccessToken: "synthetic-old", RefreshToken: "synthetic-refresh", Expiry: time.Now().Add(time.Hour)})}
+	auth.Metadata["model_policy"] = "catalog"
+	return auth
 }
 
 func TestEnterpriseResourcesMergeLatestAndFenceOldResults(t *testing.T) {

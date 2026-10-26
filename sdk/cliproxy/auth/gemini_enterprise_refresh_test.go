@@ -36,7 +36,9 @@ func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
 	m.SetRetryConfig(0, 0, 0)
 	m.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(&config.Config{}))
 	binding := config.GeminiEnterpriseOAuth{ClientID: "own-client", ProjectID: "project", EngineID: "engine"}
-	before, err := m.Register(context.Background(), &coreauth.Auth{ID: "enterprise-refresh.json", FileName: "enterprise-refresh.json", Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: ge.Metadata(binding, "test@example.com", &oauth2.Token{AccessToken: "old", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})})
+	metadata := ge.Metadata(binding, "test@example.com", &oauth2.Token{AccessToken: "old", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})
+	metadata["model_policy"] = "catalog"
+	before, err := m.Register(context.Background(), &coreauth.Auth{ID: "enterprise-refresh.json", FileName: "enterprise-refresh.json", Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata})
 	if err != nil {
 		t.Fatal(err)
 	}

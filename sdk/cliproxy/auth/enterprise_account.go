@@ -210,13 +210,22 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 
 func enterpriseCollectionSetting(key string) bool {
 	switch key {
-	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests":
+	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests":
 		return true
 	}
 	return false
 }
 
 func applyEnterpriseCollectionSettings(auth *Auth) error {
+	if _, _, err := ge.ModelPolicySettings(auth.Metadata); err != nil {
+		return err
+	}
+	for _, key := range []string{"model_policy", "allowed_models"} {
+		if value, exists := auth.Metadata[key]; exists {
+			data, _ := json.Marshal(value)
+			auth.Attributes[key] = string(data)
+		}
+	}
 	if value, exists := auth.Metadata["prefix"].(string); exists {
 		auth.Prefix = strings.Trim(strings.TrimSpace(value), "/")
 	}
@@ -274,7 +283,12 @@ func cloneAuthMetadataValue(value any) any {
 		}
 		return out
 	case []string:
-		return append([]string(nil), v...)
+		if v == nil {
+			return []string(nil)
+		}
+		out := make([]string, len(v))
+		copy(out, v)
+		return out
 	case map[string]string:
 		out := make(map[string]string, len(v))
 		for key, item := range v {

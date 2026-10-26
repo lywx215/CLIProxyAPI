@@ -21,7 +21,7 @@ import (
 func sharedQuotaAuth(t *testing.T, m *Manager, id, project, location, edition, user string) *Auth {
 	t.Helper()
 	b := config.GeminiEnterpriseOAuth{ClientID: "synthetic-client", ProjectID: project, Location: location, EngineID: "engine"}.WithDefaults()
-	a := &Auth{ID: id, Provider: ge.Provider, Status: StatusActive, Metadata: map[string]any{"client_id": b.ClientID, "project_id": project, "location": b.Location, "engine_id": b.EngineID, "refresh_token": "synthetic-" + id}}
+	a := &Auth{ID: id, Provider: ge.Provider, Status: StatusActive, Metadata: map[string]any{"model_policy": "catalog", "client_id": b.ClientID, "project_id": project, "location": b.Location, "engine_id": b.EngineID, "refresh_token": "synthetic-" + id}}
 	if edition != "" {
 		number := "12345"
 		if _, err := strconv.ParseUint(project, 10, 64); err == nil {

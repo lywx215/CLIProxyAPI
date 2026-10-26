@@ -75,7 +75,7 @@ func TestEnterpriseSharedQuotaPublicProtocolsSynthetic(t *testing.T) {
 				router, _, manager := enterpriseFixtureRouter(t)
 				binding := config.GeminiEnterpriseOAuth{ClientID: "fixture-client", ProjectID: "12345", Location: "us", EngineID: "fixture-engine"}.WithDefaults()
 				for _, id := range []string{"enterprise-wire-fixture", "enterprise-wire-sibling"} {
-					metadata := map[string]any{"client_id": binding.ClientID, "project_id": binding.ProjectID, "location": binding.Location, "engine_id": binding.EngineID, "access_token": "offline-only", "refresh_token": "offline-only"}
+					metadata := map[string]any{"model_policy": "catalog", "client_id": binding.ClientID, "project_id": binding.ProjectID, "location": binding.Location, "engine_id": binding.EngineID, "access_token": "offline-only", "refresh_token": "offline-only"}
 					a := &auth.Auth{ID: id, Provider: ge.Provider, Status: auth.StatusActive, Metadata: metadata, EnterpriseQuotaIdentity: &ge.QuotaIdentity{Verified: true, Binding: ge.Binding(binding), ProjectNumber: "12345", Location: "us", Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now()}}
 					if _, err := manager.Register(context.Background(), a); err != nil {
 						t.Fatal(err)
@@ -159,7 +159,7 @@ func TestEnterpriseSharedQuotaBrowserFixture(t *testing.T) {
 	m.SetRoundTripperProvider(&quotaWireTransport{mode: "http"})
 	b := config.GeminiEnterpriseOAuth{ClientID: "offline-browser-client", ProjectID: "12345", Location: "us", EngineID: "offline-engine"}.WithDefaults()
 	for _, id := range []string{"shared-a.json", "shared-b.json"} {
-		metadata := map[string]any{"type": ge.Provider, "email": id + "@example.test", "client_id": b.ClientID, "project_id": b.ProjectID, "location": b.Location, "collection_id": b.CollectionID, "engine_id": b.EngineID, "assistant_id": b.AssistantID, "access_token": "offline-synthetic-only", "refresh_token": "offline-synthetic-only", "expiry": "2090-01-01T00:00:00Z"}
+		metadata := map[string]any{"model_policy": "catalog", "type": ge.Provider, "email": id + "@example.test", "client_id": b.ClientID, "project_id": b.ProjectID, "location": b.Location, "collection_id": b.CollectionID, "engine_id": b.EngineID, "assistant_id": b.AssistantID, "access_token": "offline-synthetic-only", "refresh_token": "offline-synthetic-only", "expiry": "2090-01-01T00:00:00Z"}
 		a := &auth.Auth{ID: id, FileName: id, Provider: ge.Provider, Status: auth.StatusActive, Metadata: metadata, EnterpriseQuotaIdentity: &ge.QuotaIdentity{Verified: true, Binding: ge.Binding(b), ProjectNumber: b.ProjectID, Location: b.Location, Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now()}}
 		if _, err := m.Register(context.Background(), a); err != nil {
 			t.Fatal(err)

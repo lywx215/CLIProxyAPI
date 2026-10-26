@@ -146,7 +146,7 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 	}
 	resources := canonicalCollectionResources(Resources(binding))
 	collection := Collection{ID: CollectionID(resources), Revision: 1, ResourceBinding: resources}
-	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests"} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests"} {
 		if value, ok := metadata[key]; ok {
 			if collection.Settings == nil {
 				collection.Settings = make(map[string]any)

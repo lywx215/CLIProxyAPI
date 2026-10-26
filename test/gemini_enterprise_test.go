@@ -95,7 +95,9 @@ func enterpriseFixtureRouterWithConfig(t *testing.T, cfg *config.Config) (*gin.E
 	manager.SetRoundTripperProvider(transport)
 	manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(cfg))
 	id := "enterprise-wire-fixture"
-	_, err := manager.Register(context.Background(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "fixture-client", ProjectID: "fixture-project", EngineID: "fixture-engine"}, "fixture@example.com", &oauth2.Token{AccessToken: "fixture-access", RefreshToken: "fixture-refresh", Expiry: time.Now().Add(time.Hour)})})
+	metadata := ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "fixture-client", ProjectID: "fixture-project", EngineID: "fixture-engine"}, "fixture@example.com", &oauth2.Token{AccessToken: "fixture-access", RefreshToken: "fixture-refresh", Expiry: time.Now().Add(time.Hour)})
+	metadata["model_policy"] = "catalog"
+	_, err := manager.Register(context.Background(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata})
 	if err != nil {
 		t.Fatal(err)
 	}

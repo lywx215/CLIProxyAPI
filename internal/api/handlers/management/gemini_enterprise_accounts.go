@@ -83,6 +83,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	summary := geminiEnterpriseCredentialSummary(root.Metadata)
 	summary["account_id"], summary["revision"] = account.ID, account.Revision
 	summary["account_management_supported"] = true
+	summary["model_policy_supported"] = true
 	summary["discovery"] = ge.CloneAccount(account).Discovery
 	children := map[string]*coreauth.Auth{}
 	for _, child := range h.authManager.EnterpriseCollections(root.ID) {
@@ -107,6 +108,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			"settings": enterpriseCollectionSettings(collection.Settings),
 		}
 		if child != nil {
+			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
 			unavailable, status, message, _ := reconcileAuthFileCooldownState(child, now)
 			entry["auth_index"], entry["status"], entry["status_message"] = lockedAuthIndex(child), status, message
 			entry["unavailable"] = unavailable || collection.Missing
@@ -160,7 +162,7 @@ func (h *Handler) addEnterpriseAccountSummary(entry gin.H, auth *coreauth.Auth) 
 
 func enterpriseCollectionSettings(settings map[string]any) map[string]any {
 	result := map[string]any{}
-	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests"} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests"} {
 		if value, exists := settings[key]; exists {
 			result[key] = value
 		}
@@ -314,6 +316,9 @@ func (h *Handler) discoverEnterpriseAccount(ctx context.Context, base *coreauth.
 	})
 	if errUpdate != nil {
 		return nil, nil, merged, warnings, errUpdate
+	}
+	for _, child := range h.authManager.EnterpriseCollections(updated.ID) {
+		h.authManager.InvalidateEnterpriseSubscription(child)
 	}
 	if errHook := h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{updated}); errHook != nil {
 		return nil, nil, merged, warnings, errHook
@@ -472,9 +477,18 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 }
 
 func validateEnterpriseCollectionFields(fields map[string]any) error {
+	policyFields := map[string]any{}
+	for _, key := range []string{"model_policy", "allowed_models"} {
+		if value, exists := fields[key]; exists && value != nil {
+			policyFields[key] = value
+		}
+	}
+	if _, _, err := ge.ModelPolicySettings(policyFields); err != nil {
+		return err
+	}
 	for key, value := range fields {
 		if value == nil {
-			if key == "weight" || key == "request_retry" || key == "model_aliases" || key == "request_scoped_errors" || key == "headers" {
+			if key == "model_policy" || key == "allowed_models" || key == "weight" || key == "request_retry" || key == "model_aliases" || key == "request_scoped_errors" || key == "headers" {
 				continue
 			}
 			return errors.New("this collection setting cannot be null")

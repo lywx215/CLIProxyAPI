@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
 )
@@ -134,6 +136,17 @@ func (h *Handler) APICall(c *gin.Context) {
 
 	authIndex := firstNonEmptyString(body.AuthIndexSnake, body.AuthIndexCamel, body.AuthIndexPascal)
 	auth := h.authByIndex(authIndex)
+	enterpriseCall := c.GetBool(ConfigV8ContextKey) && auth != nil && auth.Provider == ge.Provider
+	if enterpriseCall {
+		if coreauth.IsEnterpriseAccountAuth(auth) {
+			enterpriseManagementFailure(c, http.StatusConflict, "collection_required", "Select a specific current collection to make an API call")
+			return
+		}
+		if auth.Disabled || auth.Status == coreauth.StatusDisabled {
+			enterpriseManagementFailure(c, http.StatusConflict, "credential_disabled", "Enable this collection before making an API call")
+			return
+		}
+	}
 
 	reqHeaders := body.Header
 	if reqHeaders == nil {
@@ -166,6 +179,14 @@ func (h *Handler) APICall(c *gin.Context) {
 		if !strings.Contains(value, "$TOKEN$") {
 			continue
 		}
+		if enterpriseCall {
+			if !strings.EqualFold(key, "Authorization") {
+				enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_token_placement", "Collection authorization is only supported in the Authorization header")
+				return
+			}
+			// The executor injects authorization after validating the saved binding.
+			continue
+		}
 		if errToken := resolveToken(); errToken != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": errToken.Error()})
 			return
@@ -174,6 +195,10 @@ func (h *Handler) APICall(c *gin.Context) {
 	}
 
 	if strings.Contains(body.Data, "$TOKEN$") {
+		if enterpriseCall {
+			enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_token_placement", "Collection authorization cannot be inserted into the request body")
+			return
+		}
 		if errToken := resolveToken(); errToken != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": errToken.Error()})
 			return
@@ -206,16 +231,37 @@ func (h *Handler) APICall(c *gin.Context) {
 		req.Header.Set(key, value)
 	}
 	if hostOverride != "" {
+		if enterpriseCall && !strings.EqualFold(hostOverride, parsedURL.Host) {
+			enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_host", "The Host header must match the selected Google endpoint")
+			return
+		}
 		req.Host = hostOverride
 	}
 
-	httpClient := &http.Client{
-		Timeout: defaultAPICallTimeout,
+	var resp *http.Response
+	var errDo error
+	if enterpriseCall {
+		// Management API calls retain their timeout across dispatch and body reads.
+		callCtx, cancel := context.WithTimeout(c.Request.Context(), defaultAPICallTimeout)
+		defer cancel()
+		callCtx = coreexec.WithRequestProxyURL(callCtx, requestProxyURL)
+		if transport, ok := callCtx.Value("cliproxy.roundtripper").(http.RoundTripper); !ok || transport == nil {
+			callCtx = context.WithValue(callCtx, "cliproxy.roundtripper", h.apiCallTransport(auth, requestProxyURL))
+		}
+		resp, errDo = h.authManager.HttpRequest(callCtx, auth, req)
+	} else {
+		httpClient := &http.Client{
+			Timeout: defaultAPICallTimeout,
+		}
+		httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
+		resp, errDo = httpClient.Do(req)
 	}
-	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
-
-	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
+		var policy *coreauth.EnterpriseModelPolicyError
+		if enterpriseCall && errors.As(errDo, &policy) {
+			enterpriseManagementFailure(c, policy.HTTPStatus, policy.Code, policy.Message)
+			return
+		}
 		log.WithError(errDo).Debug("management APICall request failed")
 		c.JSON(http.StatusBadGateway, gin.H{"error": "request failed"})
 		return
