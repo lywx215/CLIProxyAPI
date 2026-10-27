@@ -5,14 +5,36 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 )
 
+func TestSupportedLocations(t *testing.T) {
+	want := []string{"global", "us", "eu", "ca", "au", "in"}
+	if !slices.Equal(SupportedLocations(), want) {
+		t.Fatal("unexpected supported locations")
+	}
+	locations := SupportedLocations()
+	locations[0] = "changed"
+	if !slices.Equal(SupportedLocations(), want) {
+		t.Fatal("caller changed the shared locations")
+	}
+	for _, location := range append(want, "", "es", "sg", "CA", "evil.test") {
+		if SupportedLocation(location) != slices.Contains(want, location) {
+			t.Fatalf("incorrect support for %q", location)
+		}
+	}
+}
+
 func TestRegionalEndpointsAndCredentialConfinement(t *testing.T) {
-	for region, host := range map[string]string{"global": "discoveryengine.googleapis.com", "us": "us-discoveryengine.googleapis.com", "eu": "eu-discoveryengine.googleapis.com", "ca": "discoveryengine.googleapis.com"} {
+	hosts := map[string]string{
+		"global": "discoveryengine.googleapis.com", "us": "us-discoveryengine.googleapis.com", "eu": "eu-discoveryengine.googleapis.com",
+		"ca": "ca-discoveryengine.googleapis.com", "au": "au-discoveryengine.googleapis.com", "in": "in-discoveryengine.googleapis.com",
+	}
+	for region, host := range hosts {
 		binding := config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", Location: region, EngineID: "app"}
 		endpoint := "https://" + host + "/v1alpha/" + Engine(binding) + "/assistants/default_assistant:streamAssist"
 		if OriginForLocation(region) != "https://"+host {
@@ -48,8 +70,8 @@ func TestRegionalEndpointsAndCredentialConfinement(t *testing.T) {
 				t.Fatal("lost global alias or missing-location compatibility")
 			}
 		}
-		if region == "us" || region == "eu" {
-			for _, foreign := range []string{"discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com"} {
+		if region != "global" {
+			for _, foreign := range []string{"discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com", "ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com"} {
 				if foreign == host {
 					continue
 				}
@@ -68,7 +90,7 @@ func TestRegionalEndpointsAndCredentialConfinement(t *testing.T) {
 }
 
 func TestRegionalDiscoveryAndResourceValidation(t *testing.T) {
-	for _, region := range []string{"global", "us", "eu"} {
+	for _, region := range SupportedLocations() {
 		t.Run(region, func(t *testing.T) {
 			binding := (config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", Location: region, EngineID: "app"}).WithDefaults()
 			calls := 0
@@ -94,7 +116,7 @@ func TestRegionalDiscoveryAndResourceValidation(t *testing.T) {
 }
 
 func TestRegionalAutomaticResourceResolution(t *testing.T) {
-	for _, region := range []string{"us", "eu"} {
+	for _, region := range SupportedLocations()[1:] {
 		t.Run(region, func(t *testing.T) {
 			client := &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
 				status, body := 404, `{}`

@@ -21,7 +21,7 @@ const discoveryRequestLimit = 10000
 type discoveryBudgetKey struct{}
 type discoveryBudget struct{ remaining atomic.Int64 }
 
-var accountDiscoveryLocations = []string{"global", "us", "eu"}
+var accountDiscoveryLocations = SupportedLocations()
 
 type DiscoveryProject struct {
 	ProjectID    string `json:"project_id"`
@@ -63,7 +63,7 @@ type discoveryListError struct{ code, message string }
 func (e *discoveryListError) Error() string { return "gemini-enterprise: " + e.message }
 
 // DiscoverResources performs metadata GETs only. A bounded worker pool covers
-// every active visible project in all three supported locations independently.
+// every active visible project in all supported locations independently.
 func DiscoverResources(ctx context.Context, client *http.Client, application config.GeminiEnterpriseOAuth, token string, existing []Collection) (DiscoveryResult, error) {
 	result := DiscoveryResult{Collections: []Collection{}, Projects: []DiscoveryProject{}, Coverage: []DiscoveryCoverage{}, Warnings: []DiscoveryWarning{}, Status: "failed", CheckedAt: time.Now().UTC(), previous: make(map[string]ResourceBinding)}
 	if ctx == nil {

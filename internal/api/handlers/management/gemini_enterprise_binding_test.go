@@ -21,7 +21,7 @@ import (
 func TestEnterpriseResourceEditorValidatesAndPreservesCredential(t *testing.T) {
 	previous := newGeminiEnterpriseResourceClient
 	t.Cleanup(func() { newGeminiEnterpriseResourceClient = previous })
-	for _, scenario := range []string{"us", "eu", "global", "forbidden", "missing", "catalog-failure", "inconsistent", "redirect", "conflict", "concurrent-note", "invalid-region", "invalid-id", "wrong-index", "home"} {
+	for _, scenario := range []string{"us", "eu", "global", "ca", "au", "in", "forbidden", "missing", "catalog-failure", "inconsistent", "redirect", "conflict", "concurrent-note", "invalid-region", "invalid-id", "wrong-index", "home"} {
 		t.Run(scenario, func(t *testing.T) {
 			store := sdkauth.NewFileTokenStore()
 			store.SetBaseDir(t.TempDir())
@@ -36,7 +36,7 @@ func TestEnterpriseResourceEditorValidatesAndPreservesCredential(t *testing.T) {
 			resources := ge.Resources(binding)
 			resources.Location = "us"
 			resources.EngineID = "target"
-			if scenario == "eu" || scenario == "global" {
+			if ge.SupportedLocation(scenario) {
 				resources.Location = scenario
 			}
 			if scenario == "invalid-region" {
@@ -111,7 +111,7 @@ func TestEnterpriseResourceEditorValidatesAndPreservesCredential(t *testing.T) {
 			router.PATCH("/resources", h.PatchGeminiEnterpriseResources)
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodPatch, "/resources", strings.NewReader(string(payload))))
-			success := scenario == "us" || scenario == "eu" || scenario == "global" || scenario == "concurrent-note"
+			success := ge.SupportedLocation(scenario) || scenario == "concurrent-note"
 			if (response.Code == 200) != success {
 				t.Fatalf("response %d: %s", response.Code, response.Body)
 			}

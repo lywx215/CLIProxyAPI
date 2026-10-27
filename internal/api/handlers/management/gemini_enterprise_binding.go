@@ -57,8 +57,8 @@ func (h *Handler) PatchGeminiEnterpriseResources(c *gin.Context) {
 		return
 	}
 	proposed := req.Resources.Apply(binding)
-	if proposed.Validate() != nil || (proposed.Location != "global" && proposed.Location != "us" && proposed.Location != "eu" && proposed.Location != binding.Location) {
-		fail(http.StatusBadRequest, "invalid_resources", "Use valid resource IDs and a supported region: global, us or eu")
+	if proposed.Validate() != nil || (!ge.SupportedLocation(proposed.Location) && proposed.Location != binding.Location) {
+		fail(http.StatusBadRequest, "invalid_resources", "Use valid resource IDs and a supported region: global, us, eu, ca, au or in")
 		return
 	}
 	if auth.ProxyURL != "" {

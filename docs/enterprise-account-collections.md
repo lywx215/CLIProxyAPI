@@ -1,6 +1,6 @@
 # Gemini Enterprise accounts and collections
 
-One OAuth authorization can own multiple independent project, region and collection bindings. Automatic discovery reads all visible active projects in `global`, `us` and `eu`; it does not create Google resources, change licenses, enable APIs or run a model.
+One OAuth authorization can own multiple independent project, region and collection bindings. Automatic discovery reads all visible active projects in `global`, `us`, `eu`, `ca`, `au` and `in`; it does not create Google resources, change licenses, enable APIs or run a model. See [regional endpoints and validation](gemini-enterprise-regions.md) for endpoint selection and observed model availability.
 
 ## Authorization and discovery
 

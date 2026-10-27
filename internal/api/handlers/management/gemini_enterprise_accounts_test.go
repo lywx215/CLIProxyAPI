@@ -389,7 +389,7 @@ func TestEnterpriseModelTestPinsCollectionAndRejectsStaleRevision(t *testing.T) 
 }
 
 func TestEnterpriseDiscoverAddsNewCollectionsAndKeepsDisabledPreferences(t *testing.T) {
-	h, root, _ := enterpriseAccountFixture(t)
+	h, root, children := enterpriseAccountFixture(t)
 	// Legacy project slugs becoming canonical numbers must not be counted as a
 	// newly discovered project, or lose the saved disabled US collection.
 	var setupErr error
@@ -437,12 +437,13 @@ func TestEnterpriseDiscoverAddsNewCollectionsAndKeepsDisabledPreferences(t *test
 		Added    int `json:"added_collection_count"`
 		Projects int `json:"added_project_count"`
 	}
-	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Added != 3 || result.Projects != 1 {
+	wantCollections := 2 * len(ge.SupportedLocations())
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Added != wantCollections-len(children) || result.Projects != 1 {
 		_, _, _, _, diagnostic := h.discoverEnterpriseAccount(t.Context(), root)
 		t.Fatalf("discovery did not add new project: %d %s (%v)", response.Code, response.Body.String(), diagnostic)
 	}
 	_, graph, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
-	if len(graph.Collections) != 6 {
+	if len(graph.Collections) != wantCollections {
 		t.Fatalf("wrong collection count %d", len(graph.Collections))
 	}
 	for _, collection := range graph.Collections {

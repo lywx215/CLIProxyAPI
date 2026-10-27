@@ -34,6 +34,7 @@ docs/*
 !docs/management-api-v8.md
 !docs/enterprise-shared-quota-validation.md
 !docs/enterprise-model-policy.md
+!docs/gemini-enterprise-regions.md
 !docs/GEMINI_ENTERPRISE_NATIVE_COMPATIBILITY_CN.md
 AGENTS.md
 CLAUDE.md

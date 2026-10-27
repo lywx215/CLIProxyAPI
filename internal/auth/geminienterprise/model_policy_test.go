@@ -14,7 +14,7 @@ import (
 )
 
 func TestSubscriptionResolutionPagesRegionsAndFailures(t *testing.T) {
-	for _, region := range []string{"global", "us", "eu"} {
+	for _, region := range SupportedLocations() {
 		for _, scenario := range []string{"plus", "business", "paid", "unassigned", "expired", "conflict", "permission", "loop", "foreign", "unknown-tier"} {
 			t.Run(region+"/"+scenario, func(t *testing.T) {
 				pages, configs := 0, 0

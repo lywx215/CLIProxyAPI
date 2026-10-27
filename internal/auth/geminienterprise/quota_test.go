@@ -43,6 +43,9 @@ func TestEnterpriseRegionalQuotaEndpointsAndUsageIsolation(t *testing.T) {
 		{"global", "10000", "100", 9900},
 		{"us", "20000", "200", 19800},
 		{"eu", "30000", "300", 29700},
+		{"ca", "40000", "400", 39600},
+		{"au", "50000", "500", 49500},
+		{"in", "60000", "600", 59400},
 	} {
 		t.Run(tc.region, func(t *testing.T) {
 			region := tc.region
@@ -68,10 +71,10 @@ func TestEnterpriseRegionalQuotaEndpointsAndUsageIsolation(t *testing.T) {
 					suffix, kind, value = "limit", "GAUGE", tc.limit
 				}
 				known := quotaFixture(suffix, kind, value, now.Add(-time.Minute), now)
-				// Google stores all three regional pools under a global monitored resource.
+				// Regional quota labels remain authoritative on a global monitored resource.
 				known.Metric.Labels["regional_location"] = region
 				series := []quotaSeries{known}
-				for _, otherRegion := range []string{"global", "us", "eu"} {
+				for _, otherRegion := range SupportedLocations() {
 					if otherRegion == region {
 						continue
 					}
@@ -140,7 +143,7 @@ func TestEnterpriseQuotaSumsPagedDeltaAndSeparatesRegions(t *testing.T) {
 func TestEnterpriseQuotaRequiresMatchingRegionalLabel(t *testing.T) {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	start := now.Add(-time.Hour)
-	for _, region := range []string{"global", "us", "eu"} {
+	for _, region := range SupportedLocations() {
 		t.Run(region, func(t *testing.T) {
 			for _, label := range []string{"", "other-region"} {
 				limitSeries := quotaFixture("limit", "GAUGE", "10000", now, now)

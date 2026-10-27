@@ -6,14 +6,35 @@ import (
 	"strings"
 )
 
-// OriginForLocation selects an explicit official endpoint. Existing in-country
-// bindings retain the shared endpoint; no hostname is derived from user input.
+// SupportedLocations returns the regions supported by discovery and resource editing.
+func SupportedLocations() []string {
+	return []string{"global", "us", "eu", "ca", "au", "in"}
+}
+
+// SupportedLocation reports whether a location has an explicitly supported endpoint.
+func SupportedLocation(location string) bool {
+	switch location {
+	case "global", "us", "eu", "ca", "au", "in":
+		return true
+	default:
+		return false
+	}
+}
+
+// OriginForLocation selects an explicit official endpoint. Other saved locations
+// retain their legacy mapping; no hostname is derived from user input.
 func OriginForLocation(location string) string {
 	switch location {
 	case "us":
 		return "https://us-discoveryengine.googleapis.com"
 	case "eu":
 		return "https://eu-discoveryengine.googleapis.com"
+	case "ca":
+		return "https://ca-discoveryengine.googleapis.com"
+	case "au":
+		return "https://au-discoveryengine.googleapis.com"
+	case "in":
+		return "https://in-discoveryengine.googleapis.com"
 	default:
 		return Origin
 	}
@@ -35,7 +56,8 @@ func Official(req *http.Request) bool {
 		return false
 	}
 	switch req.URL.Host {
-	case "discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com":
+	case "discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com",
+		"ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com":
 		return true
 	default:
 		return false

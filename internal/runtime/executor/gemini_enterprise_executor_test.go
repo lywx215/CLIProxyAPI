@@ -205,7 +205,7 @@ func TestEnterprisePayloadFinalBarrier(t *testing.T) {
 }
 
 func TestEnterpriseRegionalInferenceBothProtocols(t *testing.T) {
-	for _, region := range []string{"global", "us", "eu"} {
+	for _, region := range ge.SupportedLocations() {
 		for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
 			for _, stream := range []bool{false, true} {
 				t.Run(region+"/"+format.String()+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
@@ -255,7 +255,7 @@ func TestEnterpriseRegionalInferenceBothProtocols(t *testing.T) {
 					if calls != 1 || !strings.Contains(string(output), "hello") || (!strings.Contains(string(output), "usageMetadata") && !strings.Contains(string(output), "prompt_tokens")) {
 						t.Fatal("lost regional response or usage", string(output))
 					}
-					for _, other := range []string{"global", "us", "eu"} {
+					for _, other := range ge.SupportedLocations() {
 						if other == region {
 							continue
 						}

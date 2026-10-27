@@ -25,7 +25,7 @@ func TestEnterpriseDefaultChannelGreetingRegionsAndUsage(t *testing.T) {
 	usage.RegisterNamedPlugin(t.Name(), capture)
 	t.Cleanup(func() { usage.RegisterNamedPlugin(t.Name(), enterpriseUsageNoop{}) })
 	for _, model := range []string{"gemini-3.8-flash", "gemini-3.1-pro-preview"} {
-		for _, region := range []string{"global", "us", "eu"} {
+		for _, region := range ge.SupportedLocations() {
 			for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
 				for _, mode := range []string{"full", "stream", "stream-usage"} {
 					t.Run(fmt.Sprintf("%s/%s/%s/%s", model, region, format, mode), func(t *testing.T) {

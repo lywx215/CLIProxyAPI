@@ -85,7 +85,10 @@ func TestEnterpriseAuthorizationIsSavedBeforeOptionalDiscovery(t *testing.T) {
 						body = `{"email":"account@example.com","verified_email":true}`
 					case "cloudresourcemanager.googleapis.com":
 						body = `{"projects":[{"name":"projects/222","state":"ACTIVE"}]}`
-					case "discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com":
+					case "discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com", "ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com":
+						if !ge.OfficialResource(req) {
+							t.Fatal("discovery used a mismatched regional endpoint")
+						}
 						if scenario == "cancelled" {
 							CancelOAuthSession(state)
 						}

@@ -19,7 +19,7 @@ var resourcePart = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 var resourceRequests = make(chan struct{}, 3)
 
 // Probe known locations with Engine.Get; end users need no list permission.
-var discoveryLocations = []string{"global", "us", "eu", "ca", "in", "asia-northeast1", "sg", "europe-west2"}
+var discoveryLocations = append(SupportedLocations(), "asia-northeast1", "sg", "europe-west2")
 
 type resourceProject struct {
 	Name      string `json:"name"`

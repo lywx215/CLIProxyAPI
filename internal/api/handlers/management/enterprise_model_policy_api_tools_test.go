@@ -31,7 +31,7 @@ type enterprisePolicyAPICallTransport struct {
 }
 
 func (f *enterprisePolicyAPICallTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme != "https" || req.URL.Host != "discoveryengine.googleapis.com" {
+	if !ge.OfficialResource(req) {
 		f.t.Errorf("unexpected upstream endpoint %s://%s", req.URL.Scheme, req.URL.Host)
 	}
 	if deadline, ok := req.Context().Deadline(); !ok || time.Until(deadline) <= 0 || time.Until(deadline) > defaultAPICallTimeout {
@@ -95,13 +95,19 @@ func enterprisePolicyAPICallRequest(t *testing.T, router *gin.Engine, path strin
 func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 	const validBody = `{"query":{"text":"hi"},"generationSpec":{"modelId":"gemini-4-argon"}}`
 	for _, scenario := range []struct {
-		name, mode, body, suffix, project, endpoint, code string
-		headers                                           map[string]string
-		disabled, account                                 bool
-		paid, unknown, imageDisabled                      bool
-		wantStatus, wantCalls, upstreamStatus             int
+		name, mode, body, suffix, project, endpoint, code, region string
+		headers                                                   map[string]string
+		disabled, account                                         bool
+		paid, unknown, imageDisabled                              bool
+		wantStatus, wantCalls, upstreamStatus                     int
 	}{
 		{name: "allowed argon", body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "ca allowed argon", region: "ca", body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "au allowed argon", region: "au", body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "in allowed argon", region: "in", body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "ca rejects global host", region: "ca", endpoint: ge.Origin, body: validBody, wantStatus: 502},
+		{name: "au rejects global host", region: "au", endpoint: ge.Origin, body: validBody, wantStatus: 502},
+		{name: "in rejects global host", region: "in", endpoint: ge.Origin, body: validBody, wantStatus: 502},
 		{name: "forbidden flash", body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "forbidden image with allowed text", body: `{"generationSpec":{"modelId":"gemini-4-argon"},"toolsSpec":{"imageGenerationSpec":{}}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "forbidden video", body: `{"toolsSpec":{"videoGenerationSpec":{}}}`, code: "model_not_allowed", wantStatus: 400},
@@ -137,7 +143,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			manager := coreauth.NewManager(nil, nil, nil)
 			manager.SetConfig(cfg)
 			manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(cfg))
-			binding := config.GeminiEnterpriseOAuth{ClientID: "synthetic-client", ProjectID: "12345", Location: "global", EngineID: "synthetic-app"}
+			binding := (config.GeminiEnterpriseOAuth{ClientID: "synthetic-client", ProjectID: "12345", Location: scenario.region, EngineID: "synthetic-app"}).WithDefaults()
 			metadata := ge.Metadata(binding, "synthetic@example.invalid", &oauth2.Token{
 				AccessToken: "synthetic-enterprise-access", RefreshToken: "synthetic-enterprise-refresh", Expiry: time.Now().Add(time.Hour),
 			})
@@ -176,7 +182,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 				project = "12345"
 			}
 			if endpoint == "" {
-				endpoint = ge.OriginForLocation("global")
+				endpoint = ge.OriginForLocation(binding.Location)
 			}
 			if suffix == "" {
 				suffix = "/assistants/default_assistant:streamAssist"
@@ -187,7 +193,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			}
 			payload := map[string]any{
 				"auth_index": auth.Index, "method": http.MethodPost, "header": headers, "data": scenario.body,
-				"url": endpoint + "/v1alpha/projects/" + project + "/locations/global/collections/default_collection/engines/synthetic-app" + suffix,
+				"url": endpoint + "/v1alpha/projects/" + project + "/locations/" + binding.Location + "/collections/default_collection/engines/synthetic-app" + suffix,
 			}
 			transport := &enterprisePolicyAPICallTransport{t: t, status: scenario.upstreamStatus}
 			// Fence the legacy direct HTTP path too, so a regression cannot reach Google.

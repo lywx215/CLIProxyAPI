@@ -89,7 +89,7 @@ func TestEnterpriseMediaReferenceDeduplication(t *testing.T) {
 func TestEnterpriseRegionalMediaDownloads(t *testing.T) {
 	var pngData bytes.Buffer
 	_ = png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2)))
-	for _, region := range []string{"global", "us", "eu"} {
+	for _, region := range ge.SupportedLocations() {
 		for _, redirectHost := range []string{"same", "cross-region", "foreign", "global-alias"} {
 			t.Run(region+"/"+redirectHost, func(t *testing.T) {
 				engine := "projects/p/locations/" + region + "/collections/default_collection/engines/e"

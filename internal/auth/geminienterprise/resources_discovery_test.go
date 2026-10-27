@@ -68,7 +68,8 @@ func TestEnterpriseAccountDiscoveryPagesAllScopesAndStableSelection(t *testing.T
 		return resourceResponse(500, ""), nil
 	})}
 	result, err := DiscoverResources(context.Background(), client, config.GeminiEnterpriseOAuth{ClientID: "application"}, "synthetic-access", []Collection{old})
-	if err != nil || result.Status != "ok" || len(result.Collections) != 6 || len(result.Coverage) != 6 || len(result.Projects) != 2 || projects.Load() != 2 || scopes.Load() != 6 || assistants.Load() != 12 {
+	wantScopes := 2 * len(SupportedLocations())
+	if err != nil || result.Status != "ok" || len(result.Collections) != wantScopes || len(result.Coverage) != wantScopes || len(result.Projects) != 2 || projects.Load() != 2 || scopes.Load() != int32(wantScopes) || assistants.Load() != int32(2*wantScopes) {
 		t.Fatalf("discovery status=%s collections=%d coverage=%d err=%v", result.Status, len(result.Collections), len(result.Coverage), err)
 	}
 	for _, collection := range result.Collections {
@@ -83,56 +84,63 @@ func TestEnterpriseAccountDiscoveryPagesAllScopesAndStableSelection(t *testing.T
 }
 
 func TestEnterpriseAccountDiscoveryPartialScopesNeverDeleteOldBindings(t *testing.T) {
-	for _, scenario := range []string{"collection-permission", "engine-permission", "assistant-permission", "engine-missing", "absent-project"} {
-		t.Run(scenario, func(t *testing.T) {
-			metadata, account := accountFixture(t)
-			_ = metadata
-			old := account.Collections[0]
-			client := &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
-				if req.URL.Host == "cloudresourcemanager.googleapis.com" {
-					if scenario == "absent-project" {
-						return resourceResponse(200, `{"projects":[]}`), nil
+	for _, region := range SupportedLocations() {
+		for _, scenario := range []string{"collection-permission", "engine-permission", "assistant-permission", "engine-missing", "absent-project"} {
+			t.Run(region+"/"+scenario, func(t *testing.T) {
+				metadata, account := accountFixture(t)
+				_ = metadata
+				account.Collections[0].Location = region
+				account.Collections[0].ID = CollectionID(account.Collections[0].ResourceBinding)
+				old := account.Collections[0]
+				client := &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
+					if req.URL.Host == "cloudresourcemanager.googleapis.com" {
+						if scenario == "absent-project" {
+							return resourceResponse(200, `{"projects":[]}`), nil
+						}
+						return resourceResponse(200, `{"projects":[{"name":"projects/123","state":"ACTIVE"}]}`), nil
 					}
-					return resourceResponse(200, `{"projects":[{"name":"projects/123","state":"ACTIVE"}]}`), nil
-				}
-				if !strings.Contains(req.URL.Path, "/locations/global/") {
-					return discoveryListResponse("collections"), nil
-				}
-				parent := collectionResourceName(old.ResourceBinding)
-				switch req.URL.Path {
-				case "/v1alpha/projects/123/locations/global/collections":
-					if scenario == "collection-permission" {
+					if !OfficialResource(req) {
+						t.Error("credential sent to an inconsistent regional endpoint")
+					}
+					if !strings.Contains(req.URL.Path, "/locations/"+region+"/") {
+						return discoveryListResponse("collections"), nil
+					}
+					parent := collectionResourceName(old.ResourceBinding)
+					switch req.URL.Path {
+					case "/v1alpha/projects/123/locations/" + region + "/collections":
+						if scenario == "collection-permission" {
+							return resourceResponse(403, `{"error":{"message":"synthetic-secret"}}`), nil
+						}
+						return discoveryListResponse("collections", parent), nil
+					case "/v1/" + parent + "/engines":
+						if scenario == "engine-permission" {
+							return resourceResponse(403, `{"error":{"message":"synthetic-secret"}}`), nil
+						}
+						if scenario == "engine-missing" {
+							return discoveryListResponse("engines"), nil
+						}
+						return discoveryListResponse("engines", parent+"/engines/engine"), nil
+					case "/v1/" + parent + "/engines/engine/assistants":
 						return resourceResponse(403, `{"error":{"message":"synthetic-secret"}}`), nil
+					case "/v1/" + parent + "/engines/engine":
+						return resourceResponse(404, `{}`), nil
 					}
-					return discoveryListResponse("collections", parent), nil
-				case "/v1/" + parent + "/engines":
-					if scenario == "engine-permission" {
-						return resourceResponse(403, `{"error":{"message":"synthetic-secret"}}`), nil
-					}
-					if scenario == "engine-missing" {
-						return discoveryListResponse("engines"), nil
-					}
-					return discoveryListResponse("engines", parent+"/engines/engine"), nil
-				case "/v1/" + parent + "/engines/engine/assistants":
-					return resourceResponse(403, `{"error":{"message":"synthetic-secret"}}`), nil
-				case "/v1/" + parent + "/engines/engine":
-					return resourceResponse(404, `{}`), nil
+					return resourceResponse(500, `{}`), nil
+				})}
+				result, err := DiscoverResources(context.Background(), client, config.GeminiEnterpriseOAuth{ClientID: "client"}, "synthetic-access", account.Collections)
+				if err != nil {
+					t.Fatal(err)
 				}
-				return resourceResponse(500, `{}`), nil
-			})}
-			result, err := DiscoverResources(context.Background(), client, config.GeminiEnterpriseOAuth{ClientID: "client"}, "synthetic-access", account.Collections)
-			if err != nil {
-				t.Fatal(err)
-			}
-			merged, added := MergeDiscoveredCollections(account, result)
-			if len(merged.Collections) != 1 || len(added) != 0 || merged.Collections[0].EngineID != old.EngineID || merged.Collections[0].Missing != (scenario == "engine-missing") {
-				t.Fatalf("partial discovery changed or lost saved collection: %+v", merged.Collections)
-			}
-			raw, _ := json.Marshal(result)
-			if strings.Contains(string(raw), "synthetic-secret") || strings.Contains(string(raw), "synthetic-access") {
-				t.Fatal("discovery diagnostic leaked credentials or upstream text")
-			}
-		})
+				merged, added := MergeDiscoveredCollections(account, result)
+				if len(merged.Collections) != 1 || len(added) != 0 || merged.Collections[0].EngineID != old.EngineID || merged.Collections[0].Missing != (scenario == "engine-missing") {
+					t.Fatalf("partial discovery changed or lost saved collection: %+v", merged.Collections)
+				}
+				raw, _ := json.Marshal(result)
+				if strings.Contains(string(raw), "synthetic-secret") || strings.Contains(string(raw), "synthetic-access") {
+					t.Fatal("discovery diagnostic leaked credentials or upstream text")
+				}
+			})
+		}
 	}
 }
 
