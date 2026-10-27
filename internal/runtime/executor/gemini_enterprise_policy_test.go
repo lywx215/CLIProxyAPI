@@ -26,10 +26,13 @@ func TestEnterprisePolicyBlocksFinalPayloadWithoutDispatch(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			for _, mode := range []string{"argon_only", "exclude_argon", "custom", "auto"} {
 				t.Run(format.String()+"/"+mode+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
-					auth := enterpriseExecutorAuth()
-					auth.Metadata["model_policy"] = mode
+					var allowed []string
 					if mode == "custom" {
-						auth.Metadata["allowed_models"] = []string{}
+						allowed = []string{}
+					}
+					auth := enterpriseExecutorAuth(t, enterpriseExecutorModelPolicy(mode, allowed))
+					if mode == "auto" {
+						auth = enterpriseExecutorSubscribedAuth(t, ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unverified"}, enterpriseExecutorModelPolicy(mode, allowed))
 					}
 					target := ge.ArgonModel
 					if mode == "argon_only" {
@@ -68,8 +71,7 @@ func TestEnterprisePolicyGatesManagementRawGenerationAndMedia(t *testing.T) {
 		`{"generationSpec":{"modelId":"gemini-4-argon"},"toolsSpec":{"imageGenerationSpec":{}}}`,
 		`{"toolsSpec":{"videoGenerationSpec":{}}}`,
 	} {
-		auth := enterpriseExecutorAuth()
-		auth.Metadata["model_policy"] = "argon_only"
+		auth := enterpriseExecutorAuth(t, enterpriseExecutorModelPolicy("argon_only", nil))
 		calls := 0
 		ctx := contextWithEnterpriseTransport(t, func(*http.Request) (*http.Response, error) {
 			calls++
@@ -96,10 +98,9 @@ func TestEnterprisePolicyRawOperationsCannotBypassModelValidation(t *testing.T) 
 		{name: "paused-read-only-resource-access", mode: "auto", method: http.MethodGet, suffix: "/assistants/default_assistant", wantCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			auth := enterpriseExecutorAuth()
-			auth.Metadata["model_policy"] = tc.mode
-			if tc.allowed != nil {
-				auth.Metadata["allowed_models"] = tc.allowed
+			auth := enterpriseExecutorAuth(t, enterpriseExecutorModelPolicy(tc.mode, tc.allowed))
+			if tc.mode == "auto" {
+				auth = enterpriseExecutorSubscribedAuth(t, ge.SubscriptionObservation{Status: "unknown"}, enterpriseExecutorModelPolicy(tc.mode, tc.allowed))
 			}
 			calls := 0
 			ctx := contextWithEnterpriseTransport(t, func(*http.Request) (*http.Response, error) {
@@ -126,8 +127,7 @@ func TestEnterprisePolicyRawOperationsCannotBypassModelValidation(t *testing.T) 
 
 func TestEnterpriseManualArgonRetainsStreamingUsage(t *testing.T) {
 	for _, stream := range []bool{false, true} {
-		auth := enterpriseExecutorAuth()
-		auth.Metadata["model_policy"] = "argon_only"
+		auth := enterpriseExecutorAuth(t, enterpriseExecutorModelPolicy("argon_only", nil))
 		calls := 0
 		ctx := contextWithEnterpriseTransport(t, func(*http.Request) (*http.Response, error) {
 			calls++
@@ -157,5 +157,66 @@ func TestEnterpriseManualArgonRetainsStreamingUsage(t *testing.T) {
 		if calls != 1 || !strings.Contains(string(output), "usageMetadata") {
 			t.Fatalf("allowed generation lost usage: calls=%d output=%s", calls, output)
 		}
+	}
+}
+
+func TestEnterpriseStandaloneUnknownCannotTrustSubscriptionMetadata(t *testing.T) {
+	for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
+		for _, model := range []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"} {
+			for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
+				for _, stream := range []bool{false, true} {
+					t.Run(mode+"/"+model+"/"+format.String()+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
+						registered := enterpriseExecutorAuth(t)
+						auth := &coreauth.Auth{ID: "standalone-unverified", Provider: ge.Provider, Metadata: registered.Metadata}
+						auth.Metadata["model_policy"] = mode
+						auth.Metadata["allowed_models"] = []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"}
+						auth.Metadata["subscription"] = map[string]any{"status": "ok", "free_trial": true, "edition": "enterprise_standard"}
+						auth.Metadata["enforced_allowed_models"] = []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"}
+						calls := 0
+						ctx := contextWithEnterpriseTransport(t, func(*http.Request) (*http.Response, error) {
+							calls++
+							return nil, errors.New("unverified standalone request dispatched")
+						})
+						payload := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
+						if format == translator.FormatGemini {
+							payload = []byte(`{"contents":[{"parts":[{"text":"hi"}]}]}`)
+						}
+						e := NewGeminiEnterpriseExecutor(&config.Config{})
+						req := coreexec.Request{Model: model, Payload: payload}
+						var err error
+						if stream {
+							_, err = e.ExecuteStream(ctx, auth, req, enterpriseOptions(format))
+						} else {
+							_, err = e.Execute(ctx, auth, req, enterpriseOptions(format))
+						}
+						var policy *coreauth.EnterpriseModelPolicyError
+						if !errors.As(err, &policy) || policy.Code != "subscription_unverified" || calls != 0 {
+							t.Fatalf("standalone subscription spoof accepted: calls=%d err=%v", calls, err)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestEnterprisePaidRawImageStillRequiresEnabledFeature(t *testing.T) {
+	trial := false
+	auth := enterpriseExecutorSubscribedAuth(t, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial, State: "ACTIVE"})
+	calls := 0
+	ctx := contextWithEnterpriseTransport(t, func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("disabled image generation dispatched")
+	})
+	body := `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ge.Origin+"/v1alpha/"+ge.Engine(ge.FromMetadata(auth.Metadata))+"/assistants/default_assistant:streamAssist", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{}
+	cfg.DisableImageGeneration = config.DisableImageGenerationAll
+	_, err = NewGeminiEnterpriseExecutor(cfg).HttpRequest(ctx, auth, req)
+	if err == nil || calls != 0 {
+		t.Fatalf("paid hard whitelist bypassed image feature disablement: calls=%d err=%v", calls, err)
 	}
 }

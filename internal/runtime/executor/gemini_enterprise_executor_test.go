@@ -24,10 +24,57 @@ import (
 type enterpriseTransport func(*http.Request) (*http.Response, error)
 
 func (f enterpriseTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func enterpriseExecutorAuth() *coreauth.Auth {
+func enterpriseExecutorAuth(t *testing.T, configure ...func(*coreauth.Auth)) *coreauth.Auth {
+	t.Helper()
+	trial := true
+	return enterpriseExecutorSubscribedAuth(t, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()}, configure...)
+}
+
+func enterpriseExecutorSubscribedAuth(t *testing.T, observation ge.SubscriptionObservation, configure ...func(*coreauth.Auth)) *coreauth.Auth {
+	t.Helper()
 	auth := &coreauth.Auth{ID: "enterprise-executor", Provider: ge.Provider, Metadata: ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "own-client", ProjectID: "project", EngineID: "engine"}, "test@example.com", &oauth2.Token{AccessToken: "access", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)})}
 	auth.Metadata["model_policy"] = "catalog"
-	return auth
+	for _, apply := range configure {
+		apply(auth)
+	}
+	manager := coreauth.NewManager(nil, nil, nil)
+	registered, err := manager.Register(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flight := manager.BeginEnterpriseSubscriptionRefresh(registered)
+	if flight == nil || !flight.Complete(observation) {
+		t.Fatal("could not publish the synthetic verified subscription")
+	}
+	models := []ge.Model{}
+	for _, id := range []string{
+		"gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro",
+		"gemini-3-pro-image", "veo-3.1", "future-enterprise-model", "configured-model", "regional-model", "actual-upstream-model",
+	} {
+		models = append(models, ge.Model{ID: id})
+	}
+	manager.PublishEnterprisePolicyCatalog(registered, models)
+	return registered
+}
+
+func enterpriseExecutorIdentity(id, region string) func(*coreauth.Auth) {
+	return func(auth *coreauth.Auth) {
+		if id != "" {
+			auth.ID = id
+		}
+		if region != "" {
+			auth.Metadata["location"] = region
+		}
+	}
+}
+
+func enterpriseExecutorModelPolicy(mode string, allowed []string) func(*coreauth.Auth) {
+	return func(auth *coreauth.Auth) {
+		auth.Metadata["model_policy"] = mode
+		if allowed != nil {
+			auth.Metadata["allowed_models"] = allowed
+		}
+	}
 }
 func enterpriseOptions(format translator.Format) exec.Options {
 	op := "chat_completions"
@@ -67,7 +114,7 @@ func TestEnterpriseExecutorBothProtocolsAndStreams(t *testing.T) {
 					e := NewGeminiEnterpriseExecutor(&config.Config{})
 					var output []byte
 					if stream {
-						result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -83,7 +130,7 @@ func TestEnterpriseExecutorBothProtocolsAndStreams(t *testing.T) {
 							output = append(output, chunk.Payload...)
 						}
 					} else {
-						result, err := e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err := e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -135,7 +182,7 @@ func TestEnterprisePayloadFinalBarrier(t *testing.T) {
 			var err error
 			if stream {
 				var result *exec.StreamResult
-				result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+				result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 				if err == nil {
 					for c := range result.Chunks {
 						if c.Err != nil {
@@ -144,7 +191,7 @@ func TestEnterprisePayloadFinalBarrier(t *testing.T) {
 					}
 				}
 			} else {
-				_, err = e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+				_, err = e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 			}
 			if filter == "generationSpec.modelId" {
 				if err == nil || calls != 0 {
@@ -162,8 +209,7 @@ func TestEnterpriseRegionalInferenceBothProtocols(t *testing.T) {
 		for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
 			for _, stream := range []bool{false, true} {
 				t.Run(region+"/"+format.String()+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
-					auth := enterpriseExecutorAuth()
-					auth.Metadata["location"] = region
+					auth := enterpriseExecutorAuth(t, enterpriseExecutorIdentity("", region))
 					cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "regional-model", Protocol: ge.Provider}}, Params: map[string]any{"query.text": "final regional query"}}}}}
 					calls := 0
 					ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", enterpriseTransport(func(req *http.Request) (*http.Response, error) {
@@ -226,7 +272,7 @@ func TestEnterpriseRegionalInferenceBothProtocols(t *testing.T) {
 
 func TestEnterpriseRejectsOperationsAndCredentialRedirects(t *testing.T) {
 	e := NewGeminiEnterpriseExecutor(&config.Config{})
-	auth := enterpriseExecutorAuth()
+	auth := enterpriseExecutorAuth(t)
 	var calls atomic.Int32
 	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", enterpriseTransport(func(*http.Request) (*http.Response, error) {
 		calls.Add(1)
@@ -272,7 +318,7 @@ func TestEnterpriseThoughtAndVisibleFailuresAreRequestScoped(t *testing.T) {
 			opts := enterpriseOptions(translator.FormatOpenAI)
 			var err error
 			if stream {
-				result, errStart := e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+				result, errStart := e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 				if errStart != nil {
 					t.Fatal(errStart)
 				}
@@ -285,7 +331,7 @@ func TestEnterpriseThoughtAndVisibleFailuresAreRequestScoped(t *testing.T) {
 					}
 				}
 			} else {
-				_, err = e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+				_, err = e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 			}
 			var scoped exec.RequestScopedError
 			if !errors.As(err, &scoped) || !scoped.IsRequestScoped() {
@@ -310,7 +356,7 @@ func TestEnterpriseCancellationClosesUpstream(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: &enterpriseCancelBody{ctx: req.Context(), closed: closed}}, nil
 	}))
 	e := NewGeminiEnterpriseExecutor(&config.Config{})
-	result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(), exec.Request{Model: "gemini-4-argon", Payload: []byte(`{"messages":[{"role":"user","content":"hi"}]}`)}, enterpriseOptions(translator.FormatOpenAI))
+	result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(t), exec.Request{Model: "gemini-4-argon", Payload: []byte(`{"messages":[{"role":"user","content":"hi"}]}`)}, enterpriseOptions(translator.FormatOpenAI))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,9 +379,9 @@ func TestEnterpriseDiagnosticHeadersAreBoundedAndSafe(t *testing.T) {
 		t.Fatalf("unbounded diagnostic header: %d bytes", len(got))
 	}
 	e := NewGeminiEnterpriseExecutor(&config.Config{})
-	req, _ := http.NewRequest("GET", ge.Origin+"/v1alpha/"+ge.Engine(ge.FromMetadata(enterpriseExecutorAuth().Metadata)), nil)
+	req, _ := http.NewRequest("GET", ge.Origin+"/v1alpha/"+ge.Engine(ge.FromMetadata(enterpriseExecutorAuth(t).Metadata)), nil)
 	req.Header = nil
-	if err := e.PrepareRequest(req, enterpriseExecutorAuth()); err != nil {
+	if err := e.PrepareRequest(req, enterpriseExecutorAuth(t)); err != nil {
 		t.Fatal(err)
 	}
 	if req.Header.Get("Authorization") != "Bearer access" {
@@ -352,10 +398,10 @@ func executeEnterpriseTestRequest(t *testing.T, e *GeminiEnterpriseExecutor, ctx
 	req := exec.Request{Model: model, Payload: body}
 	opts := enterpriseOptions(format)
 	if !stream {
-		_, err := e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+		_, err := e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 		return err
 	}
-	result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+	result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 	if err != nil {
 		return err
 	}

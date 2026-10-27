@@ -80,6 +80,11 @@ func TestEnterpriseModelProbeValidationExecutionAndSanitization(t *testing.T) {
 				registry.GetGlobalRegistry().RegisterClient(auth.ID, ge.Provider, []*registry.ModelInfo{info})
 				t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
 			}
+			actual := modelID
+			if info.MetadataModelID != "" {
+				actual = info.MetadataModelID
+			}
+			publishManagementEnterpriseTrial(t, manager, auth, ge.Model{ID: actual})
 			// A higher-priority alternate credential must never receive this probe.
 			other := auth.Clone()
 			other.ID, other.FileName = "other-"+auth.ID, "other-"+auth.FileName
@@ -278,6 +283,7 @@ func testEnterpriseProbeExecutorUsage(t *testing.T, accountMode bool) {
 		auth = manager.EnterpriseCollections(auth.ID)[0]
 	}
 	registry.GetGlobalRegistry().RegisterClient(auth.ID, ge.Provider, []*registry.ModelInfo{{ID: modelID, Type: "gemini"}})
+	publishManagementEnterpriseTrial(t, manager, auth, ge.Model{ID: modelID})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
 	manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(&config.Config{}))
 	records := make(chan usage.Record, 8)

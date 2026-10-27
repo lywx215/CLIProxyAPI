@@ -26,13 +26,45 @@ type enterpriseRefreshTransport func(*http.Request) (*http.Response, error)
 func (f enterpriseRefreshTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func (f enterpriseRefreshTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper  { return f }
 
+// The hook simulates completed background verification after credential publication.
+type enterpriseVerifiedTrialHook struct {
+	coreauth.NoopHook
+	manager *coreauth.Manager
+	t       *testing.T
+}
+
+func (h *enterpriseVerifiedTrialHook) OnAuthRegistered(_ context.Context, auth *coreauth.Auth) {
+	h.publish(auth)
+}
+
+func (h *enterpriseVerifiedTrialHook) OnAuthUpdated(_ context.Context, auth *coreauth.Auth) {
+	h.publish(auth)
+}
+
+func (h *enterpriseVerifiedTrialHook) publish(auth *coreauth.Auth) {
+	if auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) {
+		return
+	}
+	flight := h.manager.BeginEnterpriseSubscriptionRefresh(auth)
+	if flight == nil {
+		return
+	}
+	trial := true
+	if !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()}) {
+		h.t.Error("runtime trial verification was not published")
+	}
+	h.manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: ge.ArgonModel}})
+}
+
 func TestEnterpriseConcurrentUnauthorizedRefreshPersistsOnce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	const requests = 8
 	store := sdkauth.NewFileTokenStore()
 	store.SetBaseDir(t.TempDir())
-	m := coreauth.NewManager(store, nil, nil)
+	hook := &enterpriseVerifiedTrialHook{t: t}
+	m := coreauth.NewManager(store, nil, hook)
+	hook.manager = m
 	m.SetRetryConfig(0, 0, 0)
 	m.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(&config.Config{}))
 	binding := config.GeminiEnterpriseOAuth{ClientID: "own-client", ProjectID: "project", EngineID: "engine"}

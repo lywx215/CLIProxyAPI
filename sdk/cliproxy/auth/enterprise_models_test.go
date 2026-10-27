@@ -44,6 +44,7 @@ func registerEnterpriseModelTestAuth(t *testing.T, m *Manager, id, region, engin
 	if err != nil {
 		t.Fatal(err)
 	}
+	verifyEnterpriseTrialFixture(t, m, saved, model)
 	registry.GetGlobalRegistry().RegisterClient(a.ID, a.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini"}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(a.ID) })
 	return saved
@@ -400,6 +401,7 @@ func TestEnterpriseModelAvailabilityAliasFallbackCannotChangeModel(t *testing.T)
 				if _, err := m.Update(context.Background(), updated); err != nil {
 					t.Fatal(err)
 				}
+				m.PublishEnterprisePolicyCatalog(updated, []ge.Model{{ID: upstream}})
 			}
 			var mu sync.Mutex
 			var calls []string

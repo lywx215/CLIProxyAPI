@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/mediajobs"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
@@ -31,8 +32,15 @@ func newEnterpriseTaskHandler(t *testing.T, execute func(context.Context, *corea
 	m.SetRetryConfig(3, 0, 2)
 	for i := 0; i < 2; i++ {
 		auth := &coreauth.Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Status: coreauth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
-		if _, err := m.Register(context.Background(), auth); err != nil {
+		var err error
+		auth, err = m.Register(t.Context(), auth)
+		if err != nil {
 			t.Fatal(err)
+		}
+		trial := true
+		flight := m.BeginEnterpriseSubscriptionRefresh(auth)
+		if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}) {
+			t.Fatal("verified fixture subscription was not published")
 		}
 		registry.GetGlobalRegistry().RegisterClient(auth.ID, auth.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini", EnterpriseMedia: "video"}})
 		t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })

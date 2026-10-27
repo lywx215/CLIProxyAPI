@@ -57,6 +57,9 @@ func enterpriseAccountFixture(t *testing.T) (*Handler, *coreauth.Auth, []*coreau
 	if len(children) != 3 {
 		t.Fatalf("missing projected collections: %d", len(children))
 	}
+	for _, child := range children {
+		publishManagementEnterpriseTrial(t, manager, child)
+	}
 	return &Handler{authManager: manager, cfg: &config.Config{}}, root, children
 }
 
@@ -313,6 +316,7 @@ func TestEnterpriseModelCatalogRequiresSelectedCollection(t *testing.T) {
 	for i, child := range children {
 		id := []string{"fixture-global", "fixture-us", "fixture-eu"}[i]
 		registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: id}})
+		h.authManager.PublishEnterprisePolicyCatalog(child, []ge.Model{{ID: id}})
 		t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
 	}
 	for _, query := range []string{"?name=" + root.FileName, "?name=" + root.FileName + "&auth_index=wrong", "?name=" + root.FileName + "&auth_index=" + children[0].Index + "&binding_id=" + coreauth.EnterpriseBindingID(children[0])} {
@@ -338,6 +342,7 @@ func TestEnterpriseModelTestPinsCollectionAndRejectsStaleRevision(t *testing.T) 
 	child := children[0]
 	model := "multi-collection-probe"
 	registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini"}})
+	h.authManager.PublishEnterprisePolicyCatalog(child, []ge.Model{{ID: model}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
 	calls := 0
 	h.authManager.RegisterExecutor(&enterpriseProbeExecutor{execute: func(ctx context.Context, selected *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (coreexec.Response, error) {

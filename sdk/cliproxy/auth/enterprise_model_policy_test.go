@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +33,19 @@ func publishSubscription(t *testing.T, m *Manager, auth *Auth, edition string, t
 	flight := m.BeginEnterpriseSubscriptionRefresh(auth)
 	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: edition, FreeTrial: &trial, State: "ACTIVE", CheckedAt: m.enterprisePolicies.now()}) {
 		t.Fatal("subscription completion failed")
+	}
+}
+
+// Runtime observations keep unrelated fixtures independent of metadata imports and Google.
+func verifyEnterpriseTrialFixture(t *testing.T, m *Manager, auth *Auth, models ...string) {
+	t.Helper()
+	publishSubscription(t, m, auth, "enterprise_standard", true)
+	if models != nil {
+		catalog := make([]ge.Model, 0, len(models))
+		for _, model := range models {
+			catalog = append(catalog, ge.Model{ID: model})
+		}
+		m.PublishEnterprisePolicyCatalog(auth, catalog)
 	}
 }
 
@@ -246,8 +261,8 @@ func TestEnterpriseSubscriptionCanonicalReadFailureAndAuthoritativeUnknown(t *te
 			}
 			manual := numeric.Clone()
 			manual.Metadata["model_policy"] = "catalog"
-			if !m.EnterpriseModelPolicyView(manual).Allows(ge.ArgonModel) {
-				t.Fatal("subscription uncertainty overrode a manual policy")
+			if got := m.EnterpriseModelPolicyView(manual); got.Allows(ge.ArgonModel) != (reason == "subscription_unavailable") {
+				t.Fatalf("manual policy bypassed subscription verification: %+v", got)
 			}
 		})
 	}
@@ -307,6 +322,7 @@ func TestEnterpriseSubscriptionIdentityInvalidatesAuthoritativeUnknown(t *testin
 
 func TestEnterpriseCustomEmptyWhitelistSurvivesRuntimeProjection(t *testing.T) {
 	m, auth, _ := policyFixture(t)
+	verifyEnterpriseTrialFixture(t, m, auth)
 	auth.Metadata["model_policy"], auth.Metadata["allowed_models"] = "custom", []string{}
 	auth, err := m.Update(t.Context(), auth)
 	if err != nil {
@@ -323,6 +339,7 @@ func TestEnterpriseCustomEmptyWhitelistSurvivesRuntimeProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	verifyEnterpriseTrialFixture(t, m, registered)
 	if view := m.EnterpriseModelPolicyView(registered); view.AllowedModels == nil || view.Allows(ge.ArgonModel) {
 		t.Fatalf("registered empty whitelist became unrestricted: %+v", view)
 	}
@@ -348,6 +365,7 @@ func TestEnterprisePolicyFinalGateFencesAuthorizationReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	verifyEnterpriseTrialFixture(t, m, original)
 	replacement := original.Clone()
 	replacement.Metadata["refresh_token"] = "replacement-authorization"
 	if _, err = m.Update(t.Context(), replacement); err != nil {
@@ -380,4 +398,134 @@ func TestEnterpriseSubscriptionFailureBackoffStartsAtFiveSeconds(t *testing.T) {
 		}
 	}
 	flight.Cancel()
+}
+
+func TestEnterprisePaidPolicyViewReasonsSignatureAndFinalAdmission(t *testing.T) {
+	m, auth, _ := policyFixture(t)
+	auth.Metadata["model_policy"] = "catalog"
+	auth, err := m.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := []ge.Model{{ID: ge.ArgonModel}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"}, {ID: "gemini-3.8-flash"}, {ID: "auto"}}
+	m.PublishEnterprisePolicyCatalog(auth, catalog)
+	publishSubscription(t, m, auth, "enterprise_standard", true)
+	trialSignature := m.EnterpriseModelPolicySignature(auth)
+	publishSubscription(t, m, auth, "enterprise_standard", false)
+	view := m.EnterpriseModelPolicyView(auth)
+	if !slices.Equal(view.EffectiveModels, []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"}) || view.AllowedModels != nil || view.EnforcedReason != "paid_subscription_restricted" {
+		t.Fatalf("incorrect paid effective policy: %+v", view)
+	}
+	if trialSignature == m.EnterpriseModelPolicySignature(auth) {
+		t.Fatal("paid enforcement did not change the catalog publication signature")
+	}
+	for _, entry := range view.CatalogModels {
+		if !entry.Allowed && entry.Reason != "paid_subscription_restricted" {
+			t.Fatalf("paid rejection lost its hard restriction reason: %+v", entry)
+		}
+	}
+	if err = ValidateEnterpriseModelRequest(t.Context(), auth, ge.ArgonModel+"(high)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"gemini-3.8-flash", "auto", "customer-argon-alias"} {
+		var denied *EnterpriseModelPolicyError
+		err = ValidateEnterpriseModelRequest(t.Context(), auth, model)
+		if !errors.As(err, &denied) || denied.Code != "model_not_allowed" || denied.HTTPStatus != 400 || !strings.Contains(denied.Message, "Paid Enterprise subscriptions") || !isRequestScopedError(err) {
+			t.Fatalf("paid final admission for %s: %v", model, err)
+		}
+	}
+	updated := auth.Clone()
+	updated.Metadata["excluded_models"] = []string{"gemini-3-pro-image"}
+	updated, err = m.Update(t.Context(), updated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view = m.EnterpriseModelPolicyView(updated)
+	for _, entry := range view.CatalogModels {
+		if entry.ID == "gemini-3-pro-image" && (entry.Allowed || entry.Reason != "model_not_allowed") {
+			t.Fatalf("user restriction was attributed to the paid guard: %+v", entry)
+		}
+	}
+	current, _ := m.GetByID(auth.ID)
+	if current.Unavailable || current.Disabled || current.Quota.Exceeded || len(current.ModelStates) != 0 {
+		t.Fatal("paid policy denial changed credential health")
+	}
+}
+
+func TestEnterpriseEveryModelPolicyRequiresBoundedVerifiedSubscription(t *testing.T) {
+	for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
+		t.Run(mode, func(t *testing.T) {
+			m, auth, now := policyFixture(t)
+			auth.Metadata["model_policy"] = mode
+			auth.Metadata["allowed_models"] = nil
+			auth.Metadata["subscription"] = map[string]any{"status": "ok", "free_trial": true}
+			auth.Metadata["free_trial"] = true
+			auth, err := m.Update(t.Context(), auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertBlocked := func(reason string) {
+				t.Helper()
+				view := m.EnterpriseModelPolicyView(auth)
+				if view.Status != "blocked" || view.Reason != reason || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 || view.EnforcedReason != reason || len(view.EffectiveModels) != 0 {
+					t.Fatalf("unverified policy was admitted: %+v", view)
+				}
+				var denied *EnterpriseModelPolicyError
+				if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.ArgonModel); !errors.As(err, &denied) || denied.Code != "subscription_unverified" || denied.HTTPStatus != 503 {
+					t.Fatalf("unverified final admission: %v", err)
+				}
+				encoded, errJSON := json.Marshal(view)
+				if errJSON != nil || !strings.Contains(string(encoded), `"enforced_allowed_models":[]`) {
+					t.Fatalf("blocked enforcement was not serialized as an empty array: %s %v", encoded, errJSON)
+				}
+			}
+			assertBlocked("subscription_unverified")
+			publishSubscription(t, m, auth, "enterprise_plus", false)
+			*now = now.Add(enterpriseSubscriptionTTL)
+			flight := m.BeginEnterpriseSubscriptionRefresh(auth)
+			if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}) {
+				t.Fatal("temporary refresh failure did not complete")
+			}
+			if view := m.EnterpriseModelPolicyView(auth); view.Status != "stale" || view.EnforcedReason != "paid_subscription_restricted" || view.Allows("gemini-3.8-flash") {
+				t.Fatalf("temporary read failure relaxed paid enforcement: %+v", view)
+			}
+			*now = now.Add(enterpriseSubscriptionMaxStale - enterpriseSubscriptionTTL)
+			assertBlocked("subscription_cache_expired")
+			publishSubscription(t, m, auth, "enterprise_plus", false)
+			m.InvalidateEnterpriseSubscription(auth)
+			flight = m.BeginEnterpriseSubscriptionRefresh(auth)
+			if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "unassigned", Reason: "license_unassigned"}) {
+				t.Fatal("revocation did not complete")
+			}
+			assertBlocked("license_unassigned")
+		})
+	}
+}
+
+func TestEnterprisePaidGuardSurvivesAccessRefreshAndFencesNewAuthorization(t *testing.T) {
+	m, auth, _ := policyFixture(t)
+	auth.Metadata["model_policy"] = "catalog"
+	auth, err := m.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishSubscription(t, m, auth, "enterprise_standard", false)
+	rotated := auth.Clone()
+	rotated.Metadata["access_token"] = "short-lived-rotation"
+	rotated, err = m.Update(t.Context(), rotated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view := m.EnterpriseModelPolicyView(rotated); view.Subscription.Status != "ok" || view.EnforcedReason != "paid_subscription_restricted" || !view.Allows(ge.ArgonModel) || view.Allows("gemini-3.8-flash") {
+		t.Fatalf("access refresh lost the verified paid guard: %+v", view)
+	}
+	reauthorized := rotated.Clone()
+	reauthorized.Metadata["refresh_token"] = "new-authorization"
+	reauthorized, err = m.Update(t.Context(), reauthorized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view := m.EnterpriseModelPolicyView(reauthorized); view.Status != "blocked" || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 {
+		t.Fatalf("new authorization inherited an earlier subscription: %+v", view)
+	}
 }

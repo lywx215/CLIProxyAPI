@@ -51,8 +51,7 @@ func TestEnterpriseUsageAcrossChunksAndFailures(t *testing.T) {
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(raw))}, nil
 			})
 			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", transport)
-			auth := enterpriseExecutorAuth()
-			auth.ID = "enterprise-usage-capture"
+			auth := enterpriseExecutorAuth(t, enterpriseExecutorIdentity("enterprise-usage-capture", ""))
 			cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "gemini-4-argon", Protocol: "gemini-enterprise"}}, Params: map[string]any{"query.text": "最终 configured input"}}}}}
 			e := NewGeminiEnterpriseExecutor(cfg)
 			payload := `{"messages":[{"role":"user","content":"must not count this original text"}]}`

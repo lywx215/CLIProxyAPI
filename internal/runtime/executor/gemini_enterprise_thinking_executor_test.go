@@ -51,7 +51,7 @@ func TestEnterpriseThinkingProtocolsStreamsAndUsage(t *testing.T) {
 								opts := enterpriseOptions(format)
 								var packets [][]byte
 								if stream {
-									result, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+									result, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 									if err != nil {
 										t.Fatal(err)
 									}
@@ -62,7 +62,7 @@ func TestEnterpriseThinkingProtocolsStreamsAndUsage(t *testing.T) {
 										packets = append(packets, chunk.Payload)
 									}
 								} else {
-									response, err := executor.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+									response, err := executor.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 									if err != nil {
 										t.Fatal(err)
 									}
@@ -137,7 +137,7 @@ func TestEnterpriseThinkingFinalPayloadBarrier(t *testing.T) {
 					opts := enterpriseOptions(translator.FormatGemini)
 					var packets [][]byte
 					if stream {
-						result, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -148,7 +148,7 @@ func TestEnterpriseThinkingFinalPayloadBarrier(t *testing.T) {
 							packets = append(packets, chunk.Payload)
 						}
 					} else {
-						result, err := executor.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err := executor.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -176,7 +176,7 @@ func TestEnterpriseThinkingSuffixAndSnakeAliases(t *testing.T) {
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(enterpriseAnswer))}, nil
 			})
 			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", transport)
-			_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(), coreexec.Request{Model: model + "(low)", Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generation_config":{"thinking_config":{"thinking_level":"HIGH","include_thoughts":false}}}`)}, enterpriseOptions(translator.FormatGemini))
+			_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(t), coreexec.Request{Model: model + "(low)", Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generation_config":{"thinking_config":{"thinking_level":"HIGH","include_thoughts":false}}}`)}, enterpriseOptions(translator.FormatGemini))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -202,7 +202,7 @@ func TestEnterpriseThinkingJSONAcrossProtocols(t *testing.T) {
 					executor := NewGeminiEnterpriseExecutor(&config.Config{})
 					var packets [][]byte
 					if stream {
-						response, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(), req, enterpriseOptions(format))
+						response, err := executor.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, enterpriseOptions(format))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -213,7 +213,7 @@ func TestEnterpriseThinkingJSONAcrossProtocols(t *testing.T) {
 							packets = append(packets, chunk.Payload)
 						}
 					} else {
-						response, err := executor.Execute(ctx, enterpriseExecutorAuth(), req, enterpriseOptions(format))
+						response, err := executor.Execute(ctx, enterpriseExecutorAuth(t), req, enterpriseOptions(format))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -253,7 +253,7 @@ func TestEnterpriseInvalidThinkingDoesNotCallGoogle(t *testing.T) {
 					t.Fatal("invalid local controls reached Google")
 					return nil, nil
 				}))
-				_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(), coreexec.Request{Model: model, Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":` + controls + `}}`)}, enterpriseOptions(translator.FormatGemini))
+				_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(t), coreexec.Request{Model: model, Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":` + controls + `}}`)}, enterpriseOptions(translator.FormatGemini))
 				if err == nil {
 					t.Fatalf("invalid thinking controls accepted: %s", controls)
 				}
@@ -270,7 +270,7 @@ func TestEnterpriseUnverifiedModelsKeepThinkingIgnored(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(enterpriseThoughtAnswer))}, nil
 	}))
-	response, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(), coreexec.Request{Model: "gemini-2.5-pro", Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","includeThoughts":true}}}`)}, enterpriseOptions(translator.FormatGemini))
+	response, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(t), coreexec.Request{Model: "gemini-2.5-pro", Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","includeThoughts":true}}}`)}, enterpriseOptions(translator.FormatGemini))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestEnterpriseThinkingRespectsExplicitRegisteredCapability(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(enterpriseAnswer))}, nil
 			}))
-			_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(), coreexec.Request{Model: model, Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","includeThoughts":true}}}`)}, enterpriseOptions(translator.FormatGemini))
+			_, err := NewGeminiEnterpriseExecutor(&config.Config{}).Execute(ctx, enterpriseExecutorAuth(t), coreexec.Request{Model: model, Payload: []byte(`{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH","includeThoughts":true}}}`)}, enterpriseOptions(translator.FormatGemini))
 			if err != nil {
 				t.Fatal(err)
 			}

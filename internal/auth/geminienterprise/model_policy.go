@@ -3,6 +3,7 @@ package geminienterprise
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -10,12 +11,14 @@ import (
 const ArgonModel = "gemini-4-argon"
 
 type ModelPolicy struct {
-	Mode           string   `json:"mode"`
-	EffectiveMode  string   `json:"effective_mode"`
-	Status         string   `json:"status"`
-	Reason         string   `json:"reason,omitempty"`
-	AllowedModels  []string `json:"allowed_models"`
-	ExcludedModels []string `json:"excluded_models"`
+	Mode                  string   `json:"mode"`
+	EffectiveMode         string   `json:"effective_mode"`
+	Status                string   `json:"status"`
+	Reason                string   `json:"reason,omitempty"`
+	AllowedModels         []string `json:"allowed_models"`
+	ExcludedModels        []string `json:"excluded_models"`
+	EnforcedAllowedModels []string `json:"enforced_allowed_models"`
+	EnforcedReason        string   `json:"enforced_reason"`
 }
 
 func ValidModelPolicy(mode string) bool {
@@ -77,16 +80,11 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	}
 	if err != nil {
 		policy.Mode, policy.EffectiveMode, policy.Status, policy.Reason = "auto", "auto", "blocked", "invalid_model_policy"
+		policy.EnforcedAllowedModels, policy.EnforcedReason = []string{}, policy.Reason
 		return policy
 	}
-	if mode == "auto" {
-		if subscription.Status != "ok" && subscription.Status != "stale" {
-			policy.Status, policy.Reason = "blocked", subscription.Reason
-			if policy.Reason == "" {
-				policy.Reason = "subscription_unverified"
-			}
-			return policy
-		}
+	confirmed := (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil
+	if mode == "auto" && confirmed {
 		policy.EffectiveMode = "catalog"
 		if subscription.FreeTrial != nil && *subscription.FreeTrial {
 			switch subscription.Edition {
@@ -95,9 +93,6 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 			case "business_standard":
 				policy.EffectiveMode = "argon_only"
 			}
-		}
-		if subscription.Status == "stale" {
-			policy.Status = "stale"
 		}
 	}
 	if policy.EffectiveMode == "argon_only" {
@@ -109,10 +104,28 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	if policy.EffectiveMode == "custom" {
 		policy.AllowedModels = allowed
 	}
+	if !confirmed {
+		policy.Status, policy.Reason = "blocked", subscription.Reason
+		if policy.Reason == "" {
+			policy.Reason = "subscription_unverified"
+		}
+		policy.EnforcedAllowedModels, policy.EnforcedReason = []string{}, policy.Reason
+		return policy
+	}
+	if subscription.Status == "stale" {
+		policy.Status = "stale"
+	}
+	if !*subscription.FreeTrial {
+		// The paid ceiling comes only from runtime license verification, never saved settings.
+		policy.EnforcedAllowedModels = []string{ArgonModel, "gemini-3-pro-image", "veo-3.1"}
+		policy.EnforcedReason = "paid_subscription_restricted"
+	}
 	return policy
 }
 
-func (p ModelPolicy) Restricted() bool { return p.AllowedModels != nil || len(p.ExcludedModels) > 0 }
+func (p ModelPolicy) Restricted() bool {
+	return p.EnforcedAllowedModels != nil || p.AllowedModels != nil || len(p.ExcludedModels) > 0
+}
 
 func (p ModelPolicy) Allows(model string) bool {
 	if p.Status == "blocked" {
@@ -123,6 +136,9 @@ func (p ModelPolicy) Allows(model string) bool {
 		return false
 	}
 	if p.Restricted() && IsAutoModel(model) {
+		return false
+	}
+	if p.EnforcedAllowedModels != nil && !slices.Contains(p.EnforcedAllowedModels, model) {
 		return false
 	}
 	if p.AllowedModels != nil {

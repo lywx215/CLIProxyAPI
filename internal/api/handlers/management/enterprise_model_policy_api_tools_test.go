@@ -98,6 +98,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		name, mode, body, suffix, project, endpoint, code string
 		headers                                           map[string]string
 		disabled, account                                 bool
+		paid, unknown, imageDisabled                      bool
 		wantStatus, wantCalls, upstreamStatus             int
 	}{
 		{name: "allowed argon", body: validBody, wantStatus: 200, wantCalls: 1},
@@ -117,9 +118,22 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		{name: "account requires collection", body: validBody, account: true, code: "collection_required", wantStatus: 409},
 		{name: "redirect is returned without following", body: validBody, upstreamStatus: 302, wantStatus: 200, wantCalls: 1},
 		{name: "manual media allowed", mode: "exclude_argon", body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
+		{name: "paid auto cannot widen", mode: "auto", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "paid catalog cannot widen", mode: "catalog", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "paid argon-only cannot widen", mode: "argon_only", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "paid exclude-argon cannot widen", mode: "exclude_argon", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "paid custom cannot widen", mode: "custom", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "paid argon allowed", mode: "catalog", paid: true, body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "paid image allowed", mode: "catalog", paid: true, body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
+		{name: "paid video allowed", mode: "catalog", paid: true, body: `{"query":{"text":"video"},"toolsSpec":{"videoGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
+		{name: "paid image feature disabled", mode: "catalog", paid: true, imageDisabled: true, body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 502},
+		{name: "unknown manual catalog", mode: "catalog", unknown: true, body: validBody, code: "subscription_unverified", wantStatus: 503},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			cfg := &config.Config{}
+			if scenario.imageDisabled {
+				cfg.DisableImageGeneration = config.DisableImageGenerationAll
+			}
 			manager := coreauth.NewManager(nil, nil, nil)
 			manager.SetConfig(cfg)
 			manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(cfg))
@@ -130,6 +144,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			metadata["model_policy"] = "argon_only"
 			if scenario.mode != "" {
 				metadata["model_policy"] = scenario.mode
+			}
+			if scenario.mode == "custom" {
+				metadata["allowed_models"] = []string{ge.ArgonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1"}
 			}
 			if scenario.account {
 				account, err := ge.AccountFromLegacy(metadata)
@@ -148,6 +165,12 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{
 				{ID: ge.ArgonModel}, {ID: "gemini-3.8-flash"}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"},
 			})
+			if scenario.paid {
+				trial := false
+				publishManagementEnterpriseSubscription(t, manager, auth, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
+			} else if !scenario.account && scenario.mode != "auto" && !scenario.unknown {
+				publishManagementEnterpriseTrial(t, manager, auth)
+			}
 			project, endpoint, suffix := scenario.project, scenario.endpoint, scenario.suffix
 			if project == "" {
 				project = "12345"
@@ -187,6 +210,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			}
 			if scenario.code != "" && gjson.GetBytes(response.Body.Bytes(), "code").String() != scenario.code {
 				t.Fatalf("local policy rejection was lost: %s", response.Body.String())
+			}
+			if scenario.paid && scenario.wantCalls == 0 && scenario.code == "model_not_allowed" && !strings.Contains(response.Body.String(), "Paid Enterprise subscriptions permit only") {
+				t.Fatalf("paid restriction was not explained: %s", response.Body.String())
 			}
 			for _, private := range []string{"synthetic-enterprise-access", "synthetic-enterprise-refresh", "synthetic-management-secret"} {
 				if strings.Contains(response.Body.String(), private) {

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -287,10 +288,14 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 	c.mu.Unlock()
 	view.CatalogKnown = known
 	for _, model := range models {
-		allowed := policy.Allows(model.ID) && !(policy.Restricted() && strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto"))
+		automatic := strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto")
+		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
 		reason := ""
 		if !allowed {
 			reason = policy.Reason
+			if reason == "" && policy.EnforcedAllowedModels != nil && (!slices.Contains(policy.EnforcedAllowedModels, model.ID) || automatic) {
+				reason = policy.EnforcedReason
+			}
 			if reason == "" {
 				reason = "model_not_allowed"
 			}
@@ -320,10 +325,10 @@ func EnterpriseModelPolicyForRequest(auth *Auth) ge.ModelPolicy {
 		if current, ok := manager.GetByID(auth.ID); ok && current.Provider == ge.Provider && current.RegistrationEpoch == auth.RegistrationEpoch && EnterpriseSubscriptionKey(current) == EnterpriseSubscriptionKey(auth) {
 			return manager.EnterpriseModelPolicyView(current).ModelPolicy
 		}
-		return ge.ModelPolicy{Status: "blocked", Reason: "credential_changed"}
+		return ge.ModelPolicy{Status: "blocked", Reason: "credential_changed", EnforcedAllowedModels: []string{}, EnforcedReason: "credential_changed"}
 	}
 	if auth == nil {
-		return ge.ModelPolicy{Status: "blocked", Reason: "subscription_unverified"}
+		return ge.ModelPolicy{Status: "blocked", Reason: "subscription_unverified", EnforcedAllowedModels: []string{}, EnforcedReason: "subscription_unverified"}
 	}
 	return ge.ModelPolicyFor(auth.Metadata, ge.SubscriptionObservation{})
 }
@@ -334,9 +339,12 @@ func (*EnterpriseModelPolicyError) IsRequestScoped() bool { return true }
 
 func policyError(policy ge.ModelPolicy, model string) error {
 	if policy.Status == "blocked" {
-		return &EnterpriseModelPolicyError{"subscription_unverified", "The Enterprise collection is paused until its subscription or model policy is confirmed", 503}
+		return &EnterpriseModelPolicyError{"subscription_unverified", "The Enterprise collection is paused until the current user's assigned subscription is verified", 503}
 	}
 	if !policy.Allows(canonicalModelKey(model)) {
+		if policy.EnforcedReason == "paid_subscription_restricted" {
+			return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
+		}
 		return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
 	}
 	return nil

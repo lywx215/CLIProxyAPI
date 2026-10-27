@@ -77,9 +77,13 @@ func TestEnterpriseSharedQuotaPublicProtocolsSynthetic(t *testing.T) {
 				for _, id := range []string{"enterprise-wire-fixture", "enterprise-wire-sibling"} {
 					metadata := map[string]any{"model_policy": "catalog", "client_id": binding.ClientID, "project_id": binding.ProjectID, "location": binding.Location, "engine_id": binding.EngineID, "access_token": "offline-only", "refresh_token": "offline-only"}
 					a := &auth.Auth{ID: id, Provider: ge.Provider, Status: auth.StatusActive, Metadata: metadata, EnterpriseQuotaIdentity: &ge.QuotaIdentity{Verified: true, Binding: ge.Binding(binding), ProjectNumber: "12345", Location: "us", Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now()}}
-					if _, err := manager.Register(context.Background(), a); err != nil {
+					registered, err := manager.Register(context.Background(), a)
+					if err != nil {
 						t.Fatal(err)
 					}
+					trial := true
+					enterprisePublishSubscription(t, manager, registered, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
+					manager.PublishEnterprisePolicyCatalog(registered, []ge.Model{{ID: ge.ArgonModel}})
 					registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, []*registry.ModelInfo{{ID: "gemini-4-argon", Type: "gemini", OwnedBy: ge.Provider, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}})
 					t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(id) })
 				}
@@ -161,9 +165,13 @@ func TestEnterpriseSharedQuotaBrowserFixture(t *testing.T) {
 	for _, id := range []string{"shared-a.json", "shared-b.json"} {
 		metadata := map[string]any{"model_policy": "catalog", "type": ge.Provider, "email": id + "@example.test", "client_id": b.ClientID, "project_id": b.ProjectID, "location": b.Location, "collection_id": b.CollectionID, "engine_id": b.EngineID, "assistant_id": b.AssistantID, "access_token": "offline-synthetic-only", "refresh_token": "offline-synthetic-only", "expiry": "2090-01-01T00:00:00Z"}
 		a := &auth.Auth{ID: id, FileName: id, Provider: ge.Provider, Status: auth.StatusActive, Metadata: metadata, EnterpriseQuotaIdentity: &ge.QuotaIdentity{Verified: true, Binding: ge.Binding(b), ProjectNumber: b.ProjectID, Location: b.Location, Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now()}}
-		if _, err := m.Register(context.Background(), a); err != nil {
+		registered, err := m.Register(context.Background(), a)
+		if err != nil {
 			t.Fatal(err)
 		}
+		trial := true
+		enterprisePublishSubscription(t, m, registered, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
+		m.PublishEnterprisePolicyCatalog(registered, []ge.Model{{ID: ge.ArgonModel}})
 		data, _ := json.Marshal(metadata)
 		if err := os.WriteFile(filepath.Join(dir, id), data, 0600); err != nil {
 			t.Fatal(err)

@@ -29,9 +29,7 @@ func TestEnterpriseDefaultChannelGreetingRegionsAndUsage(t *testing.T) {
 			for _, format := range []translator.Format{translator.FormatOpenAI, translator.FormatGemini} {
 				for _, mode := range []string{"full", "stream", "stream-usage"} {
 					t.Run(fmt.Sprintf("%s/%s/%s/%s", model, region, format, mode), func(t *testing.T) {
-						auth := enterpriseExecutorAuth()
-						auth.ID = "enterprise-usage-capture"
-						auth.Metadata["location"] = region
+						auth := enterpriseExecutorAuth(t, enterpriseExecutorIdentity("enterprise-usage-capture", region))
 						var finalBody []byte
 						calls := 0
 						ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", enterpriseTransport(func(r *http.Request) (*http.Response, error) {
@@ -165,7 +163,7 @@ func TestEnterpriseGreetingPayloadRulesRemainFinal(t *testing.T) {
 					var err error
 					if stream {
 						var result *exec.StreamResult
-						result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err == nil {
 							for chunk := range result.Chunks {
 								if chunk.Err != nil {
@@ -174,7 +172,7 @@ func TestEnterpriseGreetingPayloadRulesRemainFinal(t *testing.T) {
 							}
 						}
 					} else {
-						_, err = e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+						_, err = e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 					}
 					if mode == "filter" {
 						if err == nil || calls != 0 {
@@ -208,8 +206,7 @@ func TestEnterpriseGreetingEmptyReplyRemainsFailure(t *testing.T) {
 				if format == translator.FormatGemini {
 					body = []byte(`{"contents":[{"parts":[{"text":"hi"}]}]}`)
 				}
-				auth := enterpriseExecutorAuth()
-				auth.ID = "enterprise-usage-capture"
+				auth := enterpriseExecutorAuth(t, enterpriseExecutorIdentity("enterprise-usage-capture", ""))
 				e := NewGeminiEnterpriseExecutor(&config.Config{})
 				opts := enterpriseOptions(format)
 				opts.Stream = stream

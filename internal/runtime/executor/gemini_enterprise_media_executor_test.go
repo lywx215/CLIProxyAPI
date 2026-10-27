@@ -29,7 +29,7 @@ func TestEnterpriseMediaAllFormatsAndStreams(t *testing.T) {
 					continue
 				}
 				t.Run(fmt.Sprintf("%s/%s/%t", kind, protocol, stream), func(t *testing.T) {
-					auth := enterpriseExecutorAuth()
+					auth := enterpriseExecutorAuth(t)
 					engine := ge.Engine(ge.FromMetadata(auth.Metadata))
 					mime := "image/png"
 					data := pngData.Bytes()
@@ -124,7 +124,7 @@ func TestEnterpriseMediaFilteredToolAndDownloadFailure(t *testing.T) {
 			calls++
 			return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`[{"answer":{"state":"IN_PROGRESS"}},{"answer":{"state":"SUCCEEDED"}}]`))}, nil
 		}))
-		_, err := NewGeminiEnterpriseExecutor(cfg).Execute(ctx, enterpriseExecutorAuth(), coreexec.Request{Model: "gemini-3-pro-image", Payload: []byte(`{"messages":[{"role":"user","content":"cat"}]}`)}, enterpriseOptions(translator.FormatOpenAI))
+		_, err := NewGeminiEnterpriseExecutor(cfg).Execute(ctx, enterpriseExecutorAuth(t), coreexec.Request{Model: "gemini-3-pro-image", Payload: []byte(`{"messages":[{"role":"user","content":"cat"}]}`)}, enterpriseOptions(translator.FormatOpenAI))
 		if err == nil || !err.(interface{ IsRequestScoped() bool }).IsRequestScoped() {
 			t.Fatal("failure would allow regeneration")
 		}

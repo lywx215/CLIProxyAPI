@@ -31,7 +31,8 @@ func enterpriseTestService(t *testing.T, id string) (*Service, *coreauth.Auth) {
 	}
 	svc := &Service{cfg: &config.Config{}, coreManager: manager, antigravityContext: t.Context()}
 	svc.enterpriseState().fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
-		return ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}
+		trial := true
+		return ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}
 	}
 	t.Cleanup(func() {
 		svc.cancelEnterpriseProbes("")
@@ -39,6 +40,15 @@ func enterpriseTestService(t *testing.T, id string) (*Service, *coreauth.Auth) {
 		GlobalModelRegistry().UnregisterClient(id)
 	})
 	return svc, auth
+}
+
+func publishEnterpriseTrialFixture(t *testing.T, manager *coreauth.Manager, auth *coreauth.Auth) {
+	t.Helper()
+	trial := true
+	flight := manager.BeginEnterpriseSubscriptionRefresh(auth)
+	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}) {
+		t.Fatal("verified fixture subscription was not published")
+	}
 }
 
 func TestEnterpriseCatalogLifecycle(t *testing.T) {
@@ -170,6 +180,7 @@ func TestEnterpriseCatalogPreservesCooldownAndFencesRevision(t *testing.T) {
 
 func TestEnterpriseDiscoverySingleflightAndTokenFence(t *testing.T) {
 	svc, auth := enterpriseTestService(t, "enterprise-token-fence")
+	publishEnterpriseTrialFixture(t, svc.coreManager, auth)
 	d := svc.enterpriseState()
 	started, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
@@ -289,6 +300,7 @@ func TestEnterpriseDiscoveryFencesRemovedDisabledAndReboundAccounts(t *testing.T
 
 func TestEnterpriseDiscoveryFiveSlotsAndAccountIsolation(t *testing.T) {
 	svc, first := enterpriseTestService(t, "enterprise-slots-0")
+	publishEnterpriseTrialFixture(t, svc.coreManager, first)
 	d := svc.enterpriseState()
 	started, release := make(chan struct{}, 6), make(chan struct{})
 	var active, maximum atomic.Int32

@@ -120,6 +120,9 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 	}
 	policy := coreauth.EnterpriseModelPolicyForRequest(auth)
 	if req.Method != http.MethodGet && req.Method != http.MethodHead && !strings.HasSuffix(req.URL.Path, ":streamAssist") && (policy.Status == "blocked" || policy.Restricted()) {
+		if policy.Status == "blocked" {
+			return nil, &coreauth.EnterpriseModelPolicyError{Code: "subscription_unverified", Message: "The Enterprise collection is paused until the current user's assigned subscription is verified", HTTPStatus: 503}
+		}
 		return nil, &coreauth.EnterpriseModelPolicyError{Code: "model_policy_operation_unsupported", Message: "This operation cannot verify the upstream model required by the Enterprise collection policy", HTTPStatus: 400}
 	}
 	if strings.HasSuffix(req.URL.Path, ":streamAssist") {
@@ -145,6 +148,9 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 			models = append(models, model)
 		}
 		if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
+			if e.cfg != nil && e.cfg.DisableImageGeneration == config.DisableImageGenerationAll {
+				return nil, enterprise.Invalid("image generation is disabled for this endpoint")
+			}
 			models = append(models, "gemini-3-pro-image")
 		}
 		if gjson.GetBytes(body, "toolsSpec.videoGenerationSpec").Exists() {
@@ -226,6 +232,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	}
 	if err := coreauth.ValidateEnterpriseModelRequest(ctx, auth, finalModel); err != nil {
 		return nil, input, err
+	}
+	if kind != "" && ge.IsAutoModel(thinking.ParseSuffix(helps.PayloadRequestedModel(opts, req.Model)).ModelName) {
+		return nil, input, &coreauth.EnterpriseModelPolicyError{Code: "model_not_allowed", Message: "Automatic model selection cannot start image or video generation; request an explicit media model", HTTPStatus: 400}
 	}
 	if auth == nil {
 		return nil, input, enterprise.Invalid("missing Gemini Enterprise authentication")

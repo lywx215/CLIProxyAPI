@@ -20,7 +20,7 @@ const enterpriseModelDisabledResponse = `[{"error":{"code":400,"status":"INVALID
 func TestEnterpriseModelProbeValidatesFinalPayload(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "full", true: "stream"}[stream], func(t *testing.T) {
-			auth := enterpriseExecutorAuth()
+			auth := enterpriseExecutorAuth(t)
 			cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "gemini-4-argon", Protocol: "gemini-enterprise"}}, Params: map[string]any{"generationSpec.modelId": "another-model"}}}}}
 			calls := 0
 			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", enterpriseTransport(func(r *http.Request) (*http.Response, error) {
@@ -58,7 +58,7 @@ func TestEnterpriseModelRejectionUsesFinalPayloadModel(t *testing.T) {
 				var err error
 				if stream {
 					var result *coreexec.StreamResult
-					result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, enterpriseOptions(translator.FormatGemini))
+					result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, enterpriseOptions(translator.FormatGemini))
 					if err == nil {
 						for chunk := range result.Chunks {
 							if chunk.Err != nil {
@@ -67,7 +67,7 @@ func TestEnterpriseModelRejectionUsesFinalPayloadModel(t *testing.T) {
 						}
 					}
 				} else {
-					_, err = e.Execute(ctx, enterpriseExecutorAuth(), req, enterpriseOptions(translator.FormatGemini))
+					_, err = e.Execute(ctx, enterpriseExecutorAuth(t), req, enterpriseOptions(translator.FormatGemini))
 				}
 				var rejection *ge.GenerationError
 				if !errors.As(err, &rejection) || !rejection.ModelNotEnabled || rejection.Model != "actual-upstream-model" || rejection.Started || rejection.StatusCode() != 400 {

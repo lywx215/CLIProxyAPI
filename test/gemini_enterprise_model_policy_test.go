@@ -1,6 +1,7 @@
 package test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,6 +33,7 @@ type enterprisePolicyWireTransport struct {
 	mu         sync.Mutex
 	requests   []enterprisePolicyWireRequest
 	unexpected atomic.Int32
+	downloads  atomic.Int32
 }
 
 func (f *enterprisePolicyWireTransport) RoundTripperFor(*coreauth.Auth) http.RoundTripper {
@@ -39,6 +41,14 @@ func (f *enterprisePolicyWireTransport) RoundTripperFor(*coreauth.Auth) http.Rou
 }
 
 func (f *enterprisePolicyWireTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme == "https" && req.URL.Host == "discoveryengine.googleapis.com" && req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, ":downloadFile") {
+		f.downloads.Add(1)
+		data := enterprisePolicyPNG
+		if req.URL.Query().Get("fileId") == "file-video" {
+			data = base64.StdEncoding.EncodeToString([]byte("\x00\x00\x00\x18ftypisomfixture"))
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(data))}, nil
+	}
 	if req.URL.Scheme != "https" || req.URL.Host != "discoveryengine.googleapis.com" || req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, ":streamAssist") {
 		f.unexpected.Add(1)
 		f.t.Errorf("generation attempted an unexpected HTTP operation: %s %s://%s%s", req.Method, req.URL.Scheme, req.URL.Host, req.URL.Path)
@@ -48,14 +58,29 @@ func (f *enterprisePolicyWireTransport) RoundTrip(req *http.Request) (*http.Resp
 	if err != nil {
 		return nil, err
 	}
+	model, media := gjson.GetBytes(body, "generationSpec.modelId").String(), ""
+	if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
+		model, media = "gemini-3-pro-image", "image"
+	} else if gjson.GetBytes(body, "toolsSpec.videoGenerationSpec").Exists() {
+		model, media = "veo-3.1", "video"
+	}
 	f.mu.Lock()
 	f.requests = append(f.requests, enterprisePolicyWireRequest{
 		path:          req.URL.Path,
-		model:         gjson.GetBytes(body, "generationSpec.modelId").String(),
+		model:         model,
 		userProject:   req.Header.Get("X-Goog-User-Project"),
 		authorization: req.Header.Get("Authorization"),
 	})
 	f.mu.Unlock()
+	if media != "" {
+		engine := strings.TrimPrefix(strings.SplitN(req.URL.Path, "/assistants/", 2)[0], "/v1alpha/")
+		mime := "image/png"
+		if media == "video" {
+			mime = "video/mp4"
+		}
+		reply := fmt.Sprintf(`[{"sessionInfo":{"session":%q},"answer":{"state":"IN_PROGRESS","replies":[{"content":{"file":{"fileId":%q,"mimeType":%q}}}]}},{"answer":{"state":"SUCCEEDED"}}]`, engine+"/sessions/policy-session", "file-"+media, mime)
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(reply))}, nil
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": {"application/json"}},
@@ -65,6 +90,8 @@ func (f *enterprisePolicyWireTransport) RoundTrip(req *http.Request) (*http.Resp
 		]`)),
 	}, nil
 }
+
+const enterprisePolicyPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jbekAAAAASUVORK5CYII="
 
 func (f *enterprisePolicyWireTransport) snapshot() []enterprisePolicyWireRequest {
 	f.mu.Lock()
@@ -77,6 +104,8 @@ type enterprisePolicyWireAuth struct {
 	trial, unknown                     bool
 	aliases                            []config.OAuthModelAlias
 	allowedModels                      []string
+	subscription                       *ge.SubscriptionObservation
+	priority                           string
 }
 
 type enterprisePolicyWireFixture struct {
@@ -111,6 +140,8 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 		{ID: ge.ArgonModel},
 		{ID: "gemini-3.8-flash"},
 		{ID: "gemini-3.1-pro-preview"},
+		{ID: "gemini-3-pro-image", MediaKind: "image"},
+		{ID: "veo-3.1", MediaKind: "video"},
 		{ID: "auto", DisplayName: "Auto"},
 		{ID: "gemini-auto", DisplayName: "Auto"},
 	}
@@ -127,7 +158,7 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 		if spec.allowedModels != nil {
 			metadata["allowed_models"] = spec.allowedModels
 		}
-		auth := &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Prefix: spec.prefix, Metadata: metadata}
+		auth := &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Prefix: spec.prefix, Metadata: metadata, Attributes: map[string]string{"priority": spec.priority}}
 		coreauth.SetOAuthModelAliasesAttribute(auth, spec.aliases)
 		registered, err := manager.Register(t.Context(), auth)
 		if err != nil {
@@ -145,6 +176,9 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 		if spec.unknown {
 			observation = ge.SubscriptionObservation{Status: "unknown", Reason: "permission_denied", CheckedAt: time.Now().UTC()}
 		}
+		if spec.subscription != nil {
+			observation = *spec.subscription
+		}
 		if !flight.Complete(observation) {
 			t.Fatal("synthetic subscription observation was rejected")
 		}
@@ -158,8 +192,15 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 			if spec.prefix != "" {
 				model = spec.prefix + "/" + model
 			}
+			media := ""
+			if upstream == "gemini-3-pro-image" {
+				media = "image"
+			} else if upstream == "veo-3.1" {
+				media = "video"
+			}
 			models = append(models, &registry.ModelInfo{
 				ID: model, Name: "models/" + model, MetadataModelID: upstream, Type: "gemini", OwnedBy: ge.Provider,
+				EnterpriseMedia:            media,
 				SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"},
 			})
 		}
@@ -506,14 +547,13 @@ func TestEnterprisePolicyPinnedCollectionAdmission(t *testing.T) {
 	}
 }
 
-func TestEnterprisePolicyPublicPaidAndManualCatalog(t *testing.T) {
+func TestEnterprisePolicyPublicManualTrialCatalog(t *testing.T) {
 	for _, scenario := range []struct {
 		name string
 		auth enterprisePolicyWireAuth
 	}{
-		{name: "paid business", auth: enterprisePolicyWireAuth{id: "paid-business", project: "12345", edition: "business_standard"}},
-		{name: "paid plus", auth: enterprisePolicyWireAuth{id: "paid-plus", project: "67890", edition: "enterprise_plus"}},
-		{name: "manual catalog with unverified subscription", auth: enterprisePolicyWireAuth{id: "manual-catalog", project: "12345", unknown: true, mode: "catalog"}},
+		{name: "business trial manual catalog", auth: enterprisePolicyWireAuth{id: "business-catalog", project: "12345", edition: "business_standard", trial: true, mode: "catalog"}},
+		{name: "plus trial manual catalog", auth: enterprisePolicyWireAuth{id: "plus-catalog", project: "67890", edition: "enterprise_plus", trial: true, mode: "catalog"}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{scenario.auth})
@@ -543,7 +583,7 @@ func TestEnterprisePolicyPublicManualRestrictions(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s/allowed=%v", scenario.mode, scenario.allowed), func(t *testing.T) {
 			fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{{
-				id: "manual", project: "12345", unknown: true, mode: scenario.mode, allowedModels: scenario.allowed,
+				id: "manual", project: "12345", edition: "enterprise_standard", trial: true, mode: scenario.mode, allowedModels: scenario.allowed,
 			}})
 			for _, model := range []string{ge.ArgonModel, "gemini-3.8-flash", "gemini-3.1-pro-preview"} {
 				for _, protocol := range []string{"openai", "gemini"} {
@@ -565,5 +605,257 @@ func TestEnterprisePolicyPublicManualRestrictions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func enterprisePolicyAssertPublicDenied(t *testing.T, fixture *enterprisePolicyWireFixture, model, protocol string, stream bool) {
+	t.Helper()
+	before := len(fixture.transport.snapshot())
+	path, body := enterprisePublicRequest(t, model, protocol, stream, nil)
+	response := enterprisePublicCall(fixture.router, path, body)
+	if got := len(fixture.transport.snapshot()) - before; got != 0 || response.Code < http.StatusBadRequest {
+		t.Fatalf("restricted request: generation_calls=%d status=%d body=%s", got, response.Code, response.Body.String())
+	}
+	enterprisePolicyAssertNotCooled(t, fixture)
+}
+
+func enterprisePolicyAssertPublicMediaSuccess(t *testing.T, fixture *enterprisePolicyWireFixture, model, upstream, project, protocol string, stream bool) {
+	t.Helper()
+	before, downloads := len(fixture.transport.snapshot()), fixture.transport.downloads.Load()
+	fields := map[string]any(nil)
+	if protocol == "openai" && stream {
+		fields = map[string]any{"stream_options": map[string]any{"include_usage": true}}
+	}
+	path, body := enterprisePublicRequest(t, model, protocol, stream, fields)
+	response := enterprisePublicCall(fixture.router, path, body)
+	requests := fixture.transport.snapshot()
+	if response.Code != http.StatusOK || len(requests) != before+1 || fixture.transport.downloads.Load() != downloads+1 {
+		t.Fatalf("media generation: status=%d generation_calls=%d downloads=%d body=%s", response.Code, len(requests)-before, fixture.transport.downloads.Load()-downloads, response.Body.String())
+	}
+	enterprisePolicyAssertWireRequest(t, requests[before], upstream, project)
+	encoded := enterprisePolicyPNG
+	if upstream == "veo-3.1" {
+		encoded = base64.StdEncoding.EncodeToString([]byte("\x00\x00\x00\x18ftypisomfixture"))
+	}
+	if !strings.Contains(response.Body.String(), encoded) || !strings.Contains(response.Body.String(), "usage") {
+		t.Fatalf("media response lost its artifact or final usage: %s", response.Body.String())
+	}
+}
+
+func TestEnterprisePaidPolicyAllModesAndPublicMedia(t *testing.T) {
+	for _, edition := range []string{"business_standard", "enterprise_plus"} {
+		for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
+			t.Run(edition+"/"+mode, func(t *testing.T) {
+				spec := enterprisePolicyWireAuth{
+					id: "paid", project: "12345", edition: edition, mode: mode, prefix: "paid-team",
+					allowedModels: []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1", "gemini-3.8-flash", "gemini-3.1-pro-preview"},
+					aliases:       []config.OAuthModelAlias{{Name: "gemini-3.8-flash", Alias: "paid-flash", Fork: true}, {Name: ge.ArgonModel, Alias: "paid-argon", Fork: true}},
+				}
+				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{spec})
+				fixture.manager.SetRetryConfig(3, 0, 3)
+				for _, protocol := range []string{"openai", "gemini"} {
+					for _, stream := range []bool{false, true} {
+						t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+							for _, model := range []string{"paid-team/gemini-3.8-flash", "paid-team/paid-flash(high)", "paid-team/gemini-3.1-pro-preview(low)", "paid-team/gemini-auto"} {
+								enterprisePolicyAssertPublicDenied(t, fixture, model, protocol, stream)
+							}
+							for _, model := range []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"} {
+								allowed := mode != "argon_only" || model == ge.ArgonModel
+								allowed = allowed && (mode != "exclude_argon" || model != ge.ArgonModel)
+								route := "paid-team/" + model
+								if model == ge.ArgonModel {
+									route = "paid-team/paid-argon(high)"
+								}
+								if !allowed {
+									enterprisePolicyAssertPublicDenied(t, fixture, route, protocol, stream)
+								} else if model == ge.ArgonModel {
+									enterprisePolicyAssertPublicSuccess(t, fixture, route, model, "12345", protocol, stream)
+								} else {
+									enterprisePolicyAssertPublicMediaSuccess(t, fixture, route, model, "12345", protocol, stream)
+								}
+							}
+						})
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestEnterprisePaidPolicySkipsPaidTextAndRefreshesWithoutCooling(t *testing.T) {
+	for _, protocol := range []string{"openai", "gemini"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{
+					{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", priority: "100"},
+					{id: "trial", project: "67890", edition: "enterprise_standard", trial: true, mode: "catalog"},
+				})
+				fixture.manager.SetRetryConfig(3, 0, 3)
+				for attempt := 0; attempt < 3; attempt++ {
+					for _, model := range []string{"gemini-3.8-flash", "gemini-3.1-pro-preview"} {
+						enterprisePolicyAssertPublicSuccess(t, fixture, model, model, "67890", protocol, stream)
+					}
+				}
+				for _, phase := range []struct{ trialCollection, project string }{{"paid", "12345"}, {"", ""}} {
+					for name, id := range fixture.authIDs {
+						auth, _ := fixture.manager.GetByID(id)
+						trial := name == phase.trialCollection
+						enterprisePublishSubscription(t, fixture.manager, auth, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
+					}
+					for _, model := range []string{"gemini-3.8-flash", "gemini-3.1-pro-preview"} {
+						if phase.project == "" {
+							enterprisePolicyAssertPublicDenied(t, fixture, model, protocol, stream)
+						} else {
+							enterprisePolicyAssertPublicSuccess(t, fixture, model, model, phase.project, protocol, stream)
+						}
+					}
+				}
+				enterprisePolicyAssertNotCooled(t, fixture)
+			})
+		}
+	}
+}
+
+func TestEnterprisePaidPolicyFinalPayloadAndUnknownCannotBypass(t *testing.T) {
+	for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
+		for _, scenario := range []struct {
+			name, requested, final string
+			filter                 bool
+			observation            *ge.SubscriptionObservation
+		}{
+			{name: "override forbidden final model", requested: ge.ArgonModel, final: "gemini-3.8-flash"},
+			{name: "filter explicit model", requested: ge.ArgonModel, filter: true},
+			{name: "override unresolved auto", requested: ge.ArgonModel, final: "auto"},
+			{name: "unknown", requested: ge.ArgonModel, final: ge.ArgonModel, observation: &ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unverified"}},
+			{name: "conflict", requested: ge.ArgonModel, final: ge.ArgonModel, observation: &ge.SubscriptionObservation{Status: "conflict", Reason: "conflicting_subscriptions"}},
+			{name: "unassigned", requested: ge.ArgonModel, final: ge.ArgonModel, observation: &ge.SubscriptionObservation{Status: "unassigned", Reason: "license_unassigned"}},
+			{name: "inactive", requested: ge.ArgonModel, final: ge.ArgonModel, observation: &ge.SubscriptionObservation{Status: "inactive", Reason: "subscription_inactive"}},
+			{name: "missing trial flag", requested: ge.ArgonModel, final: ge.ArgonModel, observation: &ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", State: "ACTIVE"}},
+		} {
+			t.Run(mode+"/"+scenario.name, func(t *testing.T) {
+				models := []config.PayloadModelRule{{Name: "*", Protocol: ge.Provider}}
+				cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: models, Params: map[string]any{"generationSpec.modelId": scenario.final}}}}}
+				if scenario.filter {
+					cfg.Payload = config.PayloadConfig{Filter: []config.PayloadFilterRule{{Models: models, Params: []string{"generationSpec.modelId"}}}}
+				}
+				fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{{
+					id: "paid", project: "12345", edition: "enterprise_plus", mode: mode,
+					allowedModels: []string{ge.ArgonModel, "gemini-3.8-flash"}, subscription: scenario.observation,
+				}})
+				fixture.manager.SetRetryConfig(3, 0, 3)
+				for _, protocol := range []string{"openai", "gemini"} {
+					for _, stream := range []bool{false, true} {
+						t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+							enterprisePolicyAssertPublicDenied(t, fixture, scenario.requested, protocol, stream)
+						})
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestEnterprisePaidPolicyFinalAllowedModelStillRequiresCatalogAndFeature(t *testing.T) {
+	for _, scenario := range []string{"allowed final argon", "missing catalog", "image feature disabled"} {
+		t.Run(scenario, func(t *testing.T) {
+			cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{
+				Models: []config.PayloadModelRule{{Name: "gemini-3.8-flash", Protocol: ge.Provider}}, Params: map[string]any{"generationSpec.modelId": ge.ArgonModel},
+			}}}}
+			if scenario == "image feature disabled" {
+				cfg.DisableImageGeneration = config.DisableImageGenerationAll
+			}
+			fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}})
+			if scenario == "missing catalog" {
+				auth, _ := fixture.manager.GetByID(fixture.authIDs["paid"])
+				fixture.manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{})
+			}
+			for _, protocol := range []string{"openai", "gemini"} {
+				for _, stream := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+						if scenario == "allowed final argon" {
+							enterprisePolicyAssertPublicSuccess(t, fixture, "gemini-3.8-flash", ge.ArgonModel, "12345", protocol, stream)
+						} else if scenario == "image feature disabled" {
+							enterprisePolicyAssertPublicDenied(t, fixture, "gemini-3-pro-image", protocol, stream)
+						} else {
+							for _, model := range []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"} {
+								enterprisePolicyAssertPublicDenied(t, fixture, model, protocol, stream)
+							}
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+func TestEnterprisePaidPolicyPinnedAndResolvedAutoUseActualModel(t *testing.T) {
+	for _, protocol := range []string{"openai", "gemini"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}})
+				fixture.manager.SetRetryConfig(3, 0, 3)
+				operation := "generate_content"
+				if protocol == "openai" {
+					operation = "chat_completions"
+				} else if stream {
+					operation = "stream_generate_content"
+				}
+				_, body := enterprisePublicRequest(t, "gemini-3.8-flash", protocol, stream, nil)
+				req := handlers.ModelExecutionRequest{Operation: operation, EntryProtocol: protocol, ExitProtocol: protocol, Model: "gemini-3.8-flash", Body: body, AuthID: fixture.authIDs["paid"], Stream: stream}
+				denied := false
+				if stream {
+					result, errMsg := fixture.base.ExecuteModelStream(t.Context(), req)
+					denied = errMsg != nil
+					if errMsg == nil {
+						for chunk := range result.Chunks {
+							denied = denied || chunk.Err != nil
+						}
+					}
+				} else {
+					_, errMsg := fixture.base.ExecuteModel(t.Context(), req)
+					denied = errMsg != nil
+				}
+				if !denied || len(fixture.transport.snapshot()) != 0 {
+					t.Fatal("paid credential pin bypassed the hard model restriction")
+				}
+				for _, actual := range []string{"gemini-3.8-flash", ge.ArgonModel} {
+					models := registry.GetGlobalRegistry().GetModelsForClient(fixture.authIDs["paid"])
+					for _, info := range models {
+						info.Created = 1
+						if info.ID == actual {
+							info.Created = 2
+						}
+					}
+					registry.GetGlobalRegistry().RegisterClient(fixture.authIDs["paid"], ge.Provider, models)
+					if actual == ge.ArgonModel {
+						enterprisePolicyAssertPublicSuccess(t, fixture, "auto", actual, "12345", protocol, stream)
+					} else {
+						enterprisePolicyAssertPublicDenied(t, fixture, "auto", protocol, stream)
+					}
+				}
+				enterprisePolicyAssertNotCooled(t, fixture)
+			})
+		}
+	}
+}
+
+func TestEnterprisePaidPolicyAutoCannotImplicitlyGenerateMedia(t *testing.T) {
+	for _, model := range []struct{ id, kind string }{{"gemini-3-pro-image", "image"}, {"veo-3.1", "video"}} {
+		for _, protocol := range []string{"openai", "gemini"} {
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/stream=%t", model.id, protocol, stream), func(t *testing.T) {
+					fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}})
+					auth, _ := fixture.manager.GetByID(fixture.authIDs["paid"])
+					fixture.manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: model.id, MediaKind: model.kind}})
+					// A media-only catalog lets the ordinary public resolver choose naturally.
+					registry.GetGlobalRegistry().RegisterClient(auth.ID, ge.Provider, []*registry.ModelInfo{{
+						ID: model.id, Name: "models/" + model.id, Type: "gemini", OwnedBy: ge.Provider, EnterpriseMedia: model.kind,
+						SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"},
+					}})
+					enterprisePolicyAssertPublicDenied(t, fixture, "auto", protocol, stream)
+					enterprisePolicyAssertPublicMediaSuccess(t, fixture, model.id, model.id, "12345", protocol, stream)
+				})
+			}
+		}
 	}
 }

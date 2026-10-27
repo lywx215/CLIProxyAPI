@@ -57,7 +57,7 @@ func TestEnterpriseAssistDefaultRespectsFinalPayloadRules(t *testing.T) {
 					opts.Stream = stream
 					e := NewGeminiEnterpriseExecutor(cfg)
 					if stream {
-						result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err := e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -67,7 +67,7 @@ func TestEnterpriseAssistDefaultRespectsFinalPayloadRules(t *testing.T) {
 							}
 						}
 					} else {
-						if _, err := e.Execute(ctx, enterpriseExecutorAuth(), req, opts); err != nil {
+						if _, err := e.Execute(ctx, enterpriseExecutorAuth(t), req, opts); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -109,7 +109,7 @@ func TestEnterpriseSkippedRepliesBothProtocolsAndStreams(t *testing.T) {
 					failures := 0
 					if stream {
 						var result *exec.StreamResult
-						result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err = e.ExecuteStream(ctx, enterpriseExecutorAuth(t), req, opts)
 						if err == nil {
 							for chunk := range result.Chunks {
 								data = append(data, chunk.Payload...)
@@ -122,7 +122,7 @@ func TestEnterpriseSkippedRepliesBothProtocolsAndStreams(t *testing.T) {
 						}
 					} else {
 						var result exec.Response
-						result, err = e.Execute(ctx, enterpriseExecutorAuth(), req, opts)
+						result, err = e.Execute(ctx, enterpriseExecutorAuth(t), req, opts)
 						data = result.Payload
 					}
 					var skipped *ge.SkippedError

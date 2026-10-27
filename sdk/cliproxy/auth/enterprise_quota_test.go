@@ -33,6 +33,7 @@ func sharedQuotaAuth(t *testing.T, m *Manager, id, project, location, edition, u
 	if err != nil {
 		t.Fatal(err)
 	}
+	verifyEnterpriseTrialFixture(t, m, saved)
 	return saved
 }
 func quotaRejection(now time.Time, scope, edition string) error {

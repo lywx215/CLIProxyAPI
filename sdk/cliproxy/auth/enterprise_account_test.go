@@ -80,6 +80,13 @@ func registerEnterpriseFixture(t *testing.T, m *Manager, parent *Auth) *Auth {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if IsEnterpriseAccountAuth(saved) {
+		for _, child := range m.EnterpriseCollections(saved.ID) {
+			verifyEnterpriseTrialFixture(t, m, child)
+		}
+	} else {
+		verifyEnterpriseTrialFixture(t, m, saved)
+	}
 	t.Cleanup(func() {
 		for _, auth := range m.List() {
 			registry.GetGlobalRegistry().UnregisterClient(auth.ID)

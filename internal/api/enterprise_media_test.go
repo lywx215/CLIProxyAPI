@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
@@ -23,6 +24,20 @@ import (
 )
 
 type enterpriseMediaAPIExecutor struct{ calls atomic.Int32 }
+
+func registerEnterpriseAPIFixture(t *testing.T, manager *auth.Manager, credential *auth.Auth) *auth.Auth {
+	t.Helper()
+	registered, err := manager.Register(t.Context(), credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trial := true
+	flight := manager.BeginEnterpriseSubscriptionRefresh(registered)
+	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}) {
+		t.Fatal("verified fixture subscription was not published")
+	}
+	return registered
+}
 
 func (*enterpriseMediaAPIExecutor) Identifier() string { return "gemini-enterprise" }
 func (e *enterpriseMediaAPIExecutor) Execute(ctx context.Context, _ *auth.Auth, req coreexec.Request, opts coreexec.Options) (coreexec.Response, error) {
@@ -54,9 +69,7 @@ func TestEnterpriseAsyncVideoRoutesIdentityAndDownloads(t *testing.T) {
 	manager.RegisterExecutor(executor)
 	model := "veo-3.1"
 	credential := &auth.Auth{ID: "enterprise-media-api", Provider: "gemini-enterprise", Status: auth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
-	if _, err := manager.Register(context.Background(), credential); err != nil {
-		t.Fatal(err)
-	}
+	credential = registerEnterpriseAPIFixture(t, manager, credential)
 	registry.GetGlobalRegistry().RegisterClient(credential.ID, credential.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini", OwnedBy: "gemini-enterprise", EnterpriseMedia: "video"}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(credential.ID) })
 	base := handlers.NewBaseAPIHandlers(&config.SDKConfig{}, manager)

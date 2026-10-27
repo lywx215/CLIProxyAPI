@@ -91,20 +91,26 @@ func enterpriseFixtureRouterWithConfig(t *testing.T, cfg *config.Config) (*gin.E
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	manager := coreauth.NewManager(nil, &coreauth.RoundRobinSelector{}, nil)
+	manager.SetConfig(cfg)
 	transport := &enterpriseFixtureTransport{}
 	manager.SetRoundTripperProvider(transport)
 	manager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(cfg))
 	id := "enterprise-wire-fixture"
 	metadata := ge.Metadata(config.GeminiEnterpriseOAuth{ClientID: "fixture-client", ProjectID: "fixture-project", EngineID: "fixture-engine"}, "fixture@example.com", &oauth2.Token{AccessToken: "fixture-access", RefreshToken: "fixture-refresh", Expiry: time.Now().Add(time.Hour)})
 	metadata["model_policy"] = "catalog"
-	_, err := manager.Register(context.Background(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata})
+	registered, err := manager.Register(context.Background(), &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Metadata: metadata})
 	if err != nil {
 		t.Fatal(err)
 	}
 	models := make([]*registry.ModelInfo, 0, len(enterpriseFixtureModels))
+	catalog := make([]ge.Model, 0, len(enterpriseFixtureModels))
 	for _, model := range enterpriseFixtureModels {
 		models = append(models, &registry.ModelInfo{ID: model, Name: "models/" + model, Type: "gemini", OwnedBy: ge.Provider, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}})
+		catalog = append(catalog, ge.Model{ID: model})
 	}
+	trial := true
+	enterprisePublishSubscription(t, manager, registered, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
+	manager.PublishEnterprisePolicyCatalog(registered, catalog)
 	registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, models)
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(id) })
 	base := handlers.NewBaseAPIHandlers(&cfg.SDKConfig, manager)
@@ -117,6 +123,15 @@ func enterpriseFixtureRouterWithConfig(t *testing.T, cfg *config.Config) (*gin.E
 	router.GET("/v1beta/models", gemini.GeminiModels)
 	router.POST("/v1beta/models/*action", gemini.GeminiHandler)
 	return router, transport, manager
+}
+
+func enterprisePublishSubscription(t *testing.T, manager *coreauth.Manager, auth *coreauth.Auth, observation ge.SubscriptionObservation) {
+	t.Helper()
+	manager.InvalidateEnterpriseSubscription(auth)
+	flight := manager.BeginEnterpriseSubscriptionRefresh(auth)
+	if flight == nil || !flight.Complete(observation) {
+		t.Fatal("could not publish the synthetic runtime subscription")
+	}
 }
 
 func enterprisePublicRequest(t *testing.T, model, protocol string, stream bool, fields map[string]any) (string, []byte) {

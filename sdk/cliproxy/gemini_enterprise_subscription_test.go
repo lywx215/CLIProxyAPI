@@ -79,6 +79,66 @@ func TestEnterpriseManualPolicyStillPublishesBackgroundQuotaIdentity(t *testing.
 	}
 }
 
+func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing.T) {
+	s, auth := enterpriseTestService(t, "paid-manual-policy-transitions")
+	d := s.enterpriseState()
+	models := []ge.Model{
+		{ID: ge.ArgonModel}, {ID: "gemini-3-pro-image", MediaKind: "image"},
+		{ID: "veo-3.1", MediaKind: "video"}, {ID: "gemini-3.8-flash"},
+		{ID: "gemini-3.1-pro-preview"}, {ID: "gemini-4-future"}, {ID: "auto", DisplayName: "Auto"},
+	}
+	catalogCalls := 0
+	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		catalogCalls++
+		return models, nil
+	}
+	trial, state := false, "ok"
+	d.fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
+		value := trial
+		observation := ge.SubscriptionObservation{Status: state, Edition: "enterprise_plus", FreeTrial: &value}
+		if state == "unassigned" {
+			observation.Reason = "license_unassigned"
+		}
+		return observation
+	}
+	for _, step := range []struct {
+		name, state string
+		trial       bool
+		want        int
+	}{
+		{"paid", "ok", false, 3},
+		{"trial", "ok", true, len(models)},
+		{"paid-again", "ok", false, 3},
+		{"revoked", "unassigned", false, 0},
+		{"restored", "ok", false, 3},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			trial, state = step.trial, step.state
+			s.coreManager.InvalidateEnterpriseSubscription(auth)
+			s.registerEnterpriseModels(t.Context(), auth)
+			d.wg.Wait()
+			published := GlobalModelRegistry().GetModelsForClient(auth.ID)
+			if len(published) != step.want {
+				t.Fatalf("published %d models, want %d: %v", len(published), step.want, published)
+			}
+			view := s.coreManager.EnterpriseModelPolicyView(auth)
+			if view.Mode != "catalog" || len(view.CatalogModels) != len(models) {
+				t.Fatalf("subscription refresh rewrote manual settings or lost raw catalog: %+v", view)
+			}
+			if !step.trial && step.state == "ok" {
+				for _, entry := range published {
+					if entry.ID != ge.ArgonModel && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
+						t.Fatalf("forbidden paid model published: %s", entry.ID)
+					}
+				}
+			}
+		})
+	}
+	if catalogCalls != 1 {
+		t.Fatalf("subscription-only changes fetched the catalog %d times", catalogCalls)
+	}
+}
+
 func TestEnterpriseSubscriptionAndCatalogShareFiveDiscoverySlots(t *testing.T) {
 	s, original := enterpriseTestService(t, "shared-subscription-slots-0")
 	d := s.enterpriseState()

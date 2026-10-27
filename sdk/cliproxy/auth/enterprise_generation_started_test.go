@@ -28,9 +28,11 @@ func TestEnterpriseGenerationStartedCannotBeOverriddenByContinueRule(t *testing.
 				m.SetRetryConfig(3, 0, 2)
 				for i := 0; i < 2; i++ {
 					auth := &Auth{ID: fmt.Sprintf("%s-%d", model, i), Provider: "gemini-enterprise", Metadata: map[string]any{"model_policy": "catalog"}, Status: StatusActive, Attributes: map[string]string{"auth_kind": "oauth"}}
-					if _, err := m.Register(context.Background(), auth); err != nil {
+					saved, err := m.Register(context.Background(), auth)
+					if err != nil {
 						t.Fatal(err)
 					}
+					verifyEnterpriseTrialFixture(t, m, saved, model)
 					registry.GetGlobalRegistry().RegisterClient(auth.ID, auth.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini", EnterpriseMedia: "video"}})
 					t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
 				}

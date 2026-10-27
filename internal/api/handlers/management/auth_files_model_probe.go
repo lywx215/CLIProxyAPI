@@ -103,12 +103,16 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	modelID := strings.TrimSpace(req.Model)
 	policy := h.authManager.EnterpriseModelPolicyView(auth)
 	if policy.Status == "blocked" {
-		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until its subscription or model policy is confirmed")
+		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until the current user's assigned subscription is verified")
 		return
+	}
+	deniedMessage := "This collection's model policy does not allow the selected upstream model"
+	if policy.EnforcedReason == "paid_subscription_restricted" {
+		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
 	}
 	for _, entry := range policy.CatalogModels {
 		if entry.ID == modelID && !entry.Allowed {
-			fail(http.StatusConflict, "model_not_allowed", "This collection's model policy does not allow the selected model")
+			fail(http.StatusConflict, "model_not_allowed", deniedMessage)
 			return
 		}
 	}
@@ -141,7 +145,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		}
 	}
 	if !policy.Allows(actualModel) {
-		fail(http.StatusConflict, "model_not_allowed", "This collection's model policy does not allow the selected upstream model")
+		fail(http.StatusConflict, "model_not_allowed", deniedMessage)
 		return
 	}
 	// A detached Gin context supplies normal usage attribution without exposing the

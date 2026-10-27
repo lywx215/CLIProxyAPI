@@ -377,6 +377,12 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		return
 	}
 	coreauth.NormalizeCredentialMetadata(req.Fields)
+	for _, key := range []string{"enforced_allowed_models", "enforced_reason"} {
+		if _, exists := req.Fields[key]; exists {
+			enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Enforced model restrictions are read-only and come from the verified subscription")
+			return
+		}
+	}
 	fields := enterpriseCollectionSettings(req.Fields)
 	if len(fields) != len(req.Fields) {
 		enterpriseManagementFailure(c, 400, "invalid_collection_fields", "Unsupported collection settings")

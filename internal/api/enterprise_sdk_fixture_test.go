@@ -50,9 +50,7 @@ func newEnterpriseSDKFixture(t *testing.T, media []byte) (*httptest.Server, stri
 	e := &enterpriseSDKFixtureExecutor{media: media}
 	m.RegisterExecutor(e)
 	credential := &auth.Auth{ID: model, Provider: "gemini-enterprise", Status: auth.StatusActive, Metadata: map[string]any{"model_policy": "catalog"}}
-	if _, err := m.Register(t.Context(), credential); err != nil {
-		t.Fatal(err)
-	}
+	credential = registerEnterpriseAPIFixture(t, m, credential)
 	registry.GetGlobalRegistry().RegisterClient(credential.ID, credential.Provider, []*registry.ModelInfo{{ID: model, Type: "gemini", EnterpriseMedia: "video"}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(credential.ID) })
 	base := handlers.NewBaseAPIHandlers(&config.SDKConfig{}, m)
