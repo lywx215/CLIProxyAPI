@@ -10,6 +10,7 @@ import (
 	"time"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 )
 
@@ -31,6 +32,7 @@ type enterprisePolicyCoordinator struct {
 	mu            sync.Mutex
 	subscriptions map[string]enterpriseSubscriptionEntry
 	catalogs      map[string][]ge.Model
+	catalogStates map[string]ge.CatalogState
 	aliases       map[string]string
 	sequence      uint64
 	nowFunc       func() time.Time
@@ -62,7 +64,8 @@ func EnterpriseSubscriptionKey(auth *Auth) string {
 }
 
 func enterprisePolicyCatalogKey(auth *Auth) string {
-	return EnterpriseSubscriptionKey(auth) + "/" + ge.ApplicationBinding(ge.FromMetadata(auth.Metadata))
+	sum := sha256.Sum256([]byte(EnterpriseOwnerID(auth) + "\x00" + EnterpriseSubscriptionKey(auth) + "\x00" + ge.ApplicationBinding(ge.FromMetadata(auth.Metadata))))
+	return hex.EncodeToString(sum[:])
 }
 
 // EnterpriseSubscriptionRefresh is a single-flight lease; obsolete completions are ignored.
@@ -234,20 +237,24 @@ func (c *enterprisePolicyCoordinator) subscriptionSnapshotLocked(auth *Auth) ge.
 }
 
 type EnterprisePolicyModel struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	MediaKind   string `json:"media_kind,omitempty"`
-	Allowed     bool   `json:"allowed"`
-	Reason      string `json:"reason,omitempty"`
+	ID             string `json:"id"`
+	DisplayName    string `json:"display_name"`
+	MediaKind      string `json:"media_kind,omitempty"`
+	Allowed        bool   `json:"allowed"`
+	Reason         string `json:"reason,omitempty"`
+	CatalogSource  string `json:"catalog_source"`
+	UpstreamListed bool   `json:"upstream_listed"`
 }
 
 type EnterpriseModelPolicyView struct {
 	ge.ModelPolicy
-	GlobalExcludedModels []string                   `json:"global_excluded_models"`
-	Subscription         ge.SubscriptionObservation `json:"subscription"`
-	CatalogKnown         bool                       `json:"catalog_known"`
-	CatalogModels        []EnterprisePolicyModel    `json:"catalog_models"`
-	EffectiveModels      []string                   `json:"effective_models"`
+	GlobalExcludedModels    []string                   `json:"global_excluded_models"`
+	Subscription            ge.SubscriptionObservation `json:"subscription"`
+	ImageGenerationDisabled bool                       `json:"image_generation_disabled"`
+	CatalogState            ge.CatalogState            `json:"catalog_state"`
+	CatalogKnown            bool                       `json:"catalog_known"`
+	CatalogModels           []EnterprisePolicyModel    `json:"catalog_models"`
+	EffectiveModels         []string                   `json:"effective_models"`
 }
 
 func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) {
@@ -258,6 +265,11 @@ func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) 
 		c.catalogs = map[string][]ge.Model{}
 	}
 	c.catalogs[enterprisePolicyCatalogKey(auth)] = append([]ge.Model{}, models...)
+	if c.catalogStates == nil {
+		c.catalogStates = map[string]ge.CatalogState{}
+	}
+	now := c.now().UTC()
+	c.catalogStates[enterprisePolicyCatalogKey(auth)] = ge.CatalogState{Source: "upstream", Status: "ok", CheckedAt: &now, LastSuccessAt: &now}
 }
 
 func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyView {
@@ -271,7 +283,8 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 		_ = json.Unmarshal(data, &excluded)
 	}
 	globalExcluded := []string{}
-	if cfg := m.runtimeConfigSnapshot(); cfg != nil {
+	cfg := m.runtimeConfigSnapshot()
+	if cfg != nil {
 		globalExcluded = append(globalExcluded, cfg.OAuthExcludedModels[ge.Provider]...)
 		excluded = append(excluded, globalExcluded...)
 	}
@@ -285,14 +298,43 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 	c.mu.Lock()
 	models, known := c.catalogs[enterprisePolicyCatalogKey(auth)]
 	models = append([]ge.Model(nil), models...)
+	state := cloneEnterpriseCatalogState(c.catalogStates[enterprisePolicyCatalogKey(auth)])
 	c.mu.Unlock()
-	view.CatalogKnown = known
+	if state.Source == "" {
+		state.Source, state.Status = "none", "pending"
+	}
+	if known {
+		if state.LastError != nil || state.Source == "cached" {
+			state.Source, state.Status = "cached", "stale"
+		} else {
+			state.Source, state.Status = "upstream", "ok"
+		}
+	} else if state.LastError != nil {
+		if setting, err := ge.CatalogFallbackSettings(auth.Metadata); err == nil {
+			var source string
+			models, source = ge.FallbackCatalog(setting, subscription)
+			if source != "none" {
+				known, state.Source, state.Status = true, source, "fallback"
+			}
+		}
+	}
+	view.CatalogState, view.CatalogKnown = state, known
+	view.ImageGenerationDisabled = cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 	for _, model := range models {
 		automatic := strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto")
 		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
+		mediaDisabled := model.MediaKind == "image" && cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
+		if mediaDisabled {
+			allowed = false
+		}
 		reason := ""
 		if !allowed {
-			reason = policy.Reason
+			if mediaDisabled {
+				reason = "image_generation_disabled"
+			}
+			if reason == "" {
+				reason = policy.Reason
+			}
 			if reason == "" && policy.EnforcedAllowedModels != nil && (!slices.Contains(policy.EnforcedAllowedModels, model.ID) || automatic) {
 				reason = policy.EnforcedReason
 			}
@@ -300,7 +342,7 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 				reason = "model_not_allowed"
 			}
 		}
-		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{model.ID, model.DisplayName, model.MediaKind, allowed, reason})
+		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: state.Source, UpstreamListed: state.Source == "upstream" || state.Source == "cached"})
 		if allowed {
 			view.EffectiveModels = append(view.EffectiveModels, model.ID)
 		}
@@ -309,8 +351,15 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 }
 
 func (m *Manager) EnterpriseModelPolicySignature(auth *Auth) string {
-	view := m.EnterpriseModelPolicyView(auth)
-	data, _ := json.Marshal(view.ModelPolicy)
+	return m.EnterpriseModelPolicyView(auth).Signature()
+}
+
+func (view EnterpriseModelPolicyView) Signature() string {
+	data, _ := json.Marshal(struct {
+		Policy ge.ModelPolicy
+		Source string
+		Models []EnterprisePolicyModel
+	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels})
 	return string(data)
 }
 

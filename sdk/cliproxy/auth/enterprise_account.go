@@ -159,6 +159,7 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		child.ID = enterpriseChildID(account.ID, collection.ID)
 		child.Storage = nil
 		delete(child.Metadata, "enterprise_account")
+		delete(child.Metadata, enterpriseCatalogCacheKey)
 		// Old single-binding fields remain on the saved parent for compatibility,
 		// but only their original collection may inherit those user preferences.
 		child.Prefix, child.ProxyURL = "", ""
@@ -210,17 +211,20 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 
 func enterpriseCollectionSetting(key string) bool {
 	switch key {
-	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests":
+	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests":
 		return true
 	}
 	return false
 }
 
 func applyEnterpriseCollectionSettings(auth *Auth) error {
+	if _, err := ge.CatalogFallbackSettings(auth.Metadata); err != nil {
+		return err
+	}
 	if _, _, err := ge.ModelPolicySettings(auth.Metadata); err != nil {
 		return err
 	}
-	for _, key := range []string{"model_policy", "allowed_models"} {
+	for _, key := range []string{"catalog_fallback", "model_policy", "allowed_models"} {
 		if value, exists := auth.Metadata[key]; exists {
 			data, _ := json.Marshal(value)
 			auth.Attributes[key] = string(data)

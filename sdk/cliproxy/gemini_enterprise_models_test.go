@@ -130,8 +130,13 @@ func TestEnterpriseRebindingRevokesOldCatalogBeforeDiscovery(t *testing.T) {
 		t.Fatal("rebound account retained the old resource's models")
 	}
 	d.wg.Wait()
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
-		t.Fatal("first failed discovery restored the old resource's catalog")
+	for _, model := range GlobalModelRegistry().GetModelsForClient(auth.ID) {
+		if model.ID == "old-resource-only" {
+			t.Fatal("first failed discovery restored the old resource's catalog")
+		}
+	}
+	if view := svc.coreManager.EnterpriseModelPolicyView(updated); view.CatalogState.Source != "default" {
+		t.Fatalf("missing independent fallback: %+v", view)
 	}
 }
 

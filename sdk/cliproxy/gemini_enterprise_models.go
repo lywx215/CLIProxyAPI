@@ -3,7 +3,6 @@ package cliproxy
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -27,6 +26,7 @@ type enterpriseCatalog struct {
 	appliedRevision uint64
 	appliedPolicy   string
 	credential      string
+	state           ge.CatalogState
 }
 type enterpriseFailure struct {
 	attempts int
@@ -75,7 +75,7 @@ func (s *Service) enterpriseProxy(auth *coreauth.Auth) string {
 }
 
 func (s *Service) enterpriseKey(auth *coreauth.Auth) string {
-	return fmt.Sprintf("%q/%d/%s/%x", auth.ID, auth.RegistrationEpoch, ge.Binding(ge.FromMetadata(auth.Metadata)), sha256.Sum256([]byte(s.enterpriseProxy(auth))))
+	return fmt.Sprintf("%q/%d/%s/%x", auth.ID, auth.RegistrationEpoch, coreauth.EnterpriseSubscriptionKey(auth)+"/"+ge.Binding(ge.FromMetadata(auth.Metadata)), sha256.Sum256([]byte(s.enterpriseProxy(auth))))
 }
 
 func enterpriseFailureKey(key string, auth *coreauth.Auth) string {
@@ -99,7 +99,7 @@ func (s *Service) enterpriseTokenCurrent(auth *coreauth.Auth) bool {
 // publishEnterpriseCatalog uses registry CAS and a probe revision under the same lock.
 // An empty successful catalog is authoritative and removes this account's models.
 func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.Auth, key string, catalog enterpriseCatalog, epoch uint64) bool {
-	if ctx.Err() != nil || !catalog.known || !s.enterpriseActive(auth, key) {
+	if ctx.Err() != nil || !s.enterpriseActive(auth, key) {
 		return false
 	}
 	currentAuth, ok := s.coreManager.GetByID(auth.ID)
@@ -114,11 +114,10 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	}
 	cfg := s.cfg
 	policy := s.coreManager.EnterpriseModelPolicyView(auth)
-	policyData, _ := json.Marshal(policy.ModelPolicy)
-	policySignature := string(policyData)
-	models := make([]*ModelInfo, 0, len(catalog.models))
-	for _, model := range catalog.models {
-		if !policy.Allows(model.ID) || policy.Restricted() && strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto") {
+	policySignature := policy.Signature()
+	models := make([]*ModelInfo, 0, len(policy.CatalogModels))
+	for _, model := range policy.CatalogModels {
+		if !model.Allowed {
 			continue
 		}
 		info := &ModelInfo{ID: model.ID, Object: "model", OwnedBy: ge.Provider, Type: "gemini", Name: "models/" + model.ID, DisplayName: model.DisplayName, EnterpriseMedia: model.MediaKind, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}
@@ -172,6 +171,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		return
 	}
 	s.queueEnterpriseSubscription(ctx, auth)
+	s.restoreEnterpriseCatalog(auth)
 	key := s.enterpriseKey(auth)
 	if !s.enterpriseActive(auth, key) {
 		return
@@ -182,7 +182,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	d.mu.Lock()
 	catalog := d.catalogs[key]
 	d.mu.Unlock()
-	if catalog.known {
+	if catalog.known || catalog.revision > 0 {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while
@@ -293,19 +293,35 @@ func (s *Service) queueEnterpriseDiscovery(ctx context.Context, auth *coreauth.A
 		}
 		if err != nil {
 			failure := d.failures[failureKey]
-			failure.attempts = min(failure.attempts+1, 6)
-			failure.next = d.now().Add(min(time.Duration(1<<failure.attempts)*5*time.Second, enterpriseCatalogTTL))
+			failure.attempts = min(failure.attempts+1, 7)
+			failure.next = d.now().Add(min(time.Duration(1<<(failure.attempts-1))*5*time.Second, enterpriseCatalogTTL))
 			d.failures[failureKey] = failure
+			catalog := d.catalogs[key]
+			checkedAt := d.now().UTC()
+			catalog.revision = revision
+			catalog.state.CheckedAt, catalog.state.LastError = &checkedAt, ge.CatalogError(err)
+			catalog.state.Source, catalog.state.Status = "none", "unavailable"
+			if catalog.known {
+				catalog.state.Source, catalog.state.Status = "cached", "stale"
+			}
+			d.catalogs[key] = catalog
+			s.coreManager.PublishEnterpriseCatalogState(auth, catalog.state)
 			d.mu.Unlock()
-			log.WithField("auth_id", auth.ID).WithError(err).Warn("gemini-enterprise model refresh failed; retaining this run's last successful catalog")
+			s.publishEnterpriseCatalog(probeCtx, auth, key, catalog, epoch)
+			log.WithField("auth_id", auth.ID).WithField("code", catalog.state.LastError.Code).Warn("gemini-enterprise model refresh failed; using the retained catalog or configured fallback")
 			return
 		}
-		catalog := enterpriseCatalog{models: models, known: true, revision: revision, expires: d.now().Add(enterpriseCatalogTTL), credential: failureKey}
+		checkedAt := d.now().UTC()
+		catalog := enterpriseCatalog{models: models, known: true, revision: revision, expires: d.now().Add(enterpriseCatalogTTL), credential: failureKey, state: ge.CatalogState{Source: "upstream", Status: "ok", CheckedAt: &checkedAt, LastSuccessAt: &checkedAt}}
 		d.catalogs[key] = catalog
 		delete(d.failures, failureKey)
-		d.mu.Unlock()
 		s.coreManager.PublishEnterprisePolicyCatalog(auth, models)
+		s.coreManager.PublishEnterpriseCatalogState(auth, catalog.state)
+		d.mu.Unlock()
 		s.publishEnterpriseCatalog(probeCtx, auth, key, catalog, epoch)
+		if errPersist := s.coreManager.PersistEnterpriseCatalog(probeCtx, auth, models, checkedAt); errPersist != nil {
+			log.WithField("auth_id", auth.ID).Warn("gemini-enterprise catalog could not be persisted; the in-memory catalog remains available")
+		}
 	}()
 }
 
@@ -365,7 +381,7 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 		due := !catalog.known || !d.now().Before(catalog.expires) || catalog.credential != enterpriseFailureKey(key, auth)
 		d.mu.Unlock()
 		epoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
-		if catalog.known && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
+		if catalog.revision > 0 && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
 			s.publishEnterpriseCatalog(ctx, auth, key, catalog, epoch)
 		}
 		if due {

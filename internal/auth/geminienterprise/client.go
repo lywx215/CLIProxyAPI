@@ -139,9 +139,9 @@ func Refresh(ctx context.Context, c config.GeminiEnterpriseOAuth, refreshToken, 
 }
 
 type Model struct {
-	ID          string
-	DisplayName string
-	MediaKind   string
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	MediaKind   string `json:"media_kind,omitempty"`
 }
 
 func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpriseOAuth, token string) ([]Model, error) {
@@ -152,7 +152,7 @@ func Discover(ctx context.Context, client *http.Client, c config.GeminiEnterpris
 		return nil, err
 	}
 	var data json.RawMessage
-	status, err := resourceJSON(ctx, client, OriginForLocation(c.WithDefaults().Location)+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", token, c.ProjectID, &data)
+	status, err := resourceJSONDiagnostic(ctx, client, OriginForLocation(c.WithDefaults().Location)+"/v1alpha/"+Engine(c)+"/widgetConfigs/default_search_widget_config?modelInfoView=END_USER_WEB&languageCode=en", token, c.ProjectID, &data)
 	if err != nil {
 		return nil, err
 	}

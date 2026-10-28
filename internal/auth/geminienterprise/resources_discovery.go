@@ -2,6 +2,7 @@ package geminienterprise
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -38,6 +39,7 @@ type DiscoveryCoverage struct {
 }
 
 type DiscoveryWarning struct {
+	MetadataDiagnostic
 	ProjectID string `json:"project_id,omitempty"`
 	Location  string `json:"location,omitempty"`
 	Code      string `json:"code"`
@@ -108,6 +110,13 @@ func DiscoverResources(ctx context.Context, client *http.Client, application con
 		oldByScope[key] = append(oldByScope[key], collection)
 	}
 	if projectErr != nil {
+		for _, collection := range existing {
+			if numericProject(collection.ProjectID) && canonicalProjects[collection.ProjectID] == "" {
+				canonicalProjects[collection.ProjectID] = collection.ProjectID
+				projects = append(projects, DiscoveryProject{ProjectID: collection.ProjectID, ProjectName: collection.ProjectName})
+			}
+		}
+		result.Projects = projects
 		warning := discoveryWarning("", "", projectErr)
 		result.Warnings = append(result.Warnings, warning)
 		result.Coverage = append(result.Coverage, DiscoveryCoverage{Status: "failed", Code: warning.Code, Message: warning.Message})
@@ -204,7 +213,7 @@ func discoveryProjects(ctx context.Context, client *http.Client, token string) (
 			Next string `json:"nextPageToken"`
 		}
 		endpoint := "https://cloudresourcemanager.googleapis.com/v3/projects:search?" + discoveryQuery(pageToken)
-		status, err := resourceJSON(ctx, client, endpoint, token, "", &body)
+		status, err := resourceJSONDiagnostic(ctx, client, endpoint, token, "", &body)
 		if err != nil {
 			return projects, discoveryRequestError(ctx, err, "Project discovery could not be completed.")
 		}
@@ -359,13 +368,13 @@ func probeExistingCollection(ctx context.Context, client *http.Client, token str
 	old.ProjectName = project.ProjectName
 	engine := collectionResourceName(old.ResourceBinding) + "/engines/" + old.EngineID
 	var body discoveryResource
-	status, err := resourceJSON(ctx, client, OriginForLocation(old.Location)+"/v1/"+engine, token, project.ProjectID, &body)
-	if err != nil {
-		return old, discoveryRequestError(ctx, err, "Saved application could not be verified.")
-	}
+	status, err := resourceJSONDiagnostic(ctx, client, OriginForLocation(old.Location)+"/v1/"+engine, token, project.ProjectID, &body)
 	if status == http.StatusNotFound {
 		old.Missing = true
 		return old, nil
+	}
+	if err != nil {
+		return old, discoveryRequestError(ctx, err, "Saved application could not be verified.")
 	}
 	if status != http.StatusOK {
 		return old, discoveryHTTPError(status, "Saved application could not be verified.")
@@ -374,13 +383,13 @@ func probeExistingCollection(ctx context.Context, client *http.Client, token str
 		return old, &discoveryListError{"invalid_response", "Saved application verification returned an inconsistent resource."}
 	}
 	assistant := engine + "/assistants/" + old.AssistantID
-	status, err = resourceJSON(ctx, client, OriginForLocation(old.Location)+"/v1/"+assistant, token, project.ProjectID, &body)
-	if err != nil {
-		return old, discoveryRequestError(ctx, err, "Saved assistant could not be verified.")
-	}
+	status, err = resourceJSONDiagnostic(ctx, client, OriginForLocation(old.Location)+"/v1/"+assistant, token, project.ProjectID, &body)
 	if status == http.StatusNotFound {
 		old.Missing = true
 		return old, nil
+	}
+	if err != nil {
+		return old, discoveryRequestError(ctx, err, "Saved assistant could not be verified.")
 	}
 	if status != http.StatusOK {
 		return old, discoveryHTTPError(status, "Saved assistant could not be verified.")
@@ -403,7 +412,7 @@ func discoveryNames(ctx context.Context, client *http.Client, token, project, lo
 			Assistants  []discoveryResource `json:"assistants"`
 			Next        string              `json:"nextPageToken"`
 		}
-		status, err := resourceJSON(ctx, client, OriginForLocation(location)+"/"+version+"/"+parent+"/"+kind+"?"+discoveryQuery(pageToken), token, project, &result)
+		status, err := resourceJSONDiagnostic(ctx, client, OriginForLocation(location)+"/"+version+"/"+parent+"/"+kind+"?"+discoveryQuery(pageToken), token, project, &result)
 		if err != nil {
 			return names, discoveryRequestError(ctx, err, "Resource enumeration could not be completed.")
 		}
@@ -495,6 +504,10 @@ func discoveryRequestError(ctx context.Context, err error, message string) error
 	if ctx.Err() != nil {
 		return &discoveryListError{"cancelled", "Resource discovery was cancelled."}
 	}
+	var metadata *MetadataError
+	if errors.As(err, &metadata) {
+		return metadata
+	}
 	if failure, ok := err.(*discoveryListError); ok {
 		return failure
 	}
@@ -505,6 +518,10 @@ func discoveryWarning(project, location string, err error) DiscoveryWarning {
 	warning := DiscoveryWarning{ProjectID: project, Location: location, Code: "discovery_failed", Message: "Resource discovery could not be completed."}
 	if failure, ok := err.(*discoveryListError); ok {
 		warning.Code, warning.Message = failure.code, failure.message
+	}
+	var metadata *MetadataError
+	if errors.As(err, &metadata) {
+		warning.Code, warning.Message, warning.MetadataDiagnostic = metadata.Code, metadata.Message, metadata.MetadataDiagnostic
 	}
 	return warning
 }

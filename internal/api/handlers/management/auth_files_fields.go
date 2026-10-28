@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	claudeauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/synthesizer"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
@@ -330,6 +331,15 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": errPluginVirtualAuth.Error()})
 		return
 	}
+	if c.GetBool(ConfigV8ContextKey) && targetAuth.Provider == ge.Provider {
+		for key := range req {
+			switch rootAuthFileField(key) {
+			case "enterprise_catalog_cache", "catalog_state", "catalog_fallback_supported", "enforced_allowed_models", "enforced_reason", "model_policy_state":
+				enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Catalog observations and enforced restrictions are read-only")
+				return
+			}
+		}
+	}
 	coreauth.NormalizeCredentialMetadata(targetAuth.Metadata)
 
 	changed := false
@@ -377,6 +387,12 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 			touchedRoots[root] = struct{}{}
 		}
 		changed = true
+	}
+	if c.GetBool(ConfigV8ContextKey) && targetAuth.Provider == ge.Provider {
+		if _, err := ge.CatalogFallbackSettings(targetAuth.Metadata); err != nil {
+			enterpriseManagementFailure(c, 400, "invalid_collection_fields", err.Error())
+			return
+		}
 	}
 	if requestRetryPatch.Set {
 		if targetAuth.Metadata == nil {

@@ -427,10 +427,13 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 					continue
 				}
 				result[i]["upstream_model"], result[i]["policy_allowed"] = actual, true
+				result[i]["catalog_source"] = view.CatalogState.Source
+				result[i]["upstream_listed"] = view.CatalogState.Source == "upstream" || view.CatalogState.Source == "cached"
 				visible = append(visible, result[i])
 			}
 			response["models"] = visible
 			response["model_policy_supported"] = true
+			response["catalog_fallback_supported"] = true
 			response["model_policy_state"] = view
 			response["catalog_models"] = view.CatalogModels
 		}

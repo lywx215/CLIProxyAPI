@@ -165,6 +165,14 @@ func visibleProjects(ctx context.Context, client *http.Client, token string) ([]
 }
 
 func resourceJSON(ctx context.Context, client *http.Client, endpoint, token, quotaProject string, value any) (int, error) {
+	return resourceJSONWithDiagnostic(ctx, client, endpoint, token, quotaProject, value, false)
+}
+
+func resourceJSONDiagnostic(ctx context.Context, client *http.Client, endpoint, token, quotaProject string, value any) (int, error) {
+	return resourceJSONWithDiagnostic(ctx, client, endpoint, token, quotaProject, value, true)
+}
+
+func resourceJSONWithDiagnostic(ctx context.Context, client *http.Client, endpoint, token, quotaProject string, value any, diagnostic bool) (int, error) {
 	if client == nil {
 		return 0, fmt.Errorf("gemini-enterprise: resource HTTP client is required")
 	}
@@ -196,10 +204,14 @@ func resourceJSON(ctx context.Context, client *http.Client, endpoint, token, quo
 		if ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
-		return 0, fmt.Errorf("gemini-enterprise: resource discovery connection failed")
+		return 0, &MetadataError{Code: "connection_failed", Message: "The Google metadata connection failed."}
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
+		if diagnostic {
+			data, _ := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
+			return response.StatusCode, ParseMetadataError(response.StatusCode, data)
+		}
 		return response.StatusCode, nil
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
