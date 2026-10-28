@@ -228,36 +228,25 @@ func ValidateFinal(body []byte) error {
 func UpstreamHTTPError(status int, raw []byte) error {
 	code, message := "upstream_error", fmt.Sprintf("The upstream service returned HTTP %d; retry later or contact the server administrator.", status)
 	param := ""
-	var envelope struct {
-		Error struct {
-			Message string `json:"message"`
-			Details []struct {
-				Type            string `json:"@type"`
-				FieldViolations []struct {
-					Field string `json:"field"`
-				} `json:"fieldViolations"`
-			} `json:"details"`
-		} `json:"error"`
-	}
-	if len(raw) <= 64*1024 {
-		_ = json.Unmarshal(raw, &envelope)
-	}
+	body := decodeUpstreamError(raw, 0)
+	diagnostic := upstreamDiagnostic(body, status)
 	switch status {
 	case 400, 422:
 		code, message = "upstream_invalid_request", "The upstream service rejected the request; check model availability and supported request fields."
-		for _, detail := range envelope.Error.Details {
-			if detail.Type != "type.googleapis.com/google.rpc.BadRequest" {
-				continue
-			}
-			for _, violation := range detail.FieldViolations {
-				if path := safeFieldPath(violation.Field); path != "body" {
-					param = path
-					message = "The upstream service rejected field " + path + "; check its type and value."
-					break
-				}
+		if diagnostic != nil && len(diagnostic.FieldViolations) > 0 {
+			field := diagnostic.FieldViolations[0]
+			param = field.Field
+			message = "The upstream service rejected field " + param + "; check its type and value."
+			switch field.Reason {
+			case "required":
+				message = "The upstream service requires a nonempty value for field " + param + "."
+			case "invalid_type":
+				message = "The upstream service rejected the type of field " + param + "."
+			case "unsupported_field":
+				message = "The upstream service does not support field " + param + "."
 			}
 		}
-		lower := strings.ToLower(envelope.Error.Message)
+		lower := strings.ToLower(body.Message)
 		if param == "" && strings.Contains(lower, "model") && (strings.Contains(lower, "permission") || strings.Contains(lower, "not allowed") || strings.Contains(lower, "not authorized") || strings.Contains(lower, "not have access")) {
 			code, message, param = "model_access_denied", "The account cannot access the requested model; check the account's model permissions.", "model"
 		}
@@ -269,6 +258,38 @@ func UpstreamHTTPError(status int, raw []byte) error {
 		code, message = "resource_not_found", "The requested resource or model is unavailable; check the saved resource settings and model availability."
 	case 429:
 		code, message = "rate_limit_exceeded", "The quota or rate limit was reached; check usage and retry after the limit resets."
+	case 499:
+		code, message = "upstream_error", "The upstream service cancelled generation."
+	case 500:
+		code, message = "upstream_error", "The upstream service encountered an internal generation error."
+	case 503:
+		code, message = "upstream_error", "The upstream service is temporarily unavailable."
+	case 504:
+		code, message = "upstream_error", "The upstream service reported that its generation deadline was exceeded."
 	}
-	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param}
+	if diagnostic != nil {
+		switch diagnostic.Reason {
+		case "MODEL_NOT_ENABLED":
+			code, message, param = "model_access_denied", "The upstream application has not enabled the requested model.", "model"
+		case "CUSTOMER_POLICY_VIOLATION":
+			code, message = "content_policy_violation", "The upstream service blocked the request under the application's content policy."
+		}
+		if diagnostic.Status != "" {
+			message += " Upstream status: " + diagnostic.Status + "."
+		}
+		if diagnostic.Reason != "" {
+			message += " Reason: " + diagnostic.Reason + "."
+		}
+	}
+	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param, diagnostic: diagnostic, Scoped: code == "content_policy_violation"}
+}
+
+// UpstreamStreamError never describes an HTTP 200 error frame as an HTTP 502 response.
+func UpstreamStreamError(status int, raw []byte) error {
+	err := UpstreamHTTPError(status, raw).(*Error)
+	if status == 502 {
+		err.Message = "The upstream generation stream reported an unrecognized error."
+		err.clientMessage = err.Message
+	}
+	return err
 }

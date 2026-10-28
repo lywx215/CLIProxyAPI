@@ -64,7 +64,8 @@ func TestEnterpriseModelNotEnabledStructuredClassification(t *testing.T) {
 				if err.ModelNotEnabled != test.want {
 					t.Fatalf("started=%v classification=%v want=%v", started, err.ModelNotEnabled, test.want)
 				}
-				if err.Started != started || err.IsRequestScoped() != started {
+				wantScoped := started || !test.want && err.StatusCode() == 400
+				if err.Started != started || err.IsRequestScoped() != wantScoped {
 					t.Fatal("generation safety boundary changed during classification")
 				}
 				if err.Restriction != nil {

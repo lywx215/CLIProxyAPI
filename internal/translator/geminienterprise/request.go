@@ -16,6 +16,8 @@ type Error struct {
 	Scoped        bool
 	clientMessage string
 	param         string
+	diagnostic    *UpstreamDiagnostic
+	stop          bool
 }
 
 func (e *Error) Error() string {
@@ -31,20 +33,30 @@ func (e *Error) Error() string {
 	case 429:
 		kind = "rate_limit_error"
 	}
-	detail := map[string]string{"type": kind, "code": e.Kind, "message": e.Message}
+	detail := map[string]any{"type": kind, "code": e.Kind, "message": e.Message}
 	if e.param != "" {
 		detail["param"] = e.param
+	}
+	if e.clientMessage != "" && e.diagnostic != nil {
+		detail["upstream"] = e.diagnostic
 	}
 	data, _ := json.Marshal(map[string]any{"error": detail})
 	return string(data)
 }
 func (e *Error) StatusCode() int       { return e.Status }
 func (e *Error) IsRequestScoped() bool { return e.Scoped }
+func (e *Error) IsRequestStop() bool   { return e.stop || e.Kind == "content_policy_violation" }
+func (e *Error) PublicDiagnostic(status int) string {
+	if e.Status != status {
+		return ""
+	}
+	return e.clientMessage
+}
 func Invalid(message string) error {
 	return &Error{Status: 400, Kind: "invalid_request", Message: message, Scoped: true}
 }
 func Failure(kind, message string, started bool) error {
-	return &Error{Status: 502, Kind: kind, Message: message, Scoped: started}
+	return &Error{Status: 502, Kind: kind, Message: message, Scoped: started, stop: !started}
 }
 
 type Input struct {

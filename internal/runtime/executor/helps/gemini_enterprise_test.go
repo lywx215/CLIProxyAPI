@@ -1,12 +1,39 @@
 package helps
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 )
+
+func TestEnterpriseFailureRequestLogKeepsOnlySafeDiagnostics(t *testing.T) {
+	err := enterprise.UpstreamHTTPError(400, []byte(`{"error":{"status":"INVALID_ARGUMENT","message":"private-prompt private-token","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"query.text","description":"required: private-query"}]}]}}`))
+	generation := &ge.GenerationError{HTTPStatus: 400, Diagnostic: err}
+	gin.SetMode(gin.TestMode)
+	ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := context.WithValue(t.Context(), "gin", ginCtx)
+	cfg := &config.Config{}
+	cfg.RequestLog = true
+	RecordEnterpriseFailure(ctx, cfg, generation)
+	raw, _ := ginCtx.Get(apiResponseKey)
+	text, _ := raw.([]byte)
+	if len(text) == 0 {
+		if value, ok := raw.(string); ok {
+			text = []byte(value)
+		}
+	}
+	if !strings.Contains(string(text), "INVALID_ARGUMENT") || !strings.Contains(string(text), "query.text") || strings.Contains(string(text), "private-") || strings.Contains(generation.Error(), "private-") {
+		t.Fatalf("request log lost diagnostics or leaked source data: %s", text)
+	}
+}
 
 func TestEnterpriseValidationFields(t *testing.T) {
 	_, err := enterprise.Normalize([]byte(`{"contents":[{"parts":[{"functionCall":{"name":"private-function"},"thoughtSignature":"private-signature"}]}]}`), "gemini", "gemini-3.1-pro-preview")

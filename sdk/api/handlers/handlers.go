@@ -61,7 +61,9 @@ type ErrorDetail struct {
 	// Retryable optionally indicates whether a retry might fix the issue automatically.
 	Retryable *bool `json:"retryable,omitempty"`
 	// SkipReasons contains only recognized Google assistant skip reason enums.
-	SkipReasons []string `json:"skip_reasons,omitempty"`
+	SkipReasons []string                       `json:"skip_reasons,omitempty"`
+	Upstream    *enterprise.UpstreamDiagnostic `json:"upstream,omitempty"`
+	Policy      *ge.PolicyDiagnostic           `json:"policy,omitempty"`
 }
 
 const idempotencyKeyMetadataKey = "idempotency_key"
@@ -241,6 +243,10 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 		if message, enterpriseCode, field := enterprise.PublicErrorDetail(err, status); message != "" {
 			fixedMessage, code, param = message, enterpriseCode, safeErrorParam(field)
 			errType, retryable = "invalid_request_error", nil
+			if enterpriseCode == "content_policy_violation" {
+				value := false
+				retryable = &value
+			}
 			switch status {
 			case http.StatusUnauthorized:
 				errType = "authentication_error"
@@ -255,7 +261,12 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 			}
 		}
 	}
+	var upstream *enterprise.UpstreamDiagnostic
+	if !coreauth.IsTerminalAuthError(err) {
+		upstream = enterprise.PublicUpstreamDiagnostic(err, status)
+	}
 	var skipReasons []string
+	var policy *ge.PolicyDiagnostic
 	var skipped *ge.SkippedError
 	if !coreauth.IsTerminalAuthError(err) && errors.As(err, &skipped) && status == skipped.StatusCode() {
 		// A typed, locally sanitized rejection is the only source of public reasons.
@@ -263,8 +274,9 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 		fixedMessage, code, errType, param = skipped.SkipMessage(), "upstream_skipped", "invalid_request_error", nil
 		value := false
 		retryable, skipReasons = &value, skipped.SkipReasons()
+		policy = skipped.PolicyDetails()
 	}
-	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable, SkipReasons: skipReasons}})
+	payload, errMarshal := json.Marshal(ErrorResponse{Error: ErrorDetail{Message: fixedMessage, Type: errType, Code: code, Param: param, Retryable: retryable, SkipReasons: skipReasons, Upstream: upstream, Policy: policy}})
 	if errMarshal != nil {
 		return []byte(`{"error":{"message":"internal error","type":"server_error","code":"internal_server_error"}}`)
 	}

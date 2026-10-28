@@ -3,6 +3,7 @@ package geminienterprise
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -13,6 +14,7 @@ const unspecifiedSkipReason = "ASSIST_SKIPPED_REASON_UNSPECIFIED"
 type SkippedError struct {
 	reasons []string
 	started bool
+	policy  *PolicyDiagnostic
 }
 
 // NewSkippedError preserves recognized reasons from an AssistAnswer in SKIPPED state.
@@ -42,12 +44,37 @@ func NewSkippedError(raw json.RawMessage, started bool) *SkippedError {
 	return e
 }
 
+func NewSkippedErrorWithPolicy(raw, policy json.RawMessage, started bool) *SkippedError {
+	e := NewSkippedError(raw, started)
+	e.policy = parsePolicyDiagnostic(policy)
+	if e.policy != nil && e.policy.Verdict == "BLOCK" && !slices.Contains(e.reasons, "CUSTOMER_POLICY_VIOLATION") {
+		if len(raw) == 0 || string(raw) == "null" || string(raw) == "[]" {
+			e.reasons = nil
+		}
+		e.reasons = append(e.reasons, "CUSTOMER_POLICY_VIOLATION")
+	}
+	return e
+}
+
+func (e *SkippedError) PolicyDetails() *PolicyDiagnostic {
+	if e.policy == nil {
+		return nil
+	}
+	copy := *e.policy
+	copy.Checks = slices.Clone(copy.Checks)
+	return &copy
+}
+
 func (e *SkippedError) Error() string {
-	data, _ := json.Marshal(map[string]any{"error": map[string]any{
+	detail := map[string]any{
 		"code": "upstream_skipped", "type": "invalid_request_error",
 		"message": e.SkipMessage(), "skip_reasons": e.SkipReasons(),
 		"retryable": false,
-	}})
+	}
+	if e.policy != nil {
+		detail["policy"] = e.PolicyDetails()
+	}
+	data, _ := json.Marshal(map[string]any{"error": detail})
 	return string(data)
 }
 
@@ -72,5 +99,9 @@ func (e *SkippedError) SkipMessage() string {
 		}
 		details = append(details, reason+" ("+description+")")
 	}
-	return "Google skipped generation: " + strings.Join(details, "; ")
+	message := "Google skipped generation: " + strings.Join(details, "; ")
+	if e.policy != nil {
+		message += " Policy: " + e.policy.summary() + "."
+	}
+	return message
 }

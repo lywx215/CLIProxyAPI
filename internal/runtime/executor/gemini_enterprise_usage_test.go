@@ -39,6 +39,8 @@ func TestEnterpriseUsageAcrossChunksAndFailures(t *testing.T) {
 		{"split", `[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"hel"}},{"content":{"text":"lo"}}]}},{"answer":{"state":"SUCCEEDED"}}]`, true, true, false},
 		{"no-usage", enterpriseAnswer, true, false, false},
 		{"truncated", `[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"hello"}}]}}]`, true, true, true},
+		{"policy", `[{"answer":{"state":"SKIPPED","assistSkippedReasons":["CUSTOMER_POLICY_VIOLATION"],"replies":[{"content":{"text":"hello"}}],"customerPolicyEnforcementResult":{"verdict":"BLOCK"}}}]`, true, true, true},
+		{"policy-full", `[{"answer":{"state":"SKIPPED","assistSkippedReasons":["CUSTOMER_POLICY_VIOLATION"],"replies":[{"content":{"text":"hello"}}],"customerPolicyEnforcementResult":{"verdict":"BLOCK"}}}]`, false, false, true},
 		{"json", "", false, false, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -99,8 +101,8 @@ func TestEnterpriseUsageAcrossChunksAndFailures(t *testing.T) {
 				}
 			} else {
 				result, err := e.Execute(ctx, auth, req, opts)
-				if err != nil {
-					t.Fatal(err)
+				if (err != nil) != scenario.failed {
+					t.Fatalf("unexpected non-streaming result: %v", err)
 				}
 				wireUsage = gjson.GetBytes(result.Payload, "usage.total_tokens").Int()
 			}

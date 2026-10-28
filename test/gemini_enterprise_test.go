@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -581,5 +582,139 @@ func TestEnterpriseStatisticsUnknownRoundTrip(t *testing.T) {
 	fields := gjson.GetBytes(data, "apis.fixture.models.enterprise.details.0.tokens")
 	if fields.Get("reasoning_tokens").Type != gjson.Null || fields.Get("cached_tokens").Type != gjson.Null || fields.Get("input_tokens").Int() != 12 || destination.Snapshot().TotalTokens != 15 {
 		t.Fatalf("bad round trip: %s", data)
+	}
+}
+
+func TestEnterpriseUpstreamDiagnosticsAcrossPublicProtocols(t *testing.T) {
+	const badField = `{"code":400,"status":"INVALID_ARGUMENT","message":"private-upstream-value","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"contents[88].parts[0].functionResponse.name","description":"must be nonempty text: private-name"}]}]}`
+	for _, protocol := range []string{"openai", "gemini"} {
+		for _, stream := range []bool{false, true} {
+			for _, envelope := range []string{badField, `{"error":` + badField + `}`, `[{"error":` + badField + `}]`} {
+				router, upstream, _ := enterpriseFixtureRouter(t)
+				upstream.upstreamStatus, upstream.upstreamBody = 400, envelope
+				path, body := enterprisePublicRequest(t, "gemini-3.8-flash", protocol, stream, nil)
+				response := enterprisePublicCall(router, path, body)
+				if response.Code != 400 || upstream.calls.Load() != 1 {
+					t.Fatalf("HTTP status or physical request count changed: %d %d", response.Code, upstream.calls.Load())
+				}
+				raw := response.Body.String()
+				for _, want := range []string{"INVALID_ARGUMENT", "contents[88].parts[0].functionResponse.name", "required"} {
+					if !strings.Contains(raw, want) {
+						t.Fatalf("%s lost concrete diagnostic %s: %s", protocol, want, raw)
+					}
+				}
+				if strings.Contains(raw, "private-") || strings.Contains(raw, "[DONE]") {
+					t.Fatalf("failed request leaked values or signaled success: %s", raw)
+				}
+			}
+		}
+	}
+}
+
+func TestEnterpriseInvalidArgumentEventsRetainDiagnostics(t *testing.T) {
+	const errorEvent = `{"error":{"code":3,"status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"query.text","description":"must be a string; private-value"}]}]}}`
+	for _, protocol := range []string{"openai", "gemini"} {
+		for _, stream := range []bool{false, true} {
+			for _, prefix := range []string{"", `{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"partial"}}]}}` + "\n"} {
+				router, upstream, _ := enterpriseFixtureRouter(t)
+				upstream.upstreamStatus, upstream.upstreamBody = 200, prefix+errorEvent
+				path, body := enterprisePublicRequest(t, "gemini-3.8-flash", protocol, stream, nil)
+				response := enterprisePublicCall(router, path, body)
+				raw := response.Body.String()
+				if !strings.Contains(raw, "INVALID_ARGUMENT") || !strings.Contains(raw, "query.text") || !strings.Contains(raw, "invalid_type") || strings.Contains(raw, "private-value") || strings.Contains(raw, "[DONE]") || strings.Contains(raw, `"finish_reason":"stop"`) || strings.Contains(raw, `"finishReason":"STOP"`) {
+					t.Fatalf("invalid stream event became success or lost diagnostics: %s", raw)
+				}
+				if upstream.calls.Load() != 1 || (prefix == "" || !stream) && response.Code != 400 {
+					t.Fatalf("invalid stream event lost status or replayed: status=%d calls=%d", response.Code, upstream.calls.Load())
+				}
+			}
+		}
+	}
+}
+
+func TestEnterprisePolicyAndTerminalInformationAtHTTPBoundary(t *testing.T) {
+	const refusal = "This response was blocked by your organization's content policy."
+	const policy = `{"verdict":"BLOCK","violationSource":"PROMPT","policyResults":[{"bannedPhraseEnforcementResult":{"bannedPhrases":["private-phrase"]}},{"modelArmorEnforcementResult":{"modelArmorViolation":"private-finding"}}]}`
+	for _, scenario := range []struct {
+		name, response, expected string
+		policy                   bool
+	}{
+		{"success", `[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"OK"}}]}},{"answer":{"state":"SUCCEEDED"}}]`, "OK", false},
+		{"refusal-text", `[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"` + refusal + `"}}]}},{"answer":{"state":"SUCCEEDED"}}]`, refusal, false},
+		{"policy-first-frame", `[{"answer":{"state":"SKIPPED","assistSkippedReasons":["CUSTOMER_POLICY_VIOLATION"],"customerPolicyEnforcementResult":` + policy + `,"replies":[{"content":{"text":"private-denial"}}]}}]`, "", true},
+		{"policy-after-output", `[{"answer":{"state":"IN_PROGRESS","replies":[{"content":{"text":"partial"}}]}},{"answer":{"state":"SKIPPED","assistSkippedReasons":["CUSTOMER_POLICY_VIOLATION"],"customerPolicyEnforcementResult":` + policy + `}}]`, "partial", true},
+		{"policy-verdict", `[{"answer":{"state":"SUCCEEDED","customerPolicyEnforcementResult":` + policy + `,"replies":[{"content":{"text":"private-denial"}}]}}]`, "", true},
+	} {
+		for _, protocol := range []string{"openai", "gemini"} {
+			for _, stream := range []bool{false, true} {
+				for _, includeUsage := range []bool{false, true} {
+					name := scenario.name + "/" + protocol
+					t.Run(name, func(t *testing.T) {
+						router, upstream, _ := enterpriseFixtureRouter(t)
+						upstream.upstreamStatus, upstream.upstreamBody = 200, scenario.response
+						fields := map[string]any{"stream_options": map[string]bool{"include_usage": includeUsage}}
+						path, body := enterprisePublicRequest(t, "gemini-3.8-flash", protocol, stream, fields)
+						response := enterprisePublicCall(router, path, body)
+						raw := response.Body.String()
+						if upstream.calls.Load() != 1 || strings.Contains(raw, "private-") {
+							t.Fatalf("request replayed or policy values leaked: calls=%d response=%s", upstream.calls.Load(), raw)
+						}
+						if scenario.policy {
+							for _, want := range []string{"CUSTOMER_POLICY_VIOLATION", "PROMPT", "banned_phrase", "model_armor"} {
+								if !strings.Contains(raw, want) {
+									t.Fatalf("lost safe policy category %s: %s", want, raw)
+								}
+							}
+							if strings.Contains(raw, `"finish_reason":"stop"`) || strings.Contains(raw, `"finishReason":"STOP"`) || strings.Contains(raw, "[DONE]") {
+								t.Fatalf("policy failure emitted a successful terminator: %s", raw)
+							}
+						} else {
+							if response.Code != 200 || !strings.Contains(raw, scenario.expected) {
+								t.Fatalf("upstream output was overridden: %s", raw)
+							}
+							if stream && protocol == "openai" {
+								finish, usage, done := strings.Index(raw, `"finish_reason":"stop"`), strings.LastIndex(raw, `"usage"`), strings.Index(raw, "[DONE]")
+								if finish < 0 || done <= finish || includeUsage && (usage <= finish || usage >= done) || !includeUsage && usage >= 0 {
+									t.Fatalf("stop/usage/DONE ordering or include_usage changed: %s", raw)
+								}
+							}
+							if stream && protocol == "gemini" && !strings.Contains(raw, `"finishReason":"STOP"`) {
+								t.Fatalf("native terminal packet lost: %s", raw)
+							}
+						}
+						if stream && includeUsage {
+							if dir := os.Getenv("ENTERPRISE_DIAGNOSTIC_FIXTURES"); dir != "" {
+								if err := os.MkdirAll(dir, 0700); err != nil {
+									t.Fatal(err)
+								}
+								if err := os.WriteFile(filepath.Join(dir, scenario.name+"-"+protocol+".sse"), response.Body.Bytes(), 0600); err != nil {
+									t.Fatal(err)
+								}
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestEnterpriseEmptyHistoryNamesAreDecidedByGoogle(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		router, upstream, _ := enterpriseFixtureRouter(t)
+		contents := make([]any, 88)
+		for i := range contents {
+			contents[i] = map[string]any{"role": "user", "parts": []any{map[string]string{"text": "earlier"}}}
+		}
+		contents = append(contents, map[string]any{"role": "user", "parts": []any{map[string]any{"functionResponse": map[string]any{"name": "", "response": map[string]string{"result": "preserved"}}}}})
+		path, body := enterprisePublicRequest(t, "gemini-3.8-flash", "gemini", stream, map[string]any{"contents": contents})
+		response := enterprisePublicCall(router, path, body)
+		query := gjson.GetBytes(upstream.requestBody(), "query.text").String()
+		var history map[string]any
+		_ = json.Unmarshal([]byte(`{"name":"","response":{"result":"preserved"}}`), &history)
+		serialized, _ := json.Marshal(history)
+		if response.Code != 200 || upstream.calls.Load() != 1 || !strings.Contains(query, string(serialized)) {
+			t.Fatalf("local validation intercepted history or invented a name: status=%d calls=%d", response.Code, upstream.calls.Load())
+		}
 	}
 }

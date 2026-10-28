@@ -48,7 +48,24 @@ type enterpriseModelProbe struct {
 type enterpriseModelAttempts struct {
 	mu              sync.Mutex
 	location, model string
+	generationModel string
 	probe           *enterpriseModelProbe
+}
+
+// RecordEnterpriseGenerationModel pins the actual model after payload rules.
+// It is request-local and does not alter models, credentials or shared cooldowns.
+func RecordEnterpriseGenerationModel(ctx context.Context, model string) error {
+	s := enterpriseAttempts(ctx)
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.generationModel != "" && s.generationModel != model {
+		return &EnterpriseModelProbeError{Code: "retry_model_changed", Message: "An Enterprise retry must retain the original upstream model", HTTPStatus: http.StatusConflict}
+	}
+	s.generationModel = model
+	return nil
 }
 
 func withEnterpriseModelAttempts(ctx context.Context) context.Context {

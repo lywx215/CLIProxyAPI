@@ -1,7 +1,9 @@
 package geminienterprise
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -27,7 +29,11 @@ type Restriction struct {
 
 type GenerationError struct {
 	HTTPStatus int
-	Started    bool
+	// UpstreamHTTPStatus is the transport status, before decoding a stream error.
+	UpstreamHTTPStatus int
+	RPCStatus          string
+	UpstreamCode       int
+	Started            bool
 	// ModelNotEnabled is set only from a validated Google ErrorInfo detail.
 	ModelNotEnabled bool
 	Model           string
@@ -44,16 +50,45 @@ type TransportError struct {
 	Started bool
 }
 
-func (*TransportError) Error() string           { return "gemini-enterprise: upstream transport failed" }
-func (e *TransportError) Unwrap() error         { return e.Cause }
-func (e *TransportError) IsRequestScoped() bool { return e.Started }
+func (*TransportError) Error() string             { return "gemini-enterprise: upstream transport failed" }
+func (e *TransportError) Unwrap() error           { return e.Cause }
+func (e *TransportError) IsRequestScoped() bool   { return e.Started }
+func (e *TransportError) GenerationStarted() bool { return e.Started }
+func (e *TransportError) StatusCode() int {
+	if errors.Is(e.Cause, context.Canceled) {
+		return 499
+	}
+	if errors.Is(e.Cause, context.DeadlineExceeded) {
+		return 504
+	}
+	return http.StatusBadGateway
+}
 
 func (e *GenerationError) Error() string {
+	if detail, ok := e.Diagnostic.(interface{ PublicDiagnostic(int) string }); ok {
+		if message := detail.PublicDiagnostic(e.HTTPStatus); message != "" {
+			return message
+		}
+	}
 	return fmt.Sprintf("gemini-enterprise: Google generation returned HTTP %d", e.HTTPStatus)
 }
-func (e *GenerationError) StatusCode() int       { return e.HTTPStatus }
-func (e *GenerationError) IsRequestScoped() bool { return e.Started }
-func (e *GenerationError) Unwrap() error         { return e.Diagnostic }
+func (e *GenerationError) StatusCode() int         { return e.HTTPStatus }
+func (e *GenerationError) GenerationStarted() bool { return e.Started }
+func (e *GenerationError) IsRequestScoped() bool   { return e.Started || e.IsRequestStop() }
+func (e *GenerationError) IsRequestStop() bool {
+	if e.Model != "" && IsAutoModel(e.Model) {
+		return true
+	}
+	if e.UpstreamHTTPStatus >= 200 && e.UpstreamHTTPStatus < 300 && e.RPCStatus == "" && e.UpstreamCode == 0 {
+		return true
+	}
+	if !e.ModelNotEnabled && (e.HTTPStatus == 400 || e.HTTPStatus == 404 || e.HTTPStatus == 409 || e.HTTPStatus == 422 || e.HTTPStatus == 499 || e.HTTPStatus == 501) {
+		return true
+	}
+	var stop interface{ IsRequestStop() bool }
+	return errors.As(e.Diagnostic, &stop) && stop.IsRequestStop()
+}
+func (e *GenerationError) Unwrap() error { return e.Diagnostic }
 func (e *GenerationError) RetryAfter() *time.Duration {
 	if !e.RetryAt.After(e.now) {
 		return nil
@@ -80,8 +115,9 @@ func NextPacificMidnight(now time.Time) time.Time {
 // ParseGenerationError recognizes only structured, resource-matching quota details.
 // Unknown 429s retain the ordinary short backoff. Human descriptions are ignored.
 func ParseGenerationError(raw []byte, status int, headers http.Header, binding config.GeminiEnterpriseOAuth, identity *QuotaIdentity, now time.Time, started bool) *GenerationError {
-	e := &GenerationError{HTTPStatus: status, Started: started, now: now}
-	if status == 200 || status == 0 {
+	e := &GenerationError{HTTPStatus: status, UpstreamHTTPStatus: status, Started: started, now: now}
+	streamError := status == 0 || status >= 200 && status < 300
+	if streamError {
 		e.HTTPStatus = 502
 	}
 	retryAt := quotaHeaderRetryAt(headers, now)
@@ -91,7 +127,6 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	if IsModelNotEnabledResponse(raw, status) {
 		e.HTTPStatus = http.StatusBadRequest
 		e.ModelNotEnabled = true
-		return e
 	}
 	type rpcStatus struct {
 		Code    int               `json:"code"`
@@ -112,19 +147,16 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 			return e
 		}
 	}
-	if status == 200 || status == 0 {
-		for _, candidate := range []struct {
-			status, rpcCode int
-			name            string
-		}{{429, 8, "RESOURCE_EXHAUSTED"}, {403, 7, "PERMISSION_DENIED"}, {401, 16, "UNAUTHENTICATED"}} {
-			codeMatches := body.Code == candidate.rpcCode || body.Code == candidate.status
-			if (codeMatches || body.Status == candidate.name) && (body.Code == 0 || codeMatches) && (body.Status == "" || body.Status == candidate.name) {
-				e.HTTPStatus = candidate.status
-				break
-			}
+	if mapped, name := generationStatus(body.Code, body.Status); mapped != 0 {
+		e.RPCStatus, e.UpstreamCode = name, body.Code
+		if streamError {
+			e.HTTPStatus = mapped
 		}
 	}
 	if e.HTTPStatus != 429 {
+		if e.HTTPStatus == 500 || e.HTTPStatus == 502 || e.HTTPStatus == 503 || e.HTTPStatus == 504 {
+			e.RetryAt = retryAt
+		}
 		return e
 	}
 	e.RetryAt = retryAt

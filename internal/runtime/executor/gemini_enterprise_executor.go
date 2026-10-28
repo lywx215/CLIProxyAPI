@@ -251,12 +251,16 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if err := e.PrepareRequest(request, auth); err != nil {
 		return nil, input, err
 	}
+	if err := coreauth.RecordEnterpriseGenerationModel(ctx, finalModel); err != nil {
+		return nil, input, err
+	}
 	// Never record bearer credentials or raw upstream assistToken/sessionInfo in request logs.
 	headers := request.Header.Clone()
 	headers.Del("Authorization")
 	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{URL: request.URL.String(), Method: request.Method, Headers: headers, Body: body, Provider: e.Identifier(), AuthID: auth.ID, AuthLabel: auth.Label})
 	client := reporter.TrackHTTPClientRoundTripOnly(newHTTPClient(ctx, e.cfg, auth, 0))
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	request = helps.ObserveEnterpriseRequest(ctx, request, finalModel)
 	response, err := client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -264,6 +268,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		}
 		return nil, input, &ge.TransportError{Cause: err, Started: kind != ""}
 	}
+	helps.ObserveEnterpriseResponse(ctx, response)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		raw, errRead := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
@@ -283,6 +288,8 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 }
 
 func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (result coreexec.Response, err error) {
+	ctx, attempt := helps.NewEnterpriseAttempt(ctx, opts.Stream)
+	defer func() { attempt.Finish(ctx, e.cfg, err) }()
 	if err = e.validate(opts); err != nil {
 		return result, err
 	}
@@ -308,13 +315,14 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	counter := helps.NewEnterpriseTokenCounter(input.Body)
 	output := enterprise.NewOutput()
 	refs := helps.EnterpriseMediaRefs{}
+	var rejectedParts []map[string]any
 	var finalDetail *usage.Detail
 	defer func() {
 		var detail usage.Detail
 		if finalDetail != nil {
 			detail = *finalDetail
 		} else {
-			detail = counter.Detail(output.Parts)
+			detail = counter.Detail(append(output.Parts, rejectedParts...))
 		}
 		if err != nil {
 			reporter.PublishFailureWithDetail(ctx, detail, err)
@@ -322,10 +330,16 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 			reporter.Publish(ctx, detail)
 		}
 	}()
-	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-		return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
+	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 	}}
+	defer func() {
+		if parser.Started {
+			err = coreexec.MarkGenerationStarted(err)
+		}
+	}()
 	err = parser.Parse(response.Body, func(event enterprise.Event) error {
+		attempt.Output(event.Type)
 		if errRef := refs.Add(event); errRef != nil {
 			return errRef
 		}
@@ -339,10 +353,12 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	if err != nil {
 		return result, err
 	}
+	attempt.BodyComplete()
 	detail := counter.Detail(output.Parts)
 	finalDetail = &detail
 	if input.MediaKind != "" {
 		binding := ge.FromMetadata(auth.Metadata)
+		attempt.MediaDownload()
 		data, errDownload := helps.DownloadEnterpriseMedia(ctx, newHTTPClient(ctx, e.cfg, auth, 0), func(r *http.Request) error { return e.PrepareRequest(r, auth) }, ge.Engine(binding), input.MediaKind, refs)
 		if errDownload != nil {
 			return result, errDownload
@@ -395,10 +411,12 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 		close(chunks)
 		return &coreexec.StreamResult{Chunks: chunks, Headers: response.Headers}, nil
 	}
+	ctx, attempt := helps.NewEnterpriseAttempt(ctx, true)
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
 	reporter.SetStream(true)
 	response, input, err := e.open(ctx, auth, req, opts, reporter)
 	if err != nil {
+		attempt.Finish(ctx, e.cfg, err)
 		reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
 		return nil, err
 	}
@@ -412,6 +430,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 		defer close(chunks)
 		defer func() { _ = response.Body.Close() }()
 		var streamErr error
+		defer func() { attempt.Finish(ctx, e.cfg, streamErr) }()
 		send := func(payload []byte) error {
 			select {
 			case chunks <- coreexec.StreamChunk{Payload: payload}:
@@ -422,13 +441,14 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			}
 		}
 		output := enterprise.NewOutput()
+		var rejectedParts []map[string]any
 		var finalDetail *usage.Detail
 		defer func() {
 			var detail usage.Detail
 			if finalDetail != nil {
 				detail = *finalDetail
 			} else {
-				detail = counter.Detail(output.Parts)
+				detail = counter.Detail(append(output.Parts, rejectedParts...))
 			}
 			if streamErr != nil {
 				reporter.PublishFailureWithDetail(ctx, detail, streamErr)
@@ -436,10 +456,11 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 				reporter.Publish(ctx, detail)
 			}
 		}()
-		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-			return helps.EnterpriseGenerationError(raw, 200, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
+		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
+			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 		}}
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
+			attempt.Output(event.Type)
 			reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
 			previousAnnotations := len(output.Annotations)
 			text, part, errAdd := output.Add(event)
@@ -467,11 +488,15 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			streamErr = ctx.Err()
 		}
 		if streamErr == nil {
+			attempt.BodyComplete()
 			detail := counter.Detail(output.Parts)
 			finalDetail = &detail
 			streamErr = output.Finish(input)
 		}
 		if streamErr != nil {
+			if parser.Started {
+				streamErr = coreexec.MarkGenerationStarted(streamErr)
+			}
 			select {
 			case chunks <- coreexec.StreamChunk{Err: streamErr}:
 			case <-ctx.Done():

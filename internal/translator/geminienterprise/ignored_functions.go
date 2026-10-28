@@ -43,9 +43,8 @@ func (n *normalizer) functionChoice(value any, path string, legacy bool) {
 func (n *normalizer) historicalGeminiFunction(value any, path string, call bool) string {
 	n.ignoreFunction(path)
 	m := n.object(value, path)
-	if strings.TrimSpace(n.text(m["name"], path+".name")) == "" {
-		n.failField(path+".name", "must be nonempty text")
-	}
+	// History is serialized as client context, not submitted as a native function.
+	// Preserve missing or empty names for the upstream to interpret without repair.
 	field := "response"
 	if call {
 		field = "args"

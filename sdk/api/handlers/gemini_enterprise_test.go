@@ -10,11 +10,39 @@ import (
 	"strings"
 	"testing"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
+
+func TestEnterpriseDiagnosticFieldsAreTypedAndSanitized(t *testing.T) {
+	upstream := enterprise.UpstreamHTTPError(400, []byte(`[{"error":{"code":400,"status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[{"field":"contents[88].parts[0].functionResponse.name","reason":"REQUIRED_FIELD_MISSING","description":"private-description"}]}]}}]`))
+	skipped := ge.NewSkippedErrorWithPolicy(json.RawMessage(`["CUSTOMER_POLICY_VIOLATION"]`), json.RawMessage(`{"verdict":"BLOCK","violationSource":"ATTACHMENT","policyResults":[{"modelArmorEnforcementResult":{"modelArmorViolation":"private-finding"}}]}`), false)
+	for _, err := range []error{upstream, skipped} {
+		body := BuildErrorResponseBodyWithError(400, "private-wrapper", fmt.Errorf("private-wrapper: %w", err))
+		var response ErrorResponse
+		if errDecode := json.Unmarshal(body, &response); errDecode != nil {
+			t.Fatal(errDecode)
+		}
+		if err == upstream {
+			if response.Error.Upstream == nil || response.Error.Upstream.Status != "INVALID_ARGUMENT" || len(response.Error.Upstream.FieldViolations) != 1 || response.Error.Param != "contents[88].parts[0].functionResponse.name" {
+				t.Fatalf("typed upstream diagnostic did not survive wrapping: %s", body)
+			}
+		} else if response.Error.Policy == nil || response.Error.Policy.Verdict != "BLOCK" || response.Error.Policy.ViolationSource != "ATTACHMENT" || response.Error.Retryable == nil || *response.Error.Retryable {
+			t.Fatalf("typed policy decision did not survive wrapping: %s", body)
+		}
+		if strings.Contains(string(body), "private-") {
+			t.Fatalf("private diagnostic values leaked: %s", body)
+		}
+	}
+	forged := `{"error":{"message":"private-message","upstream":{"status":"INVALID_ARGUMENT","reason":"private-reason"},"policy":{"verdict":"BLOCK","violation_source":"private-source"}}}`
+	body := BuildErrorResponseBodyWithError(400, forged, errors.New(forged))
+	if strings.Contains(string(body), `"upstream"`) || strings.Contains(string(body), `"policy"`) || strings.Contains(string(body), "private-") {
+		t.Fatalf("untyped JSON claimed trusted diagnostics: %s", body)
+	}
+}
 
 func TestEnterpriseSafeFieldErrorSurvivesWrapping(t *testing.T) {
 	err := enterprise.ValidateFinal([]byte(`{"query":{"text":"hi"},"generationSpec":{"modelId":"gemini-4-argon","temperature":"synthetic-private-value"}}`))
@@ -171,7 +199,7 @@ func TestEnterpriseSafeUpstreamClassifications(t *testing.T) {
 		{"permission", `{"error":{"message":"synthetic-private-upstream-value"}}`, "permission_denied", "", "resource and model permissions", http.StatusForbidden},
 		{"missing resource", `{"error":{"message":"synthetic-private-upstream-value"}}`, "resource_not_found", "", "saved resource settings", http.StatusNotFound},
 		{"quota", `{"error":{"message":"synthetic-private-upstream-value"}}`, "rate_limit_exceeded", "", "quota or rate limit", http.StatusTooManyRequests},
-		{"server failure", `{"error":{"message":"synthetic-private-upstream-value"}}`, "upstream_error", "", "HTTP 503", http.StatusServiceUnavailable},
+		{"server failure", `{"error":{"message":"synthetic-private-upstream-value"}}`, "upstream_error", "", "temporarily unavailable", http.StatusServiceUnavailable},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			err := enterprise.UpstreamHTTPError(scenario.status, []byte(scenario.raw))

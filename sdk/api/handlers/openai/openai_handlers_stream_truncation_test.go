@@ -19,6 +19,19 @@ import (
 
 const truncatedStreamChatModel = "truncated-stream-chat-model"
 
+func TestChatCompletionsPolicyTextAndUsageCannotReplaceFinishReason(t *testing.T) {
+	out := runMockStreamTest(t, []string{
+		`{"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}],"usage":null}`,
+		`{"choices":[{"index":0,"delta":{"content":"This response was blocked by your organization's content policy."},"finish_reason":null}],"usage":null}`,
+		`{"choices":[],"usage":null}`,
+		`{"choices":[],"usage":{"prompt_tokens":31431,"completion_tokens":14,"total_tokens":31445}}`,
+	}, "policy-text-usage-without-finish")
+	if strings.Contains(out, "data: [DONE]") || strings.Contains(out, `"finish_reason":"stop"`) {
+		t.Fatalf("usage or refusal text was treated as a successful terminator: %s", out)
+	}
+	assertTruncatedStreamSafeError(t, out)
+}
+
 type mockStreamExecutor struct {
 	chunks []string
 }

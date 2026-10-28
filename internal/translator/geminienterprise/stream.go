@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -38,10 +39,12 @@ type Parser struct {
 	// Error decodes sanitized structured generation errors at any stream boundary.
 	Error     func([]byte, bool) error
 	ReadError func(error, bool) error
-	Started   bool
-	terminal  string
-	emit      func(Event) error
-	text      strings.Builder
+	// RejectedText accounts for observed denial text without forwarding it as output.
+	RejectedText func(string)
+	Started      bool
+	terminal     string
+	emit         func(Event) error
+	text         strings.Builder
 }
 
 // Parse accepts JSON arrays, consecutive JSON/NDJSON, and SSE using one event parser.
@@ -49,7 +52,9 @@ type Parser struct {
 func (p *Parser) Parse(reader io.Reader, emit func(Event) error) (parseErr error) {
 	tracked := &streamReadTracker{Reader: reader}
 	defer func() {
-		if _, skipped := parseErr.(*ge.SkippedError); skipped {
+		var skipped *ge.SkippedError
+		var generation *ge.GenerationError
+		if errors.As(parseErr, &skipped) || errors.As(parseErr, &generation) {
 			// A complete request rejection must survive a simultaneous transport error.
 			return
 		}
@@ -241,6 +246,9 @@ func (p *Parser) item(raw []byte) error {
 	if code := item["code"]; len(code) > 0 && string(code) != "0" && p.Error != nil {
 		return p.Error(raw, p.Started)
 	}
+	if status := item["status"]; len(status) > 0 && string(status) != `"OK"` && string(status) != `""` && string(status) != "null" && p.Error != nil {
+		return p.Error(raw, p.Started)
+	}
 	if !ok {
 		return nil
 	}
@@ -257,6 +265,7 @@ func (p *Parser) item(raw []byte) error {
 	var answer struct {
 		State          string          `json:"state"`
 		SkippedReasons json.RawMessage `json:"assistSkippedReasons"`
+		Policy         json.RawMessage `json:"customerPolicyEnforcementResult"`
 		Replies        []struct {
 			Content         json.RawMessage `json:"content"`
 			GroundedContent struct {
@@ -271,6 +280,27 @@ func (p *Parser) item(raw []byte) error {
 	}
 	if errAnswer != nil {
 		return p.wrap("invalid_upstream_stream", "invalid answer")
+	}
+	// A policy rejection may include a denial reply in the same frame. Surface
+	// Google's decision before forwarding that reply as a successful generation.
+	if answer.State == "SKIPPED" || ge.PolicyBlocksGeneration(answer.Policy) {
+		p.terminal = "SKIPPED"
+		if p.RejectedText != nil {
+			for _, reply := range answer.Replies {
+				content := reply.GroundedContent.Content
+				if len(content) == 0 {
+					content = reply.Content
+				}
+				var denied struct {
+					Text    string `json:"text"`
+					Thought bool   `json:"thought"`
+				}
+				if json.Unmarshal(content, &denied) == nil && !denied.Thought && denied.Text != "" {
+					p.RejectedText(denied.Text)
+				}
+			}
+		}
+		return ge.NewSkippedErrorWithPolicy(answer.SkippedReasons, answer.Policy, p.Started)
 	}
 	for _, reply := range answer.Replies {
 		content := reply.GroundedContent.Content
@@ -375,10 +405,9 @@ func (p *Parser) item(raw []byte) error {
 	switch answer.State {
 	case "", "IN_PROGRESS", "STATE_UNSPECIFIED":
 	case "SUCCEEDED":
+		// Completion is a generation boundary even when no visible text was returned.
+		p.Started = true
 		p.terminal = answer.State
-	case "SKIPPED":
-		p.terminal = answer.State
-		return ge.NewSkippedError(answer.SkippedReasons, p.Started)
 	default:
 		p.terminal = answer.State
 		return p.wrap("upstream_failed", "Google generation ended with "+answer.State)
@@ -392,7 +421,7 @@ func (p *Parser) observeAnswerActivity(raw json.RawMessage) {
 		Replies []json.RawMessage `json:"replies"`
 	}
 	_ = json.Unmarshal(raw, &activity)
-	if activity.State == "IN_PROGRESS" || len(activity.Replies) > 0 {
+	if activity.State == "IN_PROGRESS" || activity.State == "SUCCEEDED" || len(activity.Replies) > 0 {
 		p.Started = true
 	}
 }
