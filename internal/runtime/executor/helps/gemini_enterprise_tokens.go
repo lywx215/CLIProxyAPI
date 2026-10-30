@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 
 	sentencepiece "github.com/eliben/go-sentencepiece"
@@ -59,12 +61,75 @@ func countEnterpriseText(text string) (int64, error) {
 	return int64(len(processor.Encode(text))), nil
 }
 
-// EnterpriseTokenCounter locally counts the final business text and visible output.
-// These counts are not upstream-reported or billing-authoritative usage.
+// EnterpriseTokenCounter counts final input and ordinary output locally and
+// observes reported reasoning usage or summaries. Local counts are not billing-authoritative.
 type EnterpriseTokenCounter struct {
-	input      int64
-	inputKnown bool
-	count      func(string) (int64, error)
+	input                    int64
+	inputKnown               bool
+	count                    func(string) (int64, error)
+	thoughts                 strings.Builder
+	thoughtsUnavailable      bool
+	reportedReasoning        int64
+	reportedReasoningKnown   bool
+	reportedReasoningInvalid bool
+}
+
+// ObserveThought retains only bounded, explicitly thought-marked text.
+func (c *EnterpriseTokenCounter) ObserveThought(text string) {
+	if c.thoughtsUnavailable || text == "" {
+		return
+	}
+	if len(text) > 4*1024*1024-c.thoughts.Len() {
+		c.thoughtsUnavailable = true
+		c.thoughts.Reset()
+		return
+	}
+	c.thoughts.WriteString(text)
+}
+
+// ObserveUsage reads only the standard root usage metadata, never reply content.
+// Snapshots are cumulative; malformed, duplicate or decreasing counters invalidate
+// the reported value for this execution without affecting generation.
+func (c *EnterpriseTokenCounter) ObserveUsage(raw json.RawMessage) {
+	if c.reportedReasoningInvalid {
+		return
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		c.reportedReasoningInvalid = true
+		return
+	}
+	seen := false
+	for decoder.More() {
+		key, errKey := decoder.Token()
+		var value json.RawMessage
+		if errKey != nil || decoder.Decode(&value) != nil {
+			c.reportedReasoningInvalid = true
+			return
+		}
+		if key != "thoughtsTokenCount" {
+			continue
+		}
+		if seen {
+			c.reportedReasoningInvalid = true
+			return
+		}
+		seen = true
+		n, errCount := strconv.ParseInt(string(bytes.TrimSpace(value)), 10, 64)
+		if errCount != nil || n < 0 || c.reportedReasoningKnown && n < c.reportedReasoning {
+			c.reportedReasoningInvalid = true
+			return
+		}
+		c.reportedReasoning, c.reportedReasoningKnown = n, true
+	}
+	if _, errEnd := decoder.Token(); errEnd != nil {
+		c.reportedReasoningInvalid = true
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		c.reportedReasoningInvalid = true
+	}
 }
 
 func NewEnterpriseTokenCounter(finalPayload []byte) *EnterpriseTokenCounter {
@@ -77,16 +142,24 @@ func NewEnterpriseTokenCounter(finalPayload []byte) *EnterpriseTokenCounter {
 	if value.Type == gjson.String {
 		var err error
 		c.input, err = c.count(value.String())
-		c.inputKnown = err == nil
+		c.inputKnown = err == nil && c.input >= 0
 	}
 	return c
 }
 
 // Detail counts merged upstream parts before JSON cleanup or Markdown rendering.
-// Missing hidden reasoning and cache counters deliberately remain unavailable.
+// Missing reasoning and cache counters deliberately remain unavailable.
 func (c *EnterpriseTokenCounter) Detail(parts []map[string]any) usage.Detail {
 	presence := &usage.TokenPresence{InputTokens: c.inputKnown, OutputTokens: true}
 	detail := usage.Detail{InputTokens: c.input, TokenPresence: presence}
+	if c.reportedReasoningKnown && !c.reportedReasoningInvalid {
+		detail.ReasoningTokens, presence.ReasoningTokens = c.reportedReasoning, true
+	} else if !c.thoughtsUnavailable && c.thoughts.Len() > 0 {
+		value, err := c.count(c.thoughts.String())
+		if err == nil && value >= 0 {
+			detail.ReasoningTokens, presence.ReasoningTokens = value, true
+		}
+	}
 	if _, err := c.count(""); err != nil {
 		presence.OutputTokens = false
 		return detail
@@ -131,7 +204,13 @@ func (c *EnterpriseTokenCounter) Detail(parts []map[string]any) usage.Detail {
 				detail.OutputTokens = 0
 				break
 			}
-			detail.OutputTokens += value
+			var ok bool
+			detail.OutputTokens, ok = safeUsageTokenSum(detail.OutputTokens, value)
+			if !ok {
+				presence.OutputTokens = false
+				detail.OutputTokens = 0
+				break
+			}
 		}
 		if !presence.OutputTokens {
 			break
@@ -139,7 +218,7 @@ func (c *EnterpriseTokenCounter) Detail(parts []map[string]any) usage.Detail {
 	}
 	presence.TotalTokens = presence.InputTokens && presence.OutputTokens
 	if presence.TotalTokens {
-		detail.TotalTokens = detail.InputTokens + detail.OutputTokens
+		detail.TotalTokens, presence.TotalTokens = safeUsageTokenSum(detail.InputTokens, detail.OutputTokens, detail.ReasoningTokens)
 	}
 	return detail
 }
@@ -150,7 +229,11 @@ func EnterpriseUsagePayload(payload []byte, gemini bool, detail usage.Detail) []
 	if p == nil {
 		return payload
 	}
-	values := map[string]int64{}
+	values := map[string]any{}
+	reasoning := int64(0)
+	if p.ReasoningTokens {
+		reasoning = detail.ReasoningTokens
+	}
 	key := "usage"
 	input, output, total := "prompt_tokens", "completion_tokens", "total_tokens"
 	if gemini {
@@ -161,7 +244,18 @@ func EnterpriseUsagePayload(payload []byte, gemini bool, detail usage.Detail) []
 		values[input] = detail.InputTokens
 	}
 	if p.OutputTokens {
-		values[output] = detail.OutputTokens
+		if gemini {
+			values[output] = detail.OutputTokens
+		} else if completion, ok := safeUsageTokenSum(detail.OutputTokens, reasoning); ok {
+			values[output] = completion
+		}
+	}
+	if p.ReasoningTokens {
+		if gemini {
+			values["thoughtsTokenCount"] = detail.ReasoningTokens
+		} else {
+			values["completion_tokens_details"] = map[string]int64{"reasoning_tokens": detail.ReasoningTokens}
+		}
 	}
 	if p.TotalTokens {
 		values[total] = detail.TotalTokens
@@ -182,6 +276,12 @@ func EnterpriseUsagePayload(payload []byte, gemini bool, detail usage.Detail) []
 
 func EnterpriseStreamUsageRequested(payload []byte) bool {
 	return gjson.GetBytes(payload, "stream_options.include_usage").Bool()
+}
+
+// EnterpriseUsageAvailable includes partial usage when another counter failed.
+func EnterpriseUsageAvailable(detail usage.Detail) bool {
+	p := detail.TokenPresence
+	return p != nil && (p.InputTokens || p.OutputTokens || p.ReasoningTokens || p.TotalTokens)
 }
 
 func EnterpriseChatUsageChunk(payload []byte, detail usage.Detail) []byte {

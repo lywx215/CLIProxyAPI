@@ -24,6 +24,21 @@ func TestTokenPresenceQueueJSON(t *testing.T) {
 	}
 }
 
+func TestEnterpriseReasoningQueuePreservesSeparateBuckets(t *testing.T) {
+	for _, reason := range []int64{0, 50} {
+		withEnabledQueue(t, func() {
+			plugin := &usageQueuePlugin{}
+			plugin.HandleUsage(context.Background(), coreusage.Record{Provider: "gemini-enterprise", Model: "enterprise-fixture", Detail: coreusage.Detail{InputTokens: 1000, OutputTokens: 100, ReasoningTokens: reason, TotalTokens: 1100 + reason, TokenPresence: &coreusage.TokenPresence{InputTokens: true, OutputTokens: true, ReasoningTokens: true, TotalTokens: true}}})
+			payload := popSinglePayload(t)
+			tokens := requireTokensPayload(t, payload)
+			if string(tokens["reasoning_tokens"]) != map[int64]string{0: "0", 50: "50"}[reason] || string(tokens["output_tokens"]) != "100" || string(tokens["cached_tokens"]) != "null" || string(tokens["cache_read_tokens"]) != "null" {
+				t.Fatal("queue changed real zero or unknown cache")
+			}
+			requireTokenBreakdown(t, payload, coreusage.TokenAccountingQualityUnclassified, 1100+reason)
+		})
+	}
+}
+
 func TestTokenPresenceQueuePluginPreservesPartialUsage(t *testing.T) {
 	withEnabledQueue(t, func() {
 		plugin := &usageQueuePlugin{}

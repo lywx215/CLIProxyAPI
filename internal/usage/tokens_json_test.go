@@ -11,6 +11,39 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestEnterpriseReasoningSnapshotProviderAndDedup(t *testing.T) {
+	stats := NewRequestStatistics()
+	stats.Record(context.Background(), coreusage.Record{Provider: "gemini-enterprise", APIKey: "fixture", Model: "enterprise", RequestedAt: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC), Detail: coreusage.Detail{InputTokens: 1000, OutputTokens: 100, ReasoningTokens: 50, TotalTokens: 1150, TokenPresence: &coreusage.TokenPresence{InputTokens: true, OutputTokens: true, ReasoningTokens: true, TotalTokens: true}}})
+	data, err := json.Marshal(stats.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := gjson.GetBytes(data, "apis.fixture.models.enterprise.details.0")
+	if row.Get("provider").String() != "gemini-enterprise" || row.Get("tokens.reasoning_tokens").Int() != 50 || row.Get("tokens.output_tokens").Int() != 100 || row.Get("tokens.cached_tokens").Type != gjson.Null {
+		t.Fatalf("metadata or buckets changed: %s", data)
+	}
+	var snapshot StatisticsSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	imported := NewRequestStatistics()
+	if result := imported.MergeSnapshot(snapshot); result.Added != 1 || imported.Snapshot().TotalTokens != 1150 {
+		t.Fatal("snapshot totals changed")
+	}
+	api := snapshot.APIs["fixture"]
+	model := api.Models["enterprise"]
+	model.Details[0].Provider = ""
+	api.Models["enterprise"] = model
+	snapshot.APIs["fixture"] = api
+	if result := imported.MergeSnapshot(snapshot); result.Added != 0 || result.Skipped != 1 {
+		t.Fatal("optional provider changed the historical dedup key")
+	}
+	copyData, _ := json.Marshal(imported.Snapshot())
+	if gjson.GetBytes(copyData, "apis.fixture.models.enterprise.details.0.provider").String() != "gemini-enterprise" {
+		t.Fatal("snapshot lost provider")
+	}
+}
+
 func TestTokenPresenceSnapshotRoundTrip(t *testing.T) {
 	stats := NewRequestStatistics()
 	stats.Record(context.Background(), coreusage.Record{RequestedAt: time.Now(), APIKey: "fixture", Model: "enterprise", Detail: coreusage.Detail{InputTokens: 12, OutputTokens: 3, TotalTokens: 15, TokenPresence: &coreusage.TokenPresence{InputTokens: true, OutputTokens: true, TotalTokens: true}}})

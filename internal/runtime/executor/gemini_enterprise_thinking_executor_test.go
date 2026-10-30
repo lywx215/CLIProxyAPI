@@ -23,6 +23,9 @@ func TestEnterpriseThinkingProtocolsStreamsAndUsage(t *testing.T) {
 		t.Run(model, func(t *testing.T) {
 			for _, level := range []string{"LOW", "HIGH"} {
 				wantOutput := helps.NewEnterpriseTokenCounter([]byte(`{"query":{"text":"hi"}}`)).Detail([]map[string]any{{"text": `{"ok":true}`}}).OutputTokens
+				thoughtCounter := helps.NewEnterpriseTokenCounter([]byte(`{"query":{"text":"hi"}}`))
+				thoughtCounter.ObserveThought("summary 你好🙂summary continued")
+				wantReasoning := thoughtCounter.Detail(nil).ReasoningTokens
 				for _, format := range []translator.Format{translator.FormatGemini, translator.FormatOpenAI} {
 					for _, include := range []bool{false, true} {
 						for _, stream := range []bool{false, true} {
@@ -74,8 +77,8 @@ func TestEnterpriseThinkingProtocolsStreamsAndUsage(t *testing.T) {
 								seenThought, outputTokens := false, int64(0)
 								for _, packet := range packets {
 									seenThought = seenThought || strings.Contains(string(packet), "summary")
-									if strings.Contains(string(packet), "opaque-secret") || strings.Contains(string(packet), "thoughtsTokenCount") || strings.Contains(string(packet), "reasoning_tokens") {
-										t.Fatalf("opaque data or fabricated thought usage: %s", packet)
+									if strings.Contains(string(packet), "opaque-secret") || strings.Contains(string(packet), "cachedContentTokenCount") || strings.Contains(string(packet), "cached_tokens") {
+										t.Fatalf("opaque data or fabricated cache usage: %s", packet)
 									}
 									path := "usageMetadata.candidatesTokenCount"
 									if format == translator.FormatOpenAI {
@@ -83,8 +86,11 @@ func TestEnterpriseThinkingProtocolsStreamsAndUsage(t *testing.T) {
 									}
 									if value := gjson.GetBytes(packet, path); value.Exists() {
 										outputTokens = value.Int()
+										if format == translator.FormatOpenAI {
+											outputTokens -= wantReasoning
+										}
 										if outputTokens != wantOutput {
-											t.Fatal("thought text entered visible output token accounting")
+											t.Fatal("body and thought token buckets were not kept separate")
 										}
 									}
 								}

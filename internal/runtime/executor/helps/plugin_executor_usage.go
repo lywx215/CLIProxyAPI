@@ -14,6 +14,9 @@ func ParsePluginExecutorResponseUsage(protocol string, payload []byte) usage.Det
 		return usage.Detail{}
 	}
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "gemini-enterprise":
+		detail, _ := parseEnterpriseProtocolUsage(payload)
+		return detail
 	case "claude":
 		return parseClaudePayloadUsage(payload)
 	case "gemini":
@@ -56,6 +59,12 @@ func ObservePluginExecutorStreamUsage(protocol string, payload []byte, buffer *S
 		return
 	}
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "gemini-enterprise":
+		IterateStreamLines(payload, func(line []byte) {
+			if detail, ok := parseEnterpriseProtocolUsage(ExtractStreamJSONPayload(line)); ok {
+				buffer.Observe(detail, true)
+			}
+		})
 	case "claude":
 		IterateStreamLines(payload, func(line []byte) {
 			if detail, ok := parseClaudeStreamLine(line); ok {

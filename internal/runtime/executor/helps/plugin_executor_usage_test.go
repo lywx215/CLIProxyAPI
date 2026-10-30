@@ -1,6 +1,41 @@
 package helps
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestEnterprisePluginUsageProtocolNormalization(t *testing.T) {
+	for _, payload := range []string{
+		`{"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":100,"thoughtsTokenCount":50,"totalTokenCount":1150}}`,
+		`{"usage":{"prompt_tokens":1000,"completion_tokens":150,"completion_tokens_details":{"reasoning_tokens":50},"total_tokens":1150}}`,
+	} {
+		for _, stream := range []bool{false, true} {
+			var d = ParsePluginExecutorResponseUsage("gemini-enterprise", []byte(payload))
+			if stream {
+				var buffer StreamUsageBuffer
+				ObservePluginExecutorStreamUsage("gemini-enterprise", []byte("data: "+payload+"\n\n"), &buffer)
+				var ok bool
+				d, ok = buffer.Detail()
+				if !ok {
+					t.Fatal("usage was not observed")
+				}
+			}
+			if d.InputTokens != 1000 || d.OutputTokens != 100 || d.ReasoningTokens != 50 || d.TotalTokens != 1150 || d.TokenPresence == nil || !d.TokenPresence.ReasoningTokens || d.TokenPresence.CachedTokens || !d.TokenBreakdown.Valid() {
+				t.Fatalf("plugin accounting changed: %+v", d)
+			}
+		}
+	}
+	for _, payload := range []string{
+		`{"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":100,"thoughtsTokenCount":0,"totalTokenCount":1100}}`,
+		`{"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":100,"totalTokenCount":1100}}`,
+	} {
+		d := ParsePluginExecutorResponseUsage("gemini-enterprise", []byte(payload))
+		if d.ReasoningTokens != 0 || d.TokenPresence.ReasoningTokens != strings.Contains(payload, "thoughtsTokenCount") || d.TokenPresence.CachedTokens {
+			t.Fatal("plugin collapsed unknown into zero")
+		}
+	}
+}
 
 func TestObservePluginExecutorStreamUsageKeepsTopLevelResponsesTokensWhenServiceTierPresent(t *testing.T) {
 	t.Parallel()

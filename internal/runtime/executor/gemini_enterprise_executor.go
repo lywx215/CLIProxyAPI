@@ -333,6 +333,9 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
 		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 	}}
+	if input.MediaKind == "" {
+		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
+	}
 	defer func() {
 		if parser.Started {
 			err = coreexec.MarkGenerationStarted(err)
@@ -459,6 +462,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
 			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
 		}}
+		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
 			attempt.Output(event.Type)
 			reporter.ObserveTokenEvent(event.Type == "text" || event.Type == "code" || event.Type == "execution")
@@ -521,7 +525,7 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			if streamErr == nil {
 				streamErr = send(output.ChatDelta(req.Model, "", nil, true))
 			}
-			if streamErr == nil && includeUsage && finalDetail.TokenPresence.TotalTokens {
+			if streamErr == nil && includeUsage && helps.EnterpriseUsageAvailable(*finalDetail) {
 				streamErr = send(helps.EnterpriseChatUsageChunk(output.ChatDelta(req.Model, "", nil, true), *finalDetail))
 			}
 		}

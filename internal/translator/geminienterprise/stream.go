@@ -41,10 +41,13 @@ type Parser struct {
 	ReadError func(error, bool) error
 	// RejectedText accounts for observed denial text without forwarding it as output.
 	RejectedText func(string)
-	Started      bool
-	terminal     string
-	emit         func(Event) error
-	text         strings.Builder
+	// Usage and Thought observe data independently of downstream visibility.
+	Usage    func(json.RawMessage)
+	Thought  func(string)
+	Started  bool
+	terminal string
+	emit     func(Event) error
+	text     strings.Builder
 }
 
 // Parse accepts JSON arrays, consecutive JSON/NDJSON, and SSE using one event parser.
@@ -220,6 +223,11 @@ func (p *Parser) item(raw []byte) error {
 	if json.Unmarshal(raw, &item) != nil || item == nil {
 		return p.wrap("invalid_upstream_stream", "expected upstream JSON object")
 	}
+	if p.Usage != nil {
+		if value, exists := item["usageMetadata"]; exists {
+			p.Usage(value)
+		}
+	}
 	if p.MediaKind != "" {
 		var info struct {
 			Session string `json:"session"`
@@ -285,7 +293,7 @@ func (p *Parser) item(raw []byte) error {
 	// Google's decision before forwarding that reply as a successful generation.
 	if answer.State == "SKIPPED" || ge.PolicyBlocksGeneration(answer.Policy) {
 		p.terminal = "SKIPPED"
-		if p.RejectedText != nil {
+		if p.RejectedText != nil || p.Thought != nil {
 			for _, reply := range answer.Replies {
 				content := reply.GroundedContent.Content
 				if len(content) == 0 {
@@ -295,8 +303,12 @@ func (p *Parser) item(raw []byte) error {
 					Text    string `json:"text"`
 					Thought bool   `json:"thought"`
 				}
-				if json.Unmarshal(content, &denied) == nil && !denied.Thought && denied.Text != "" {
-					p.RejectedText(denied.Text)
+				if json.Unmarshal(content, &denied) == nil && denied.Text != "" {
+					if denied.Thought && p.Thought != nil {
+						p.Thought(denied.Text)
+					} else if !denied.Thought && p.RejectedText != nil {
+						p.RejectedText(denied.Text)
+					}
 				}
 			}
 		}
@@ -325,6 +337,9 @@ func (p *Parser) item(raw []byte) error {
 			return p.wrap("invalid_upstream_stream", "invalid reply content")
 		}
 		if c.Thought {
+			if p.Thought != nil && c.Text != "" {
+				p.Thought(c.Text)
+			}
 			if p.IncludeThoughts && c.Text != "" {
 				if err := p.emit(Event{Type: "thought", Text: c.Text}); err != nil {
 					return err

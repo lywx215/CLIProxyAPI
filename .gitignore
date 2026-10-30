@@ -86,3 +86,4 @@ docker-compose.override.yml
 !/test/gemini_enterprise_sdk_smoke.py
 !/test/gemini_enterprise_shared_quota_test.go
 !/test/gemini_enterprise_model_policy_test.go
+!/test/gemini_enterprise_reasoning_contract_test.go
