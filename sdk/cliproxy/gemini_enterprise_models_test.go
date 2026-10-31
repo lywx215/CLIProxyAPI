@@ -183,6 +183,49 @@ func TestEnterpriseCatalogPreservesCooldownAndFencesRevision(t *testing.T) {
 	}
 }
 
+func TestEnterprisePendingLicensePreservesCatalogCooldown(t *testing.T) {
+	svc, auth := enterpriseTestService(t, "enterprise-pending-license-cooldown")
+	const model = "gemini-4-argon"
+	retry := time.Now().Add(time.Hour)
+	auth.ModelStates = map[string]*coreauth.ModelState{
+		model: {Unavailable: true, NextRetryAfter: retry, Status: coreauth.StatusError,
+			Quota: coreauth.QuotaState{Exceeded: true, NextRecoverAt: retry}},
+	}
+	auth, err := svc.coreManager.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := []ge.Model{{ID: model}}
+	svc.coreManager.PublishEnterprisePolicyCatalog(auth, models)
+	key := svc.enterpriseKey(auth)
+	catalog := enterpriseCatalog{known: true, revision: 1, models: models}
+	d := svc.enterpriseState()
+	d.mu.Lock()
+	d.catalogs[key] = catalog
+	d.mu.Unlock()
+	if view := svc.coreManager.EnterpriseModelPolicyView(auth); view.Status != "blocked" {
+		t.Fatalf("expected an unverified license policy, got %s", view.Status)
+	}
+	if !svc.publishEnterpriseCatalog(t.Context(), auth, key, catalog, GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)) {
+		t.Fatal("the pending-license catalog was not published")
+	}
+	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+		t.Fatal("unverified license exposed a schedulable model")
+	}
+	current, _ := svc.coreManager.GetByID(auth.ID)
+	if state := current.ModelStates[model]; state == nil || !state.NextRetryAfter.Equal(retry) || !state.Quota.Exceeded {
+		t.Fatal("temporary license blocking erased the persisted cooldown")
+	}
+	publishEnterpriseTrialFixture(t, svc.coreManager, current)
+	if !svc.publishEnterpriseCatalog(t.Context(), current, key, catalog, GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)) {
+		t.Fatal("the verified catalog was not published")
+	}
+	current, _ = svc.coreManager.GetByID(auth.ID)
+	if state := current.ModelStates[model]; state == nil || !state.NextRetryAfter.Equal(retry) || !registry.GetGlobalRegistry().IsModelQuotaExceededForClient(auth.ID, model) {
+		t.Fatal("verified catalog did not restore the retained cooldown projection")
+	}
+}
+
 func TestEnterpriseDiscoverySingleflightAndTokenFence(t *testing.T) {
 	svc, auth := enterpriseTestService(t, "enterprise-token-fence")
 	publishEnterpriseTrialFixture(t, svc.coreManager, auth)

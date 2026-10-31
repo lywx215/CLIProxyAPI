@@ -158,7 +158,11 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	d.mu.Unlock()
 	s.cfgMu.RUnlock()
 	if updated && s.enterpriseActive(auth, key) {
-		s.coreManager.ReconcileRegistryModelStates(ctx, auth.ID)
+		// A pending license check temporarily hides the catalog. Preserve persisted
+		// cooldowns until a verified policy can distinguish supported models.
+		if policy.ModelPolicy.Status != "blocked" {
+			s.coreManager.ReconcileRegistryModelStates(ctx, auth.ID)
+		}
 		s.coreManager.RefreshSchedulerEntry(auth.ID)
 	}
 	return updated
