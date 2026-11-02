@@ -171,6 +171,7 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 }
 
 func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options, reporter *helps.UsageReporter) (*http.Response, enterprise.Input, error) {
+	helps.ObserveEnterpriseStage(ctx, "input")
 	if err := e.validate(opts); err != nil {
 		return nil, enterprise.Input{}, err
 	}
@@ -187,9 +188,6 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		input, err = enterprise.Normalize(req.Payload, opts.SourceFormat.String(), baseModel)
 	}
 	if err != nil {
-		if fields := helps.EnterpriseValidationFields("input", err); fields != nil {
-			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
-		}
 		return nil, input, err
 	}
 	if len(input.Ignored) > 0 {
@@ -198,6 +196,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if input.ClientFunctionsIgnored {
 		log.WithField("provider", e.Identifier()).Warn("client function fields ignored; continuing as text without client function execution")
 	}
+	helps.ObserveEnterpriseStage(ctx, "final_payload")
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
 	input.Body, err = helps.ApplyEnterpriseAssistDefaults(input.Body)
 	if err != nil {
@@ -214,17 +213,16 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		}
 	}
 	body := finalize(input.Body)
+	helps.ObserveEnterprisePayload(ctx, body, auth)
 	validate := enterprise.ValidateFinal
 	if kind != "" {
 		validate = func(b []byte) error { return enterprise.ValidateMediaFinal(b, kind) }
 	}
 	if err := validate(body); err != nil {
-		if fields := helps.EnterpriseValidationFields("final_payload", err); fields != nil {
-			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
-		}
 		return nil, input, err
 	}
 	input.Body = body
+	helps.ObserveEnterpriseStage(ctx, "binding")
 	input.IncludeThoughts = kind == "" && gjson.GetBytes(body, "generationSpec.thinkingConfig.includeThoughts").Type == gjson.True
 	finalModel := gjson.GetBytes(body, "generationSpec.modelId").String()
 	if kind != "" {
@@ -389,6 +387,9 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 
 func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (result *coreexec.StreamResult, err error) {
 	if err = e.validate(opts); err != nil {
+		failureCtx, attempt := helps.NewEnterpriseAttempt(ctx, true)
+		helps.ObserveEnterpriseStage(failureCtx, "input")
+		attempt.Finish(failureCtx, e.cfg, err)
 		return nil, err
 	}
 	if enterpriseRequestMediaKind(req.Model) != "" {

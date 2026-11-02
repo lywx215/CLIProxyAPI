@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -39,6 +40,8 @@ type EnterpriseAttempt struct {
 	status                                                         int
 	requestID, phase                                               string
 	stream                                                         bool
+	summary                                                        *enterpriseRequestSummary
+	sentObserved                                                   bool
 }
 
 func NewEnterpriseAttempt(ctx context.Context, stream bool) (context.Context, *EnterpriseAttempt) {
@@ -107,7 +110,11 @@ func (a *EnterpriseAttempt) Request(req *http.Request) *http.Request {
 			a.tlsSeen = true
 			a.mu.Unlock()
 		},
-		WroteRequest: func(info httptrace.WroteRequestInfo) { a.mu.Lock(); a.sent = info.Err == nil; a.mu.Unlock() },
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			a.mu.Lock()
+			a.sent, a.sentObserved = info.Err == nil, true
+			a.mu.Unlock()
+		},
 		GotFirstResponseByte: func() {
 			a.mu.Lock()
 			if a.firstByte.IsZero() {
@@ -204,6 +211,33 @@ func (a *EnterpriseAttempt) fields(err error) log.Fields {
 	f := log.Fields{"stage": a.phase, "stream": a.stream, "upstream_http_status": a.status,
 		"request_sent": a.sent, "generation_started": a.outputSeen || coreexec.GenerationHasStarted(err),
 		"total_ms": elapsedMS(a.start, end), "error_class": enterpriseFailureClass(err)}
+	f["output_seen"] = a.outputSeen
+	if !a.sentObserved {
+		f["request_sent"] = "unknown"
+	}
+	if s := a.summary; s != nil {
+		f["request_body_bytes"] = s.BodyBytes
+		if s.Parsed {
+			f["unknown_field_count"] = s.UnknownFields
+			fields, _ := json.Marshal(s.Fields)
+			f["configured_fields"] = string(fields)
+		}
+		if s.QueryChars != nil {
+			f["query_chars"], f["query_bytes"] = *s.QueryChars, *s.QueryBytes
+		}
+		if s.Search != nil {
+			f["search_enabled"] = *s.Search
+		}
+		if s.Location != "" {
+			f["location"] = s.Location
+		}
+		if s.Binding != "" {
+			f["binding_ref"] = s.Binding
+		}
+		if s.Revision != nil {
+			f["binding_revision"] = *s.Revision
+		}
+	}
 	if !a.request.IsZero() {
 		f["build_ms"] = elapsedMS(a.start, a.request)
 	}

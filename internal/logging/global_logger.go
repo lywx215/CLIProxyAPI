@@ -124,6 +124,9 @@ func (m *LogFormatter) Format(entry *log.Entry) ([]byte, error) {
 				fields = append(fields, fmt.Sprintf("%s=%s", k, formatLogFieldValue(k, v)))
 			}
 		}
+		if entry.Data["provider"] == "gemini-enterprise" {
+			fields = append(fields, enterpriseDiagnosticLogFields(entry.Data)...)
+		}
 		if pluginID, ok := entry.Data["plugin_id"]; ok && strings.TrimSpace(fmt.Sprint(pluginID)) != "" {
 			for _, k := range pluginPathFieldOrder {
 				if v, ok := entry.Data[k]; ok {

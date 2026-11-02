@@ -326,6 +326,19 @@ func ServerFromContext(ctx context.Context) *ServerSpan {
 	return s
 }
 
+// CorrelationIDs returns the existing immutable identities for local log lookup.
+// A caller ID remains an unverified alias and never replaces a local request ID.
+// This accessor does not add fields or events to the frozen diagnostics protocol.
+func CorrelationIDs(ctx context.Context) (requestID, traceID, callerRequestID string) {
+	if s := ServerFromContext(ctx); s != nil {
+		requestID, traceID = s.requestID, s.incoming.TraceID
+		if s.incoming.CallerRequestID != nil {
+			callerRequestID = *s.incoming.CallerRequestID
+		}
+	}
+	return
+}
+
 // CarryContext preserves diagnostics when an existing SDK boundary deliberately
 // chooses a different cancellation parent. It does not change that parent.
 func CarryContext(dst, src context.Context) context.Context {

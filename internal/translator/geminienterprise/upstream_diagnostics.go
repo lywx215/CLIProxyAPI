@@ -73,8 +73,7 @@ func decodeUpstreamError(raw []byte, depth int) upstreamErrorBody {
 	return body
 }
 
-func upstreamDiagnostic(body upstreamErrorBody, status int) *UpstreamDiagnostic {
-	diagnostic := &UpstreamDiagnostic{}
+func validUpstreamErrorStatus(body upstreamErrorBody, status int) bool {
 	// A status must agree with the actual HTTP response or its decoded stream status.
 	statuses := map[string][]int{
 		"INVALID_ARGUMENT": {400, 422}, "FAILED_PRECONDITION": {400, 422}, "OUT_OF_RANGE": {400, 422},
@@ -85,11 +84,16 @@ func upstreamDiagnostic(body upstreamErrorBody, status int) *UpstreamDiagnostic 
 	}
 	codes := map[int][]int{400: {3, 9, 11, 400}, 422: {3, 9, 11, 422}, 401: {16, 401}, 403: {7, 403}, 404: {5, 404}, 409: {6, 10, 409}, 429: {8, 429}, 499: {1, 499}, 500: {2, 13, 15, 500}, 501: {12, 501}, 502: {13, 14, 502}, 503: {14, 503}, 504: {4, 504}}
 	if body.Code != 0 && !slices.Contains(codes[status], body.Code) || body.Status != "" && !slices.Contains(statuses[body.Status], status) {
+		return false
+	}
+	return true
+}
+
+func upstreamDiagnostic(body upstreamErrorBody, status int) *UpstreamDiagnostic {
+	if !validUpstreamErrorStatus(body, status) {
 		return nil
 	}
-	if slices.Contains(statuses[body.Status], status) {
-		diagnostic.Status = body.Status
-	}
+	diagnostic := &UpstreamDiagnostic{Status: body.Status}
 	for _, detail := range body.Details {
 		if detail.Type == "type.googleapis.com/google.rpc.ErrorInfo" && slices.Contains([]string{"googleapis.com", "discoveryengine.googleapis.com", "serviceusage.googleapis.com", "iam.googleapis.com"}, detail.Domain) {
 			switch detail.Reason {

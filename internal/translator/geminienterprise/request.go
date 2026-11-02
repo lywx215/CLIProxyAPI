@@ -17,6 +17,7 @@ type Error struct {
 	clientMessage string
 	param         string
 	diagnostic    *UpstreamDiagnostic
+	logDiagnostic *LogDiagnostic
 	stop          bool
 }
 

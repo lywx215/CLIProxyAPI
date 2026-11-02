@@ -10,6 +10,8 @@ import (
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	log "github.com/sirupsen/logrus"
 )
@@ -36,17 +38,67 @@ func RecordEnterpriseFailure(ctx context.Context, cfg *config.Config, err error)
 			fields[key] = value
 		}
 	}
+	requestID, traceID, callerID := diagnostics.CorrelationIDs(ctx)
+	if requestID == "" {
+		requestID = logging.GetRequestID(ctx)
+	}
+	if requestID != "" {
+		fields["diagnostic_request_id"] = requestID
+	}
+	if traceID != "" {
+		fields["trace_id"] = traceID
+	}
+	if callerID != "" {
+		fields["caller_request_id"] = callerID
+	}
+	source := "local_protocol"
+	var generation *ge.GenerationError
+	var transport *ge.TransportError
+	var local *enterprise.Error
+	switch {
+	case errors.As(err, &generation):
+		source = "google_http"
+		if generation.UpstreamHTTPStatus == 0 || generation.UpstreamHTTPStatus >= 200 && generation.UpstreamHTTPStatus < 300 {
+			source = "google_stream"
+		}
+	case skipped != nil:
+		source = "google_stream"
+	case errors.As(err, &transport), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		source = "local_transport"
+	case code == "invalid_field" || code == "invalid_request":
+		source = "local_validation"
+	case errors.As(err, &local) && local.Status < 500 && (local.Kind == "invalid_field" || local.Kind == "invalid_request"):
+		source = "local_validation"
+	}
+	fields["diagnostic_source"], fields["reason_class"], fields["reason_evidence"] = source, "unclassified", "unknown"
+	if d := enterprise.LogUpstreamDiagnostic(err, status); d != nil {
+		fields["reason_class"], fields["reason_evidence"] = d.Category, d.Evidence
+		if d.Status != "" {
+			fields["google_status"] = d.Status
+		}
+		if d.Reason != "" {
+			fields["google_reason"] = d.Reason
+		}
+		if len(d.Fields) > 0 {
+			encoded, _ := json.Marshal(d.Fields)
+			fields["upstream_fields"] = string(encoded)
+		}
+	}
 	detail := map[string]any{"message": message, "code": code}
 	if field != "" {
-		fields["field"], detail["param"] = field, field
+		detail["param"] = field
+		if safe := enterprise.LogFieldPath(field); safe != "" {
+			fields["field"] = safe
+		}
 	}
 	if upstream := enterprise.PublicUpstreamDiagnostic(err, status); upstream != nil {
-		fields["upstream"], detail["upstream"] = upstream, upstream
+		detail["upstream"] = upstream
 	}
 	if skipped != nil {
-		fields["skip_reasons"], detail["skip_reasons"] = skipped.SkipReasons(), skipped.SkipReasons()
+		fields["skip_reasons"], detail["skip_reasons"] = strings.Join(skipped.SkipReasons(), ","), skipped.SkipReasons()
 		if policy := skipped.PolicyDetails(); policy != nil {
-			fields["policy"], detail["policy"] = policy, policy
+			detail["policy"] = policy
+			fields["policy_verdict"], fields["policy_source"], fields["policy_checks"] = policy.Verdict, policy.ViolationSource, strings.Join(policy.Checks, ",")
 		}
 	}
 	if raw, errMarshal := json.Marshal(map[string]any{"error": detail}); errMarshal == nil {
