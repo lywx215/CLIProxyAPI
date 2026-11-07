@@ -9,6 +9,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
@@ -119,6 +120,9 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 		models = applyExcludedModels(models, excluded)
 	case "aistudio":
 		models = registry.GetAIStudioModels()
+		models = applyExcludedModels(models, excluded)
+	case "gemini-enterprise-web":
+		models = EnterpriseWebNativeModels(a)
 		models = applyExcludedModels(models, excluded)
 	case "gemini-enterprise":
 		s.registerEnterpriseModels(ctx, a)
@@ -1042,6 +1046,36 @@ func applyOAuthModelAlias(cfg *config.Config, provider, authKind string, models 
 	return applyOAuthModelAliasForAuth(cfg, provider, authKind, nil, models)
 }
 
+// EnterpriseWebNativeModels returns only an account's observed upstream catalog.
+func EnterpriseWebNativeModels(a *coreauth.Auth) []*ModelInfo {
+	if a == nil || a.Provider != web.Provider {
+		return nil
+	}
+	c, err := web.CredentialFrom(a.Metadata)
+	if err != nil {
+		return nil
+	}
+	var models []*ModelInfo
+	for _, model := range c.Catalog() {
+		if !c.AllowsModel(model.ID) {
+			continue
+		}
+		models = append(models, &ModelInfo{ID: model.ID, MetadataModelID: model.ID, DisplayName: model.DisplayName, Type: "gemini", OwnedBy: web.Provider, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}})
+	}
+	return models
+}
+
+// ProjectEnterpriseWebModels uses the same global alias and prefix rules as Service.
+func ProjectEnterpriseWebModels(cfg *config.Config, a *coreauth.Auth) []*ModelInfo {
+	models := EnterpriseWebNativeModels(a)
+	if cfg != nil {
+		models = applyExcludedModels(models, cfg.OAuthExcludedModels[web.Provider])
+	}
+	models = applyOAuthModelAliasForAuth(cfg, web.Provider, "oauth", nil, models)
+	models = applyOAuthSettingsForAuth(cfg, web.Provider, "oauth", models)
+	return applyModelPrefixes(models, a.Prefix, cfg != nil && cfg.ForceModelPrefix)
+}
+
 func applyOAuthModelAliasForAuth(cfg *config.Config, provider, authKind string, attributes map[string]string, models []*ModelInfo) []*ModelInfo {
 	if len(models) == 0 {
 		return models
@@ -1058,6 +1092,12 @@ func applyOAuthModelAliasForAuth(cfg *config.Config, provider, authKind string, 
 }
 
 func oauthModelAliasesForAuth(cfg *config.Config, channel string, attributes map[string]string) []config.OAuthModelAlias {
+	if channel == web.Provider {
+		if cfg == nil {
+			return nil
+		}
+		return cfg.OAuthModelAlias[channel]
+	}
 	perAuthAliases := coreauth.OAuthModelAliasesFromAttributes(attributes)
 	if cfg == nil || len(cfg.OAuthModelAlias) == 0 {
 		return perAuthAliases

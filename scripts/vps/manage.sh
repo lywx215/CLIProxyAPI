@@ -11,6 +11,10 @@ upload=${5:?Missing upload directory}
 lines=${6:-100}
 follow=${7:-0}
 domain=${8:-}
+public=${9:-0}
+[[ $public == 0 || $public == 1 ]] || { printf 'Invalid public binding option.\n' >&2; exit 1; }
+host_bind=127.0.0.1
+[[ $public != 1 ]] || host_bind=0.0.0.0
 
 fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 [[ $root =~ ^/[a-zA-Z0-9_./-]+$ && $root != *'/../'* && $root != */.. ]] || fail 'Invalid deployment directory.'
@@ -58,7 +62,7 @@ compose_file=$root/compose.yaml
 compose_run() {
     local env_file=$1
     shift
-    env -u CPA_IMAGE -u CPA_PORT "${compose[@]}" --project-directory "$root" -p "$project" \
+    env -u CPA_IMAGE -u CPA_PORT -u CPA_BIND_ADDRESS "${compose[@]}" --project-directory "$root" -p "$project" \
         --env-file "$env_file" -f "$compose_file" "$@"
 }
 
@@ -156,7 +160,7 @@ services:
     pull_policy: never
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${CPA_PORT:-8317}:8317"
+      - "${CPA_BIND_ADDRESS:-127.0.0.1}:${CPA_PORT:-8317}:8317"
     volumes:
       - ./shared/config.yaml:/CLIProxyAPI/config.yaml
       - ./shared/auths:/root/.cli-proxy-api
@@ -183,14 +187,18 @@ if [[ -f $current ]]; then
     # Keep the configured host port on updates, including non-default ports.
     host_port=$(sed -n 's/^CPA_PORT=//p' "$current")
     [[ $host_port =~ ^[0-9]+$ ]] || fail 'Missing saved host port.'
+    host_bind=$(sed -n 's/^CPA_BIND_ADDRESS=//p' "$current")
+    host_bind=${host_bind:-127.0.0.1}
+    [[ $host_bind == 127.0.0.1 || $host_bind == 0.0.0.0 ]] || fail 'Unsupported saved host binding.'
 fi
 candidate=$release/candidate.env
-printf 'CPA_IMAGE=%s\nCPA_PORT=%s\n' "$image" "$host_port" > "$candidate"
+printf 'CPA_IMAGE=%s\nCPA_PORT=%s\nCPA_BIND_ADDRESS=%s\n' "$image" "$host_port" "$host_bind" > "$candidate"
 compose_run "$candidate" config -q
 if compose_run "$candidate" up -d --no-build --pull never cli-proxy-api && wait_healthy "$candidate"; then
     mv "$candidate" "$current"
     cp "$release/manifest.json" "$root/current-manifest.json"
     printf 'Deployment completed; container is healthy.\nBaoTa reverse proxy target: http://127.0.0.1:%s\n' "$host_port"
+    printf 'Host publication: %s:%s\n' "$host_bind" "$host_port"
     if [[ -n $domain ]]; then
         bash "$upload/proxy.sh" "$root" "$project" "$domain" "$host_port"
     fi

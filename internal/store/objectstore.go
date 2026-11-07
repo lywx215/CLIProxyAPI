@@ -217,6 +217,10 @@ func (s *ObjectTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err = cliproxyauth.CheckEnterpriseWebStoreRevision(ctx, auth, path); err != nil {
+		return "", err
+	}
+
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("object store: create auth directory: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budgetbackup"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"golang.org/x/sync/semaphore"
@@ -153,9 +154,12 @@ type resultPolicyHolder struct {
 
 // Manager orchestrates auth lifecycle, selection, execution, and persistence.
 type Manager struct {
+	webRuntime                *web.Runtime
+	webModels                 atomic.Value
 	enterpriseAccounts        enterpriseAccountCoordinator
 	enterpriseModels          enterpriseModelCoordinator
 	enterprisePolicies        enterprisePolicyCoordinator
+	enterpriseCarbonEvidence  enterpriseCarbonEvidenceCoordinator
 	enterpriseQuota           enterpriseQuotaCoordinator
 	geminiBudgetMu            sync.Mutex
 	geminiBudget              *budget.Engine
@@ -258,6 +262,9 @@ func NewManager(store Store, selector Selector, hook Hook) *Manager {
 		modelPoolOffsets:      make(map[string]int),
 	}
 	// atomic.Value requires non-nil initial value.
+	manager.webRuntime = web.NewRuntime()
+	manager.webRuntime.SetCookieRotationCommitter(manager.commitEnterpriseWebCookieRotation)
+	manager.webModels.Store(map[string]bool{})
 	manager.runtimeConfig.Store(&internalconfig.Config{})
 	manager.apiKeyModelRouting.Store(&apiKeyModelRoutingSnapshot{config: &internalconfig.Config{}})
 	defaultInFlightConfig, errInFlightConfig := HomeInFlightPublisherConfigFromConfig(internalconfig.DefaultCredentialInFlightConfig())

@@ -12,6 +12,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
 	kimiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/kimi"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	log "github.com/sirupsen/logrus"
@@ -155,9 +156,19 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) ([
 	if provider == "" || provider == "gemini-cli" {
 		return nil, nil
 	}
+	if provider == web.Provider {
+		if _, err := web.CredentialFrom(metadata); err != nil {
+			return nil, fmt.Errorf("invalid Web credential in %s", filepath.Base(fullPath))
+		}
+	}
 	label := provider
 	if email, _ := metadata["email"].(string); email != "" {
 		label = email
+	}
+	if provider == web.Provider {
+		if name, ok := metadata["label"].(string); ok && name != "" {
+			label = name
+		}
 	}
 	// Use relative path under authDir as ID to stay consistent with the file-based token store.
 	id := fullPath

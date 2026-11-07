@@ -71,7 +71,7 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "enterprise_plus", false)
-	if v := m.EnterpriseModelPolicyView(a); len(v.EffectiveModels) != 1 || v.EffectiveModels[0] != ge.ArgonModel {
+	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel}) {
 		t.Fatal(v)
 	}
 	m.InvalidateEnterpriseSubscription(a)

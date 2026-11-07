@@ -90,6 +90,9 @@ func (m *Manager) SetOAuthModelAlias(aliases map[string][]internalconfig.OAuthMo
 		table = &oauthModelAliasTable{}
 	}
 	m.oauthModelAlias.Store(table)
+	m.mu.Lock()
+	m.rebuildEnterpriseWebModelsLocked()
+	m.mu.Unlock()
 }
 
 // applyOAuthModelAlias resolves the upstream model from OAuth model alias.
@@ -265,8 +268,10 @@ func (m *Manager) resolveOAuthModelAliasWithResult(auth *Auth, requestedModel st
 	if channel == "" {
 		return OAuthModelAliasResult{}
 	}
-	if result := resolveUpstreamModelFromAliases(OAuthModelAliasesFromAttributes(authAttributes(auth)), requestedModel); result.UpstreamModel != "" {
-		return result
+	if auth.Provider != "gemini-enterprise-web" {
+		if result := resolveUpstreamModelFromAliases(OAuthModelAliasesFromAttributes(authAttributes(auth)), requestedModel); result.UpstreamModel != "" {
+			return result
+		}
 	}
 	return resolveUpstreamModelFromAliasTable(m, auth, requestedModel, channel)
 }

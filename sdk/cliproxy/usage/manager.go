@@ -84,6 +84,8 @@ type Detail struct {
 	CacheReadTokens     int64
 	CacheCreationTokens int64
 	TotalTokens         int64
+	// Estimate is optional provenance for local, incomplete text measurements.
+	Estimate *TokenEstimate
 	// TokenPresence distinguishes unavailable counters from genuine zero values.
 	// nil preserves the availability semantics of existing usage producers.
 	TokenPresence       *TokenPresence

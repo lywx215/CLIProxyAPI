@@ -19,6 +19,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -148,6 +149,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		for _, auth := range matching[start:end] {
 			if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 				addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
+				h.addEnterpriseWebEntry(c, entry, auth)
 				if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
 					h.addEnterpriseAccountSummary(entry, auth)
 				}
@@ -171,6 +173,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		}
 		if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 			addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
+			h.addEnterpriseWebEntry(c, entry, auth)
 			if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
 				h.addEnterpriseAccountSummary(entry, auth)
 			}
@@ -405,8 +408,35 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 
 	response := gin.H{"models": result}
 	if c.GetBool(ConfigV8ContextKey) && h.authManager != nil {
+		if account, found := h.authManager.GetByID(authID); found && account.Provider == web.Provider {
+			credential, err := web.CredentialFrom(account.Metadata)
+			if err != nil {
+				c.JSON(400, gin.H{"error": "invalid Web credential"})
+				return
+			}
+			allowed := map[string]bool{}
+			for _, model := range credential.Catalog() {
+				allowed[model.ID] = true
+			}
+			visible := []gin.H{}
+			for i, model := range models {
+				actual := model.MetadataModelID
+				if actual == "" {
+					actual = strings.TrimPrefix(model.ID, account.Prefix+"/")
+				}
+				if !allowed[actual] {
+					continue
+				}
+				result[i]["upstream_model"], result[i]["upstream_listed"], result[i]["catalog_source"] = actual, true, "cached"
+				visible = append(visible, result[i])
+			}
+			response["models"], response["catalog_updated_at"] = visible, credential.CatalogUpdatedAt
+			c.Header("Cache-Control", "no-store")
+		}
 		if auth, found := h.authManager.GetByID(authID); found && auth.Provider == ge.Provider {
 			view := h.authManager.EnterpriseModelPolicyView(auth)
+			carbon := h.authManager.EnterpriseCarbonAdmissionView(auth)
+			carbonRegistered := false
 			visible := make([]gin.H, 0, len(result))
 			for i, model := range models {
 				actual := model.MetadataModelID
@@ -423,12 +453,27 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 						}
 					}
 				}
+				if actual == ge.CarbonModel {
+					allowed = carbon.Available
+				}
 				if !allowed {
 					continue
+				}
+				if actual == ge.CarbonModel {
+					carbonRegistered = true
 				}
 				result[i]["upstream_model"], result[i]["policy_allowed"] = actual, true
 				result[i]["catalog_source"] = view.CatalogState.Source
 				result[i]["upstream_listed"] = view.CatalogState.Source == "upstream" || view.CatalogState.Source == "cached"
+				for _, entry := range view.CatalogModels {
+					if entry.ID == actual {
+						result[i]["catalog_source"], result[i]["upstream_listed"] = entry.CatalogSource, entry.UpstreamListed
+						break
+					}
+				}
+				if actual == ge.CarbonModel && !view.CatalogKnown {
+					result[i]["catalog_source"], result[i]["upstream_listed"] = "manual", false
+				}
 				visible = append(visible, result[i])
 			}
 			response["models"] = visible
@@ -436,6 +481,8 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 			response["catalog_fallback_supported"] = true
 			response["model_policy_state"] = view
 			response["catalog_models"] = view.CatalogModels
+			response["carbon_admission_supported"], response["carbon_admission"] = true, carbon
+			response["test_candidates"] = []gin.H{{"id": ge.CarbonModel, "display_name": ge.CarbonModel, "type": "gemini", "upstream_model": ge.CarbonModel, "test_candidate": true, "business_registered": carbonRegistered}}
 		}
 	}
 	c.JSON(200, response)

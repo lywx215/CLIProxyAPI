@@ -16,6 +16,7 @@ param(
     [string]$Output,
     [int]$Lines = 100,
     [switch]$Follow,
+    [switch]$PublicAccess,
     [switch]$PasswordAuth,
     [switch]$PasswordStdin,
     [switch]$AcceptNewHostKey,
@@ -37,6 +38,7 @@ foreach ($taskName in $taskOptions.Keys) {
 }
 $taskArguments += @('--lines', [string]$Lines)
 if ($Follow) { $taskArguments += '--follow' }
+if ($PublicAccess) { $taskArguments += '--public' }
 if ($PasswordAuth) { $taskArguments += '--password' }
 if ($PasswordStdin) { $taskArguments += '--password-stdin' }
 if ($AcceptNewHostKey) { $taskArguments += '--accept-new-host-key' }

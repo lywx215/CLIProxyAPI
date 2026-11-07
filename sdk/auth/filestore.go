@@ -149,6 +149,10 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 		}
 	}
 
+	if err = cliproxyauth.CheckEnterpriseWebStoreRevision(ctx, auth, path); err != nil {
+		return "", err
+	}
+
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("auth filestore: create dir failed: %w", err)
 	}

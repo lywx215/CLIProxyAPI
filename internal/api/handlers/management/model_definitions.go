@@ -2,10 +2,12 @@ package management
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 )
 
 // GetStaticModelDefinitions returns static model metadata for a given channel.
@@ -14,6 +16,30 @@ func (h *Handler) GetStaticModelDefinitions(c *gin.Context) {
 	channel := strings.TrimSpace(c.Param("channel"))
 	if channel == "" {
 		channel = strings.TrimSpace(c.Query("channel"))
+	}
+	if c.GetBool(ConfigV8ContextKey) && strings.EqualFold(channel, web.Provider) {
+		models := []*registry.ModelInfo{}
+		seen := map[string]bool{}
+		if h.authManager != nil {
+			for _, a := range h.authManager.List() {
+				if a.Provider != web.Provider {
+					continue
+				}
+				credential, err := web.CredentialFrom(a.Metadata)
+				if err != nil {
+					continue
+				}
+				for _, model := range credential.Catalog() {
+					if !seen[model.ID] {
+						seen[model.ID] = true
+						models = append(models, &registry.ModelInfo{ID: model.ID, DisplayName: model.DisplayName, Type: "gemini", OwnedBy: web.Provider})
+					}
+				}
+			}
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+		c.JSON(200, gin.H{"channel": web.Provider, "models": models, "catalog_source": "cached"})
+		return
 	}
 	if channel == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "channel is required"})

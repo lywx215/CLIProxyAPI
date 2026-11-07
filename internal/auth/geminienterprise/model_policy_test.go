@@ -135,7 +135,7 @@ func TestModelPolicyManualOverridesAndExactWhitelist(t *testing.T) {
 
 func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 	paid := false
-	allowed := []string{ArgonModel, "gemini-3-pro-image", "veo-3.1"}
+	allowed := []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1"}
 	for _, edition := range []string{"enterprise_plus", "enterprise_standard", "enterprise_emerging", "frontline_worker", "frontline_starter", "starter", "business_standard", "edu", "edu_pro", "edu_emerging", "edu_pro_emerging"} {
 		for _, status := range []string{"ok", "stale"} {
 			for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
@@ -147,11 +147,14 @@ func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 					}
 					for _, model := range append(append([]string{}, allowed...), "gemini-3.8-flash", "gemini-3-pro-image-preview", "veo-3.1-fast", "auto", "future-model") {
 						want := slices.Contains(allowed, model)
+						if model == CarbonModel {
+							want = false
+						}
 						if mode == "argon_only" {
-							want = want && model == ArgonModel
+							want = want && IsArgonFamilyModel(model)
 						}
 						if mode == "exclude_argon" {
-							want = want && model != ArgonModel
+							want = want && !IsArgonFamilyModel(model)
 						}
 						if policy.Allows(model) != want {
 							t.Fatalf("paid model %q allowed=%v want=%v policy=%+v", model, policy.Allows(model), want, policy)
@@ -182,7 +185,7 @@ func TestSubscriptionVerificationIsMandatoryForEveryPolicy(t *testing.T) {
 				if policy.Status != "blocked" || policy.EnforcedAllowedModels == nil || len(policy.EnforcedAllowedModels) != 0 || policy.EnforcedReason == "" || policy.EnforcedReason != policy.Reason {
 					t.Fatalf("unverified policy did not fail closed: %+v", policy)
 				}
-				for _, model := range []string{ArgonModel, "gemini-3-pro-image", "veo-3.1", "gemini-3.8-flash"} {
+				for _, model := range []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1", "gemini-3.8-flash"} {
 					if policy.Allows(model) {
 						t.Fatalf("unverified subscription admitted %q", model)
 					}
@@ -216,7 +219,7 @@ func TestEnforcedModelPolicyJSONDistinguishesTrialAndBlocked(t *testing.T) {
 		json        string
 	}{
 		{"trial", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial}, "null"},
-		{"paid", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, `["gemini-4-argon","gemini-3-pro-image","veo-3.1"]`},
+		{"paid", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]`},
 		{"blocked", SubscriptionObservation{}, "[]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

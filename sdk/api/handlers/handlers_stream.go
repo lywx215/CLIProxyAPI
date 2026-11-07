@@ -9,6 +9,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
@@ -327,7 +328,7 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	setReasoningEffortMetadata(reqMeta, entryProtocol, normalizedModel, rawJSON)
 	setServiceTierMetadata(reqMeta, rawJSON)
 	setGenerateMetadata(reqMeta, rawJSON)
-	if limit := parseModelTokenLimit(normalizedModel); limit > 0 {
+	if limit := parseModelTokenLimit(normalizedModel); limit > 0 && !(entryProtocol == "gemini" && web.HasMediaInContext(ctx, rawJSON)) {
 		if estimated := len(rawJSON) / 4; estimated > limit {
 			errChan := make(chan *interfaces.ErrorMessage, 1)
 			errChan <- &interfaces.ErrorMessage{

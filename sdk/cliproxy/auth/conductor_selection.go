@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
@@ -561,6 +562,10 @@ func (m *Manager) availableAuthsForRouteModelAcrossPriorities(auths []*Auth, pro
 }
 
 func (m *Manager) availableAuthsForRouteModelWithPriorityMode(auths []*Auth, provider, routeModel string, now time.Time, allPriorities bool) ([]*Auth, error) {
+	return m.availableAuthsForRouteModelForRequest(context.Background(), auths, provider, routeModel, now, allPriorities)
+}
+
+func (m *Manager) availableAuthsForRouteModelForRequest(ctx context.Context, auths []*Auth, provider, routeModel string, now time.Time, allPriorities bool) ([]*Auth, error) {
 	if len(auths) == 0 {
 		return nil, &Error{Code: "auth_not_found", Message: "no auth candidates"}
 	}
@@ -581,12 +586,12 @@ func (m *Manager) availableAuthsForRouteModelWithPriorityMode(auths []*Auth, pro
 		checkModel := m.selectionModelForAuth(candidate, routeModel)
 		if candidate != nil && candidate.Provider == "gemini-enterprise" {
 			policyModel := checkModel
-			if deferEnterpriseModelAdmission {
+			if deferEnterpriseModelAdmission && canonicalModelKey(checkModel) != ge.CarbonModel {
 				// Payload rules can replace the actual model. Keep paused collections
 				// out of scheduling and validate the final model at the executor barrier.
 				policyModel = ""
 			}
-			if errPolicy := m.validateEnterprisePolicy(candidate, policyModel, false); errPolicy != nil {
+			if errPolicy := m.validateEnterprisePolicyForRequest(ctx, candidate, policyModel, false); errPolicy != nil {
 				continue
 			}
 		}
@@ -647,12 +652,12 @@ func (m *Manager) availableAuthsForRouteModelWithPriorityMode(auths []*Auth, pro
 // the plugin scheduler, plus the candidates handed to the configured selector. Both are equal
 // unless session affinity or an across-priorities scheduler is active, in which case the selector
 // or scheduler additionally receives lower priority tiers.
-func (m *Manager) availableAuthsForSelector(selector Selector, auths []*Auth, provider, routeModel string, now time.Time) (priorityAuths, selectorAuths []*Auth, err error) {
+func (m *Manager) availableAuthsForSelector(ctx context.Context, selector Selector, auths []*Auth, provider, routeModel string, now time.Time) (priorityAuths, selectorAuths []*Auth, err error) {
 	_, sessionAffinity := selector.(*SessionAffinitySelector)
 	schedulerAcross := m.pluginSchedulerWantsAcrossPrioritiesLocked()
 
 	if !sessionAffinity && !schedulerAcross {
-		priorityAuths, err = m.availableAuthsForRouteModel(auths, provider, routeModel, now)
+		priorityAuths, err = m.availableAuthsForRouteModelForRequest(ctx, auths, provider, routeModel, now, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -662,7 +667,7 @@ func (m *Manager) availableAuthsForSelector(selector Selector, auths []*Auth, pr
 
 	// One availability pass and one clone pass serve both lists: the highest priority tier is a
 	// subset of the across-priority candidates, so it is narrowed from the same cloned auths.
-	allAuths, errAcross := m.availableAuthsForRouteModelAcrossPriorities(auths, provider, routeModel, now)
+	allAuths, errAcross := m.availableAuthsForRouteModelForRequest(ctx, auths, provider, routeModel, now, true)
 	if errAcross != nil {
 		return nil, nil, errAcross
 	}
@@ -950,6 +955,13 @@ func builtinSchedulerStrategy(delegate string) (schedulerStrategy, bool) {
 }
 
 func (m *Manager) pickViaBuiltinScheduler(ctx context.Context, strategy schedulerStrategy, provider string, providers []string, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, bool, error) {
+	if EnterpriseCarbonModelTestActive(ctx) {
+		// The fixed closed candidate is intentionally absent from public shards.
+		return nil, false, nil
+	}
+	if provider == "gemini-enterprise-web" || containsEnterpriseWebProvider(providers) {
+		return nil, false, nil
+	}
 	if m.geminiBudgetEnabled() {
 		return nil, false, nil
 	}
@@ -1027,6 +1039,9 @@ func (m *Manager) pickViaPluginScheduler(ctx context.Context, scheduler PluginSc
 }
 
 func (m *Manager) authSupportsRouteModel(registryRef *registry.ModelRegistry, auth *Auth, routeModel string) bool {
+	if auth != nil && auth.Provider == "gemini-enterprise-web" && !m.enterpriseWebAuthAllowsModel(auth, routeModel) {
+		return false
+	}
 	if registryRef == nil || auth == nil {
 		return true
 	}
@@ -1039,6 +1054,13 @@ func (m *Manager) authSupportsRouteModel(registryRef *registry.ModelRegistry, au
 	}
 	selectionKey := m.selectionModelKeyForAuth(auth, routeModel)
 	return selectionKey != "" && selectionKey != routeKey && registryRef.ClientSupportsModel(auth.ID, selectionKey)
+}
+
+func (m *Manager) authSupportsRouteModelForRequest(ctx context.Context, registryRef *registry.ModelRegistry, auth *Auth, routeModel string) bool {
+	if m.authSupportsRouteModel(registryRef, auth, routeModel) {
+		return true
+	}
+	return EnterpriseCarbonModelTestActive(ctx) && enterpriseCarbonTestMatches(ctx, auth, m.selectionModelForAuth(auth, routeModel))
 }
 
 func (m *Manager) normalizeProviders(providers []string) []string {
@@ -1805,7 +1827,7 @@ func (m *Manager) pickNextLegacy(ctx context.Context, provider, model string, op
 		if _, used := tried[candidate.ID]; used {
 			continue
 		}
-		if modelKey != "" && !m.authSupportsRouteModel(registryRef, candidate, model) {
+		if modelKey != "" && !m.authSupportsRouteModelForRequest(ctx, registryRef, candidate, model) {
 			continue
 		}
 		if !m.geminiBudgetAllows(ctx, candidate, model) {
@@ -1821,7 +1843,7 @@ func (m *Manager) pickNextLegacy(ctx context.Context, provider, model string, op
 		}
 		return nil, nil, &Error{Code: "auth_not_found", Message: "no auth available"}
 	}
-	available, selectorAuths, errAvailable := m.availableAuthsForSelector(selector, candidates, provider, model, time.Now())
+	available, selectorAuths, errAvailable := m.availableAuthsForSelector(ctx, selector, candidates, provider, model, time.Now())
 	if errAvailable != nil {
 		m.mu.RUnlock()
 		m.warnLogAuthUnavailable(ctx, []string{provider}, model, opts, tried, errAvailable)
@@ -2034,7 +2056,7 @@ func (m *Manager) pickNext(ctx context.Context, provider, model string, opts cli
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = provider
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 
-	if canonicalSchedulingProvider(provider) == "gemini-enterprise" || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
+	if canonicalSchedulingProvider(provider) == "gemini-enterprise" || provider == "gemini-enterprise-web" || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
 		return m.pickNextLegacy(ctx, provider, model, opts, tried)
 	}
 	eligibility := authSelectionEligibilityForRequest(ctx, opts)
@@ -2148,7 +2170,7 @@ func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, m
 		if _, ok := m.executorLocked(providerKey); !ok {
 			continue
 		}
-		if modelKey != "" && !m.authSupportsRouteModel(registryRef, candidate, model) {
+		if modelKey != "" && !m.authSupportsRouteModelForRequest(ctx, registryRef, candidate, model) {
 			continue
 		}
 		if !m.geminiBudgetAllows(ctx, candidate, model) {
@@ -2164,7 +2186,7 @@ func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, m
 		}
 		return nil, nil, "", &Error{Code: "auth_not_found", Message: "no auth available"}
 	}
-	available, selectorAuths, errAvailable := m.availableAuthsForSelector(selector, candidates, "mixed", model, time.Now())
+	available, selectorAuths, errAvailable := m.availableAuthsForSelector(ctx, selector, candidates, "mixed", model, time.Now())
 	if errAvailable != nil {
 		m.mu.RUnlock()
 		m.warnLogAuthUnavailable(ctx, providers, model, opts, tried, errAvailable)
@@ -2216,7 +2238,7 @@ func (m *Manager) pickNextMixed(ctx context.Context, providers []string, model s
 	opts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = "mixed"
 	opts.Metadata[cliproxyexecutor.SessionAffinityModelMetadataKey] = model
 
-	if containsEnterpriseProvider(providers) || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
+	if containsEnterpriseProvider(providers) || containsEnterpriseWebProvider(providers) || m.geminiBudgetEnabled() || m.hasPluginScheduler() || !m.useSchedulerFastPath() {
 		return m.pickNextMixedLegacy(ctx, providers, model, opts, tried)
 	}
 

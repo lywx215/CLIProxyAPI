@@ -281,7 +281,7 @@ func UpstreamHTTPError(status int, raw []byte) error {
 			message += " Reason: " + diagnostic.Reason + "."
 		}
 	}
-	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param, diagnostic: diagnostic, Scoped: code == "content_policy_violation"}
+	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param, diagnostic: diagnostic, logDiagnostic: logUpstreamDiagnostic(body, diagnostic, status), Scoped: code == "content_policy_violation"}
 }
 
 // UpstreamStreamError never describes an HTTP 200 error frame as an HTTP 502 response.

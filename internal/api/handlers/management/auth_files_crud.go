@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/synthesizer"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -259,6 +260,11 @@ func (h *Handler) storeUploadedAuthFile(ctx context.Context, file *multipart.Fil
 }
 
 func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) error {
+	var errSanitize error
+	data, errSanitize = sanitizeCarbonCredentialImport(data)
+	if errSanitize != nil {
+		return errSanitize
+	}
 	dst := filepath.Join(h.cfg.AuthDir, filepath.Base(name))
 	if !filepath.IsAbs(dst) {
 		if abs, errAbs := filepath.Abs(dst); errAbs == nil {
@@ -268,6 +274,9 @@ func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) e
 	auth, err := h.buildAuthFromFileData(dst, data)
 	if err != nil {
 		return err
+	}
+	if auth.Provider == web.Provider {
+		return web.Fail(400, "Use the dedicated Web credential endpoint to preserve revisions")
 	}
 	if errWrite := os.WriteFile(dst, data, 0o600); errWrite != nil {
 		return fmt.Errorf("failed to write file: %w", errWrite)

@@ -8,17 +8,28 @@ import (
 	"unicode"
 )
 
-const ArgonModel = "gemini-4-argon"
+const (
+	ArgonModel  = "gemini-4-argon"
+	CarbonModel = "gemini-4-carbon"
+)
+
+// IsArgonFamilyModel preserves the Argon policy boundary independently of Carbon.
+func IsArgonFamilyModel(model string) bool {
+	return model == ArgonModel
+}
 
 type ModelPolicy struct {
-	Mode                  string   `json:"mode"`
-	EffectiveMode         string   `json:"effective_mode"`
-	Status                string   `json:"status"`
-	Reason                string   `json:"reason,omitempty"`
-	AllowedModels         []string `json:"allowed_models"`
-	ExcludedModels        []string `json:"excluded_models"`
-	EnforcedAllowedModels []string `json:"enforced_allowed_models"`
-	EnforcedReason        string   `json:"enforced_reason"`
+	Mode                   string   `json:"mode"`
+	EffectiveMode          string   `json:"effective_mode"`
+	Status                 string   `json:"status"`
+	Reason                 string   `json:"reason,omitempty"`
+	AllowedModels          []string `json:"allowed_models"`
+	ExcludedModels         []string `json:"excluded_models"`
+	EnforcedAllowedModels  []string `json:"enforced_allowed_models"`
+	EnforcedExcludedModels []string `json:"enforced_excluded_models,omitempty"`
+	EnforcedReason         string   `json:"enforced_reason"`
+	// Carbon admission is derived from the manual switch and credential eligibility.
+	CarbonAllowed bool `json:"-"`
 }
 
 func ValidModelPolicy(mode string) bool {
@@ -117,7 +128,7 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	}
 	if !*subscription.FreeTrial {
 		// The paid ceiling comes only from runtime license verification, never saved settings.
-		policy.EnforcedAllowedModels = []string{ArgonModel, "gemini-3-pro-image", "veo-3.1"}
+		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1"}
 		policy.EnforcedReason = "paid_subscription_restricted"
 	}
 	return policy
@@ -133,6 +144,12 @@ func (p ModelPolicy) Allows(model string) bool {
 	}
 	model = strings.TrimPrefix(strings.TrimSpace(model), "models/")
 	if model == "" {
+		return false
+	}
+	if model == CarbonModel {
+		return p.CarbonAllowed
+	}
+	if slices.Contains(p.EnforcedExcludedModels, model) {
 		return false
 	}
 	if p.Restricted() && IsAutoModel(model) {

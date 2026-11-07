@@ -5,6 +5,7 @@ manager=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 scenario=${2:?Missing test scenario}
 fixture=$(mktemp -d /tmp/cpa-manager-test.XXXXXXXX)
 upload=$(mktemp -d /tmp/cliproxyapi-upload.XXXXXXXX)
+[[ $fixture =~ ^/tmp/cpa-manager-test\.[a-zA-Z0-9]+$ && $upload =~ ^/tmp/cliproxyapi-upload\.[a-zA-Z0-9]+$ ]] || exit 2
 trap 'rm -rf -- "$fixture" "$upload"' EXIT
 export FIXTURE=$fixture SCENARIO=$scenario
 mkdir -p "$fixture/bin" "$fixture/app/shared/auths" "$fixture/source"
@@ -65,7 +66,17 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/bin/flock"
 chmod +x "$fixture/bin/flock"
 export PATH=$fixture/bin:$PATH
 result=0
-bash "$manager" update "$root" test-vps 8317 "$upload" > "$fixture/output" 2>&1 || result=$?
+action=update
+public=0
+case "$scenario" in
+    fresh-private|fresh-public)
+        action=deploy
+        rm -f -- "$root/current.env" "$root/compose.yaml"
+        [[ $scenario != fresh-public ]] || public=1 ;;
+    public-update)
+        printf 'CPA_BIND_ADDRESS=0.0.0.0\n' >> "$root/current.env" ;;
+esac
+bash "$manager" "$action" "$root" test-vps 8317 "$upload" 100 0 '' "$public" > "$fixture/output" 2>&1 || result=$?
 cat "$fixture/output"
 [[ $(cat "$root/shared/config.yaml") == 'existing credentials' ]]
 [[ $(cat "$root/shared/auths/account.json") == 'account data' ]]
@@ -83,5 +94,15 @@ case "$scenario" in
         grep -q '^CPA_PORT=9321$' "$root/current.env"
         grep -q '^CPA_IMAGE=test-vps:20261028T120000000000Z-123456789abc$' "$root/current.env"
         grep -q 'candidate' "$root/current-manifest.json" ;;
+    fresh-private|fresh-public)
+        [[ $result == 0 ]]
+        expected=127.0.0.1
+        [[ $scenario != fresh-public ]] || expected=0.0.0.0
+        grep -q "^CPA_BIND_ADDRESS=$expected$" "$root/current.env"
+        grep -Fq '${CPA_BIND_ADDRESS:-127.0.0.1}:${CPA_PORT:-8317}:8317' "$root/compose.yaml" ;;
+    public-update)
+        [[ $result == 0 ]]
+        grep -q '^CPA_BIND_ADDRESS=0.0.0.0$' "$root/current.env"
+        grep -q '^CPA_PORT=9321$' "$root/current.env" ;;
     *) exit 2 ;;
 esac

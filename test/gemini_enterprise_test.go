@@ -360,7 +360,7 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 	}{
 		{"chat image", "openai", "messages[0].content[0]", "text parts only", map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": privateValue}}}}}}},
 		{"chat malformed tool history", "openai", "messages[0].tool_calls[0].type", "must be function", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
-		{"gemini inline data", "gemini", "contents[0].parts[0].inlineData", "is not supported", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
+		{"gemini inline data", "gemini", "", "Media input channel is disabled", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
 		{"gemini malformed function declaration", "gemini", "tools[0].functionDeclarations", "must be an array", map[string]any{"tools": []map[string]any{{"functionDeclarations": privateValue}}}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -371,7 +371,13 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 						path, body := enterprisePublicRequest(t, model, scenario.protocol, stream, scenario.fields)
 						response := enterprisePublicCall(router, path, body)
 						wire := response.Body.Bytes()
-						if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != "invalid_field" || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
+						wantCode := "invalid_field"
+						wantStatus := http.StatusBadRequest
+						if scenario.name == "gemini inline data" {
+							wantCode = "media_input_error"
+							wantStatus = http.StatusServiceUnavailable
+						}
+						if response.Code != wantStatus || gjson.GetBytes(wire, "error.code").String() != wantCode || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
 							t.Fatalf("unsupported content diagnostic lost: status=%d body=%s", response.Code, wire)
 						}
 						if strings.Contains(string(wire), privateValue) || transport.calls.Load() != 0 {

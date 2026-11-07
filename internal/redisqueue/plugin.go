@@ -101,6 +101,7 @@ func (p *usageQueuePlugin) HandleUsage(ctx context.Context, record coreusage.Rec
 		CacheCreationTokens:    usageDetail.CacheCreationTokens,
 		TotalTokens:            usageDetail.TotalTokens,
 		TokenPresence:          usageDetail.TokenPresence,
+		Estimate:               usageDetail.Estimate.Clone(),
 	}
 	if usageDetail.TokenPresence != nil {
 		tokens.CacheReadTokensPresent = usageDetail.TokenPresence.CacheReadTokens
@@ -211,6 +212,7 @@ type requestDetail struct {
 }
 
 type tokenStats struct {
+	Estimate               *coreusage.TokenEstimate `json:"estimate,omitempty"`
 	TokenPresence          *coreusage.TokenPresence `json:"-"`
 	InputTokens            int64                    `json:"input_tokens"`
 	OutputTokens           int64                    `json:"output_tokens"`

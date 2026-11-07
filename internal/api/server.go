@@ -155,6 +155,13 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		engine.Use(mw)
 	}
 
+	engine.Use(middleware.EnterpriseWebBodyAdmission(authManager, func(c *gin.Context) bool {
+		ok := authenticateAccessRequest(accessManager, c, false)
+		if ok {
+			c.Set("enterprise_web_access_authorized", true)
+		}
+		return ok
+	}))
 	// Add request logging middleware (positioned after recovery, before auth)
 	// Resolve logs directory relative to the configuration file directory.
 	var requestLogger logging.RequestLogger

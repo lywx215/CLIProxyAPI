@@ -476,6 +476,9 @@ func (w *ResponseWriterWrapper) extractAPIResponseTimestamp(c *gin.Context) time
 }
 
 func (w *ResponseWriterWrapper) extractRequestBody(c *gin.Context) []byte {
+	if c.GetBool("enterprise_web_body_managed") && w.requestInfo != nil {
+		return w.requestInfo.Body
+	}
 	if body := extractBodyOverride(c, requestBodyOverrideContextKey); len(body) > 0 {
 		return body
 	}

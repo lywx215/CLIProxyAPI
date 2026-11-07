@@ -6,7 +6,6 @@
 package gemini
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	. "github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 )
 
@@ -157,7 +157,10 @@ func (h *GeminiAPIHandler) GeminiHandler(c *gin.Context) {
 	}
 
 	method := action[1]
-	rawJSON, _ := c.GetRawData()
+	rawJSON, cachedWebBody := web.Body(c.Request.Context())
+	if !cachedWebBody {
+		rawJSON, _ = c.GetRawData()
+	}
 
 	switch method {
 	case "generateContent":
@@ -221,7 +224,7 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 	throttler := handlers.NewRequestThrottler(h.Cfg)
 	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
-	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
+	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 
 	setSSEHeaders := func() {
@@ -314,7 +317,7 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 func (h *GeminiAPIHandler) handleCountTokens(c *gin.Context, modelName string, rawJSON []byte) {
 	c.Header("Content-Type", "application/json")
 	alt := h.GetAlt(c)
-	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
+	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
 	resp, upstreamHeaders, errMsg := h.ExecuteCountWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
@@ -342,7 +345,7 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 	throttler := handlers.NewRequestThrottler(h.Cfg)
 	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
-	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
+	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
 	stopKeepAlive := h.StartNonStreamingKeepAlive(c, cliCtx)
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 	stopKeepAlive()

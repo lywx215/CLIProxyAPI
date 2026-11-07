@@ -19,18 +19,32 @@ import (
 )
 
 type enterpriseModelTestResult struct {
-	Status            string             `json:"status"`
-	Model             string             `json:"model"`
-	AuthIndex         string             `json:"auth_index"`
-	Resources         ge.ResourceBinding `json:"resources"`
-	CheckedAt         time.Time          `json:"checked_at"`
-	ElapsedMS         int64              `json:"elapsed_ms"`
-	HTTPStatus        int                `json:"http_status"`
-	Code              string             `json:"code"`
-	Message           string             `json:"message"`
-	RetryAfterSeconds int64              `json:"retry_after_seconds,omitempty"`
-	BindingID         string             `json:"binding_id,omitempty"`
-	Revision          uint64             `json:"revision,omitempty"`
+	Status            string              `json:"status"`
+	Model             string              `json:"model"`
+	AuthIndex         string              `json:"auth_index"`
+	Resources         ge.ResourceBinding  `json:"resources"`
+	CheckedAt         time.Time           `json:"checked_at"`
+	ElapsedMS         int64               `json:"elapsed_ms"`
+	HTTPStatus        int                 `json:"http_status"`
+	Code              string              `json:"code"`
+	Message           string              `json:"message"`
+	RetryAfterSeconds int64               `json:"retry_after_seconds,omitempty"`
+	BindingID         string              `json:"binding_id,omitempty"`
+	Revision          uint64              `json:"revision,omitempty"`
+	ExpectedRevision  uint64              `json:"expected_revision,omitempty"`
+	UpstreamModel     string              `json:"upstream_model,omitempty"`
+	CarbonSupported   bool                `json:"carbon_admission_supported,omitempty"`
+	CarbonAdmission   *ge.CarbonAdmission `json:"carbon_admission,omitempty"`
+	CarbonTestID      string              `json:"carbon_test_id,omitempty"`
+}
+
+type enterpriseModelTestRequest struct {
+	Name             string              `json:"name"`
+	AuthIndex        string              `json:"auth_index"`
+	Model            string              `json:"model"`
+	Expected         *ge.ResourceBinding `json:"expected"`
+	BindingID        string              `json:"binding_id"`
+	ExpectedRevision uint64              `json:"expected_revision"`
 }
 
 // TestGeminiEnterpriseModel performs one credential-pinned text generation.
@@ -40,14 +54,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	fail := func(status int, code, message string) {
 		c.JSON(status, gin.H{"error": code, "code": code, "message": message})
 	}
-	var req struct {
-		Name             string              `json:"name"`
-		AuthIndex        string              `json:"auth_index"`
-		Model            string              `json:"model"`
-		Expected         *ge.ResourceBinding `json:"expected"`
-		BindingID        string              `json:"binding_id"`
-		ExpectedRevision uint64              `json:"expected_revision"`
-	}
+	var req enterpriseModelTestRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
 	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.AuthIndex) == "" || strings.TrimSpace(req.Model) == "" || req.Expected == nil {
 		fail(http.StatusBadRequest, "invalid_model_test", "name, auth_index, model and expected resources are required")
@@ -101,6 +108,10 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		return
 	}
 	modelID := strings.TrimSpace(req.Model)
+	if modelID == ge.CarbonModel {
+		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
+		return
+	}
 	policy := h.authManager.EnterpriseModelPolicyView(auth)
 	if policy.Status == "blocked" {
 		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until the current user's assigned subscription is verified")
@@ -108,7 +119,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	}
 	deniedMessage := "This collection's model policy does not allow the selected upstream model"
 	if policy.EnforcedReason == "paid_subscription_restricted" {
-		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
+		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
 	}
 	for _, entry := range policy.CatalogModels {
 		if entry.ID == modelID && !entry.Allowed {
@@ -130,6 +141,11 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	actualModel := strings.TrimSpace(model.MetadataModelID)
 	if actualModel == "" {
 		actualModel = strings.TrimPrefix(modelID, strings.TrimSpace(auth.Prefix)+"/")
+	}
+	if actualModel == ge.CarbonModel {
+		req.Model = ge.CarbonModel
+		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
+		return
 	}
 	if model.EnterpriseMedia != "" || registry.EnterpriseMediaKind(modelID) != "" || registry.EnterpriseMediaKind(actualModel) != "" || actualModel == "gemini-3-pro-image" || actualModel == "veo-3.1" {
 		fail(http.StatusBadRequest, "model_test_unsupported", "Only Enterprise text models can be tested")

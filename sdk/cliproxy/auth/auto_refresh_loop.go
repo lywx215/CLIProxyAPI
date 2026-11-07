@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -35,6 +36,7 @@ type authRefreshJob struct {
 	registrationEpoch uint64
 	pendingUntil      time.Time
 	loop              *authAutoRefreshLoop
+	webCookie         bool
 	running           bool // guarded by manager.mu
 }
 
@@ -100,10 +102,17 @@ func (l *authAutoRefreshLoop) worker(ctx context.Context) {
 			if job == nil {
 				continue
 			}
+			var retryAt time.Time
 			if l.manager.beginRefreshJob(ctx, job) {
-				_, _ = l.manager.refreshAuthForRequestAtEpoch(ctx, job.id, "", job.registrationEpoch)
+				if job.webCookie {
+					if !l.manager.checkEnterpriseWebCookie(ctx, job) {
+						retryAt = time.Now().Add(refreshPendingBackoff)
+					}
+				} else {
+					_, _ = l.manager.refreshAuthForRequestAtEpoch(ctx, job.id, "", job.registrationEpoch)
+				}
 			}
-			l.manager.finishRefreshJob(job, time.Time{}, false)
+			l.manager.finishRefreshJob(job, retryAt, false)
 		}
 	}
 }
@@ -132,7 +141,7 @@ func (l *authAutoRefreshLoop) rebuild(now time.Time) {
 
 	l.manager.mu.RLock()
 	for id, auth := range l.manager.auths {
-		next, ok := nextRefreshCheckAt(now, auth, l.interval)
+		next, ok := l.nextCheckAt(now, auth)
 		if !ok {
 			continue
 		}
@@ -275,8 +284,11 @@ func (l *authAutoRefreshLoop) handleDueAuth(ctx context.Context, now time.Time, 
 		manager.mu.RUnlock()
 		return
 	}
-	next, shouldSchedule := nextRefreshCheckAt(now, auth, l.interval)
-	shouldRefresh := manager.shouldRefresh(auth, now)
+	next, shouldSchedule := l.nextCheckAt(now, auth)
+	shouldRefresh := !next.After(now)
+	if auth.Provider != web.Provider {
+		shouldRefresh = manager.shouldRefresh(auth, now)
+	}
 	exec, _ := manager.executorLocked(executorKeyFromAuth(auth))
 	registrationEpoch := auth.RegistrationEpoch
 	manager.mu.RUnlock()
@@ -300,7 +312,7 @@ func (l *authAutoRefreshLoop) handleDueAuth(ctx context.Context, now time.Time, 
 	if job == nil {
 		manager.mu.RLock()
 		auth = manager.auths[authID]
-		next, shouldSchedule = nextRefreshCheckAt(now, auth, l.interval)
+		next, shouldSchedule = l.nextCheckAt(now, auth)
 		manager.mu.RUnlock()
 		if shouldSchedule {
 			if !next.After(now) {
@@ -336,7 +348,7 @@ func (l *authAutoRefreshLoop) applyDirty(now time.Time) {
 	for _, authID := range dirty {
 		l.manager.mu.RLock()
 		auth := l.manager.auths[authID]
-		next, ok := nextRefreshCheckAt(now, auth, l.interval)
+		next, ok := l.nextCheckAt(now, auth)
 		l.manager.mu.RUnlock()
 
 		if !ok {
@@ -345,6 +357,13 @@ func (l *authAutoRefreshLoop) applyDirty(now time.Time) {
 		}
 		l.upsert(authID, next)
 	}
+}
+
+func (l *authAutoRefreshLoop) nextCheckAt(now time.Time, a *Auth) (time.Time, bool) {
+	if a != nil && a.Provider == web.Provider {
+		return l.manager.nextEnterpriseWebCookieCheck(now, a)
+	}
+	return nextRefreshCheckAt(now, a, l.interval)
 }
 
 func (l *authAutoRefreshLoop) drainDirty() []string {

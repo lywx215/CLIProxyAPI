@@ -5,6 +5,7 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -109,6 +110,7 @@ type TokenStats struct {
 	CachedTokens    int64                    `json:"cached_tokens"`
 	TotalTokens     int64                    `json:"total_tokens"`
 	TokenPresence   *coreusage.TokenPresence `json:"-"`
+	Estimate        *coreusage.TokenEstimate `json:"estimate,omitempty"`
 }
 
 // StatisticsSnapshot represents an immutable view of the aggregated metrics.
@@ -395,7 +397,7 @@ func (s *RequestStatistics) recordImported(apiName, modelName string, stats *api
 func dedupKey(apiName, modelName string, detail RequestDetail) string {
 	timestamp := detail.Timestamp.UTC().Format(time.RFC3339Nano)
 	tokens := normaliseTokenStats(detail.Tokens)
-	return fmt.Sprintf(
+	key := fmt.Sprintf(
 		"%s|%s|%s|%s|%s|%t|%d|%d|%d|%d|%d|%d",
 		apiName,
 		modelName,
@@ -410,6 +412,11 @@ func dedupKey(apiName, modelName string, detail RequestDetail) string {
 		tokens.TotalTokens,
 		tokens.presenceMask(),
 	)
+	if tokens.Estimate != nil {
+		encoded, _ := json.Marshal(tokens.Estimate)
+		key += "|" + string(encoded)
+	}
+	return key
 }
 
 func resolveAPIIdentifier(ctx context.Context, record coreusage.Record) string {
@@ -477,6 +484,7 @@ func normaliseDetail(detail coreusage.Detail) TokenStats {
 		CachedTokens:    detail.CachedTokens,
 		TotalTokens:     detail.TotalTokens,
 		TokenPresence:   detail.TokenPresence,
+		Estimate:        detail.Estimate,
 	}
 	return normaliseTokenStats(tokens)
 }
@@ -511,6 +519,7 @@ func normaliseTokenStats(tokens TokenStats) TokenStats {
 }
 
 func cloneTokenStats(tokens TokenStats) TokenStats {
+	tokens.Estimate = tokens.Estimate.Clone()
 	if tokens.TokenPresence != nil {
 		value := *tokens.TokenPresence
 		tokens.TokenPresence = &value

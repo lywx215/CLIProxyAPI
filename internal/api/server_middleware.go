@@ -164,45 +164,54 @@ func realtimeStandardAuthMiddleware(manager *sdkaccess.Manager) gin.HandlerFunc 
 
 func accessAuthMiddleware(manager *sdkaccess.Manager, realtimeError bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if manager == nil {
+		if authenticateAccessRequest(manager, c, realtimeError) {
 			c.Next()
-			return
 		}
-
-		result, err := manager.Authenticate(c.Request.Context(), c.Request)
-		if err == nil {
-			if result != nil {
-				c.Set("userApiKey", result.Principal)
-				c.Set("accessProvider", result.Provider)
-				if len(result.Metadata) > 0 {
-					c.Set("accessMetadata", result.Metadata)
-				}
-			}
-			c.Next()
-			return
-		}
-
-		statusCode := err.HTTPStatusCode()
-		if statusCode >= http.StatusInternalServerError {
-			log.Errorf("authentication middleware error: %v", err)
-		}
-		if realtimeError {
-			errorType := "authentication_error"
-			code := "invalid_api_key"
-			if statusCode >= http.StatusInternalServerError {
-				errorType = "server_error"
-				code = "authentication_service_error"
-			}
-			c.AbortWithStatusJSON(statusCode, gin.H{"error": gin.H{
-				"message": err.Message,
-				"type":    errorType,
-				"param":   nil,
-				"code":    code,
-			}})
-			return
-		}
-		c.AbortWithStatusJSON(statusCode, gin.H{"error": err.Message})
 	}
+}
+
+// Media admission authenticates before reserving scarce resources and reuses the result.
+func authenticateAccessRequest(manager *sdkaccess.Manager, c *gin.Context, realtimeError bool) bool {
+	if c.GetBool("enterprise_web_access_authorized") {
+		return true
+	}
+	if manager == nil {
+		return true
+	}
+
+	result, err := manager.Authenticate(c.Request.Context(), c.Request)
+	if err == nil {
+		if result != nil {
+			c.Set("userApiKey", result.Principal)
+			c.Set("accessProvider", result.Provider)
+			if len(result.Metadata) > 0 {
+				c.Set("accessMetadata", result.Metadata)
+			}
+		}
+		return true
+	}
+
+	statusCode := err.HTTPStatusCode()
+	if statusCode >= http.StatusInternalServerError {
+		log.Errorf("authentication middleware error: %v", err)
+	}
+	if realtimeError {
+		errorType := "authentication_error"
+		code := "invalid_api_key"
+		if statusCode >= http.StatusInternalServerError {
+			errorType = "server_error"
+			code = "authentication_service_error"
+		}
+		c.AbortWithStatusJSON(statusCode, gin.H{"error": gin.H{
+			"message": err.Message,
+			"type":    errorType,
+			"param":   nil,
+			"code":    code,
+		}})
+		return false
+	}
+	c.AbortWithStatusJSON(statusCode, gin.H{"error": err.Message})
+	return false
 }
 
 func realtimeAuthMiddleware(manager *sdkaccess.Manager, handler *codexlive.Handler) gin.HandlerFunc {

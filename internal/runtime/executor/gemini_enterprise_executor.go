@@ -119,6 +119,7 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 		return nil, err
 	}
 	policy := coreauth.EnterpriseModelPolicyForRequest(auth)
+	commitModel := ""
 	if req.Method != http.MethodGet && req.Method != http.MethodHead && !strings.HasSuffix(req.URL.Path, ":streamAssist") && (policy.Status == "blocked" || policy.Restricted()) {
 		if policy.Status == "blocked" {
 			return nil, &coreauth.EnterpriseModelPolicyError{Code: "subscription_unverified", Message: "The Enterprise collection is paused until the current user's assigned subscription is verified", HTTPStatus: 503}
@@ -146,6 +147,7 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 		models := []string{}
 		if model := gjson.GetBytes(body, "generationSpec.modelId").String(); model != "" {
 			models = append(models, model)
+			commitModel = model
 		}
 		if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
 			if e.cfg != nil && e.cfg.DisableImageGeneration == config.DisableImageGenerationAll {
@@ -167,10 +169,16 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 	}
 	client := newHTTPClient(ctx, e.cfg, auth, 0)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if commitModel != "" {
+		if errCommit := coreauth.CommitEnterpriseCarbonSubmission(ctx, auth, commitModel); errCommit != nil {
+			return nil, errCommit
+		}
+	}
 	return client.Do(req)
 }
 
 func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options, reporter *helps.UsageReporter) (*http.Response, enterprise.Input, error) {
+	helps.ObserveEnterpriseStage(ctx, "input")
 	if err := e.validate(opts); err != nil {
 		return nil, enterprise.Input{}, err
 	}
@@ -187,9 +195,6 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		input, err = enterprise.Normalize(req.Payload, opts.SourceFormat.String(), baseModel)
 	}
 	if err != nil {
-		if fields := helps.EnterpriseValidationFields("input", err); fields != nil {
-			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
-		}
 		return nil, input, err
 	}
 	if len(input.Ignored) > 0 {
@@ -198,6 +203,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if input.ClientFunctionsIgnored {
 		log.WithField("provider", e.Identifier()).Warn("client function fields ignored; continuing as text without client function execution")
 	}
+	helps.ObserveEnterpriseStage(ctx, "final_payload")
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), req.Model, translator.FormatGeminiEnterprise.String(), "", input.Body, req, opts)
 	input.Body, err = helps.ApplyEnterpriseAssistDefaults(input.Body)
 	if err != nil {
@@ -214,17 +220,16 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		}
 	}
 	body := finalize(input.Body)
+	helps.ObserveEnterprisePayload(ctx, body, auth)
 	validate := enterprise.ValidateFinal
 	if kind != "" {
 		validate = func(b []byte) error { return enterprise.ValidateMediaFinal(b, kind) }
 	}
 	if err := validate(body); err != nil {
-		if fields := helps.EnterpriseValidationFields("final_payload", err); fields != nil {
-			log.WithFields(fields).Warn("gemini-enterprise request validation failed")
-		}
 		return nil, input, err
 	}
 	input.Body = body
+	helps.ObserveEnterpriseStage(ctx, "binding")
 	input.IncludeThoughts = kind == "" && gjson.GetBytes(body, "generationSpec.thinkingConfig.includeThoughts").Type == gjson.True
 	finalModel := gjson.GetBytes(body, "generationSpec.modelId").String()
 	if kind != "" {
@@ -261,12 +266,17 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	client := reporter.TrackHTTPClientRoundTripOnly(newHTTPClient(ctx, e.cfg, auth, 0))
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	request = helps.ObserveEnterpriseRequest(ctx, request, finalModel)
+	if errCommit := coreauth.CommitEnterpriseCarbonSubmission(ctx, auth, finalModel); errCommit != nil {
+		return nil, input, errCommit
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, input, ctx.Err()
 		}
-		return nil, input, &ge.TransportError{Cause: err, Started: kind != ""}
+		// A failed Carbon round trip cannot prove that Google did not accept
+		// the generation. Keep an uncertain submission out of credential retry.
+		return nil, input, &ge.TransportError{Cause: err, Started: kind != "" || finalModel == ge.CarbonModel}
 	}
 	helps.ObserveEnterpriseResponse(ctx, response)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
@@ -277,12 +287,13 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 			return nil, input, ctx.Err()
 		}
 		if errRead != nil {
-			return nil, input, &ge.TransportError{Cause: errRead}
+			return nil, input, &ge.TransportError{Cause: errRead, Started: finalModel == ge.CarbonModel}
 		}
 		if len(raw) > 64*1024 {
 			raw = nil
 		}
-		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, false, gjson.GetBytes(body, "generationSpec.modelId").String())
+		uncertain := finalModel == ge.CarbonModel && (response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError)
+		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, uncertain, finalModel)
 	}
 	return response, input, nil
 }
@@ -330,11 +341,19 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 			reporter.Publish(ctx, detail)
 		}
 	}()
-	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
+	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error {
+		return &ge.TransportError{Cause: err, Started: started || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel}
+	}, Error: func(raw []byte, started bool) error {
+		model := gjson.GetBytes(input.Body, "generationSpec.modelId").String()
+		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || model == ge.CarbonModel, model)
 	}}
 	if input.MediaKind == "" {
 		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
+	}
+	if coreauth.EnterpriseCarbonModelTestActive(ctx) {
+		parser.Session = func(session string) error {
+			return refs.Add(enterprise.Event{Type: "session", Session: session})
+		}
 	}
 	defer func() {
 		if parser.Started {
@@ -383,12 +402,18 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	}
 	result.Payload = helps.EnterpriseUsagePayload(result.Payload, opts.SourceFormat == translator.FormatGemini, detail)
 	result.Headers = helps.EnterpriseResponseHeaders(input.Ignored)
+	if coreauth.EnterpriseCarbonModelTestActive(ctx) {
+		result.Metadata = map[string]any{"enterprise_carbon_session": refs.Session, "enterprise_carbon_model": gjson.GetBytes(input.Body, "generationSpec.modelId").String()}
+	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, result.Payload)
 	return result, nil
 }
 
 func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (result *coreexec.StreamResult, err error) {
 	if err = e.validate(opts); err != nil {
+		failureCtx, attempt := helps.NewEnterpriseAttempt(ctx, true)
+		helps.ObserveEnterpriseStage(failureCtx, "input")
+		attempt.Finish(failureCtx, e.cfg, err)
 		return nil, err
 	}
 	if enterpriseRequestMediaKind(req.Model) != "" {
@@ -459,8 +484,11 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 				reporter.Publish(ctx, detail)
 			}
 		}()
-		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error { return &ge.TransportError{Cause: err, Started: started} }, Error: func(raw []byte, started bool) error {
-			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started, gjson.GetBytes(input.Body, "generationSpec.modelId").String())
+		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error {
+			return &ge.TransportError{Cause: err, Started: started || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel}
+		}, Error: func(raw []byte, started bool) error {
+			model := gjson.GetBytes(input.Body, "generationSpec.modelId").String()
+			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || model == ge.CarbonModel, model)
 		}}
 		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {

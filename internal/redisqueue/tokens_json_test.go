@@ -24,6 +24,29 @@ func TestTokenPresenceQueueJSON(t *testing.T) {
 	}
 }
 
+func TestWebTokenEstimateQueueJSON(t *testing.T) {
+	withEnabledQueue(t, func() {
+		input := int64(23)
+		plugin := &usageQueuePlugin{}
+		plugin.HandleUsage(context.Background(), coreusage.Record{Provider: "gemini-enterprise-web", Model: "web", Detail: coreusage.Detail{
+			OutputTokens: 7, ReasoningTokens: 3, TokenPresence: &coreusage.TokenPresence{OutputTokens: true, ReasoningTokens: true},
+			Estimate: &coreusage.TokenEstimate{Source: coreusage.LocalGemma3SentencePiece, InputTextTokens: &input, Incomplete: true, ResponseComplete: false},
+		}})
+		payload := popSinglePayload(t)
+		tokens := requireTokensPayload(t, payload)
+		if string(tokens["input_tokens"]) != "null" || string(tokens["total_tokens"]) != "null" || string(tokens["cached_tokens"]) != "null" {
+			t.Fatal("queue fabricated media counts")
+		}
+		var estimate coreusage.TokenEstimate
+		if err := json.Unmarshal(tokens["estimate"], &estimate); err != nil {
+			t.Fatal(err)
+		}
+		if estimate.Source != coreusage.LocalGemma3SentencePiece || estimate.InputTextTokens == nil || *estimate.InputTextTokens != 23 || !estimate.Incomplete || estimate.ResponseComplete {
+			t.Fatalf("lost provenance: %+v", estimate)
+		}
+	})
+}
+
 func TestEnterpriseReasoningQueuePreservesSeparateBuckets(t *testing.T) {
 	for _, reason := range []int64{0, 50} {
 		withEnabledQueue(t, func() {

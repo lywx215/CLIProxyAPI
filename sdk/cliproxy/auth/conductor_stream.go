@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -126,6 +127,13 @@ func (m *Manager) wrapStreamResult(ctx context.Context, auth *Auth, provider, re
 	streamStart := time.Now()
 	go func() {
 		defer close(out)
+		if provider == web.Provider {
+			if _, httpOwned := web.Body(ctx); !httpOwned {
+				if l := web.ExistingLease(ctx); l != nil {
+					defer l.Release()
+				}
+			}
+		}
 		var failed bool
 		forward := true
 		var rewriter *StreamRewriter
@@ -238,7 +246,7 @@ func (m *Manager) executeStreamWithModelPool(ctx context.Context, executor Provi
 		if len(payload) == 0 {
 			payload = execReq.Payload
 		}
-		execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload)
+		execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload, ctx)
 		ctx = syncMetadataSessionToContext(ctx, execOpts.Metadata)
 		startStream := time.Now()
 		streamResult, errStream := executor.ExecuteStream(diagnostics.ExecutorAttempt(ctx, executor.Identifier()), auth, execReq, execOpts)

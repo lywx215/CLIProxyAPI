@@ -122,12 +122,13 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 				t.Fatalf("published %d models, want %d: %v", len(published), step.want, published)
 			}
 			view := s.coreManager.EnterpriseModelPolicyView(auth)
-			if view.Mode != "catalog" || len(view.CatalogModels) != len(models) {
+			wantCatalog := len(models)
+			if view.Mode != "catalog" || len(view.CatalogModels) != wantCatalog {
 				t.Fatalf("subscription refresh rewrote manual settings or lost raw catalog: %+v", view)
 			}
 			if !step.trial && step.state == "ok" {
 				for _, entry := range published {
-					if entry.ID != ge.ArgonModel && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
+					if !ge.IsArgonFamilyModel(entry.ID) && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
 						t.Fatalf("forbidden paid model published: %s", entry.ID)
 					}
 				}

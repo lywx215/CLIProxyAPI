@@ -19,7 +19,10 @@ func ParsePluginExecutorResponseUsage(protocol string, payload []byte) usage.Det
 		return detail
 	case "claude":
 		return parseClaudePayloadUsage(payload)
-	case "gemini":
+	case "gemini", "gemini-enterprise-web":
+		if detail, ok := parseEnterpriseWebProtocolUsage(payload); ok {
+			return detail
+		}
 		return ParseGeminiUsage(payload)
 	case "interactions", "interactions-response":
 		return ParseInteractionsUsage(payload)
@@ -71,8 +74,12 @@ func ObservePluginExecutorStreamUsage(protocol string, payload []byte, buffer *S
 				ObserveMergedStreamUsage(buffer, detail)
 			}
 		})
-	case "gemini":
+	case "gemini", "gemini-enterprise-web":
 		IterateStreamLines(payload, func(line []byte) {
+			if detail, ok := parseEnterpriseWebProtocolUsage(ExtractStreamJSONPayload(line)); ok {
+				buffer.Observe(detail, true)
+				return
+			}
 			if detail, ok := ParseGeminiStreamUsage(line); ok {
 				buffer.Observe(detail, ok)
 			}

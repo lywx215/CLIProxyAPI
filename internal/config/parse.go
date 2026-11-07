@@ -21,6 +21,7 @@ func ParseConfigBytes(data []byte) (*Config, error) {
 	}
 
 	var cfg Config
+	cfg.GeminiEnterpriseWeb = (GeminiEnterpriseWebConfig{}).WithDefaults()
 	// Keep defaults aligned with LoadConfigOptional.
 	cfg.Host = "" // Default empty: binds to all interfaces (IPv4 + IPv6)
 	cfg.LoggingToFile = false
@@ -48,6 +49,9 @@ func ParseConfigBytes(data []byte) (*Config, error) {
 		return nil, errValidate
 	}
 
+	if err := cfg.GeminiEnterpriseWeb.Validate(); err != nil {
+		return nil, err
+	}
 	cfg.CredentialConcurrency = cfg.CredentialConcurrency.WithDefaults()
 	if errValidate := cfg.CredentialInFlight.Validate(); errValidate != nil {
 		return nil, errValidate

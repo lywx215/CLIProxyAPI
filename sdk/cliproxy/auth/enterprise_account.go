@@ -136,6 +136,9 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		return nil, err
 	}
 	if account == nil {
+		if _, err = ge.ReadCarbonEnabled(parent.Metadata); err != nil {
+			return nil, err
+		}
 		return []*Auth{parent}, nil
 	}
 	if parent.Attributes == nil {
@@ -160,6 +163,8 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		child.Storage = nil
 		delete(child.Metadata, "enterprise_account")
 		delete(child.Metadata, enterpriseCatalogCacheKey)
+		delete(child.Metadata, ge.CarbonEvidenceStoreKey)
+		delete(child.Metadata, ge.CarbonEvidenceKey)
 		// Old single-binding fields remain on the saved parent for compatibility,
 		// but only their original collection may inherit those user preferences.
 		child.Prefix, child.ProxyURL = "", ""
@@ -187,6 +192,9 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 			}
 		}
 		putEnterpriseResources(child, collection.ResourceBinding)
+		if evidence := ge.ReadCarbonEvidenceStore(parent.Metadata)[ge.CarbonBindingFingerprint(ge.FromMetadata(child.Metadata))]; evidence != nil {
+			child.Metadata[ge.CarbonEvidenceKey] = cloneAuthMetadataValue(evidence)
+		}
 		if errSettings := applyEnterpriseCollectionSettings(child); errSettings != nil {
 			return nil, errSettings
 		}
@@ -211,13 +219,16 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 
 func enterpriseCollectionSetting(key string) bool {
 	switch key {
-	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests":
+	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests", ge.CarbonEnabledKey:
 		return true
 	}
 	return false
 }
 
 func applyEnterpriseCollectionSettings(auth *Auth) error {
+	if _, err := ge.ReadCarbonEnabled(auth.Metadata); err != nil {
+		return err
+	}
 	if _, err := ge.CatalogFallbackSettings(auth.Metadata); err != nil {
 		return err
 	}
@@ -476,6 +487,7 @@ func (m *Manager) reconcileEnterpriseAccountLocked(parent *Auth) []*Auth {
 				}
 			}
 		}
+		reconcileEnterpriseCarbonAdmissionWindow(existing, child)
 		m.attachEnterpriseQuotaLocked(child)
 		m.auths[child.ID] = child
 		if migrationSource != nil {
@@ -694,6 +706,8 @@ func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expec
 		m.mu.Unlock()
 		return nil, err
 	}
+	carbonMetadata := current.Clone().Metadata
+	resetEnterpriseCarbonResourceChanges(carbonMetadata, account, &next)
 	if next.ID != account.ID {
 		m.mu.Unlock()
 		return nil, ErrEnterpriseAccountChanged
@@ -703,7 +717,7 @@ func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expec
 		return nil, err
 	}
 	updated := current.Clone()
-	updated.Metadata = ge.PutAccount(updated.Metadata, next)
+	updated.Metadata = ge.PutAccount(carbonMetadata, next)
 	updated.Storage = nil
 	if _, errProject := ProjectEnterpriseAuth(updated); errProject != nil {
 		m.mu.Unlock()
@@ -815,6 +829,8 @@ func (m *Manager) MergeEnterpriseAccounts(ctx context.Context, targetID string, 
 		return nil, nil, err
 	}
 	previous := ge.CloneAccount(account)
+	carbonCache := ge.ReadCarbonEvidenceStore(current.Metadata)
+	carbonAuthorization := ge.CarbonAuthorizationFingerprint(current.Metadata)
 	byBinding := make(map[string]int)
 	for i, collection := range account.Collections {
 		byBinding[collection.ID] = i
@@ -835,6 +851,17 @@ func (m *Manager) MergeEnterpriseAccounts(ctx context.Context, targetID string, 
 		if errSource != nil || sourceAccount.ID != account.ID {
 			m.mu.Unlock()
 			return nil, nil, ErrEnterpriseAccountChanged
+		}
+		if carbonAuthorization != "" && ge.CarbonAuthorizationFingerprint(source.Metadata) == carbonAuthorization {
+			for key, value := range ge.ReadCarbonEvidenceStore(source.Metadata) {
+				data, _ := json.Marshal(value)
+				var evidence ge.CarbonTestEvidence
+				if json.Unmarshal(data, &evidence) == nil && ge.ValidCarbonEvidence(&evidence) && evidence.AuthorizationFingerprint == carbonAuthorization {
+					if _, exists := carbonCache[key]; !exists {
+						carbonCache[key] = evidence
+					}
+				}
+			}
 		}
 		for _, collection := range sourceAccount.Collections {
 			if !IsEnterpriseAccountAuth(source) {
@@ -859,6 +886,9 @@ func (m *Manager) MergeEnterpriseAccounts(ctx context.Context, targetID string, 
 	}
 	updated := current.Clone()
 	updated.Metadata, updated.Storage = ge.PutAccount(updated.Metadata, account), nil
+	if len(carbonCache) > 0 {
+		updated.Metadata[ge.CarbonEvidenceStoreKey] = carbonCache
+	}
 	updated.Generation, updated.UpdatedAt = current.Generation+1, time.Now()
 	before := current.Clone()
 	if err = m.persistLocked(withEnterpriseStoreRevision(ctx, previous.Revision), updated); err != nil {

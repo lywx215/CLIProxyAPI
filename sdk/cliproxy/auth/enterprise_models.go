@@ -228,7 +228,7 @@ func validateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 		return &EnterpriseModelProbeError{Code: "credential_changed", Message: "The credential application binding changed; reload the model list.", HTTPStatus: http.StatusConflict}
 	}
 	if final {
-		if err := m.validateEnterprisePolicy(current, model, true); err != nil {
+		if err := m.validateEnterprisePolicyForRequest(ctx, current, model, true); err != nil {
 			return err
 		}
 	}
@@ -306,6 +306,12 @@ func (m *Manager) observeEnterpriseModelError(ctx context.Context, auth *Auth, m
 	c.records[key][model] = now.Add(time.Minute)
 	c.mu.Unlock()
 	m.mu.RUnlock()
+	if model == ge.CarbonModel {
+		// The request lease is already released from all coordinator locks before
+		// persisting a model-specific review state. A newer proof must be fenced by
+		// its original test identity in the evidence store.
+		_ = m.MarkEnterpriseCarbonNeedsReview(ctx, auth, "model_not_enabled", rejection.HTTPStatus)
+	}
 }
 
 func observeEnterpriseModelAttempt(ctx context.Context, auth *Auth, model string, err error) {

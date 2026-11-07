@@ -42,8 +42,10 @@ type Parser struct {
 	// RejectedText accounts for observed denial text without forwarding it as output.
 	RejectedText func(string)
 	// Usage and Thought observe data independently of downstream visibility.
-	Usage    func(json.RawMessage)
-	Thought  func(string)
+	Usage   func(json.RawMessage)
+	Thought func(string)
+	// Session observes private session metadata only for explicit management tests.
+	Session  func(string) error
 	Started  bool
 	terminal string
 	emit     func(Event) error
@@ -228,7 +230,7 @@ func (p *Parser) item(raw []byte) error {
 			p.Usage(value)
 		}
 	}
-	if p.MediaKind != "" {
+	if p.MediaKind != "" || p.Session != nil {
 		var info struct {
 			Session string `json:"session"`
 		}
@@ -237,8 +239,15 @@ func (p *Parser) item(raw []byte) error {
 				return p.wrap("invalid_media", "invalid media session metadata")
 			}
 			if info.Session != "" {
-				if err := p.emit(Event{Type: "session", Session: info.Session}); err != nil {
-					return err
+				if p.Session != nil {
+					if err := p.Session(info.Session); err != nil {
+						return err
+					}
+				}
+				if p.MediaKind != "" {
+					if err := p.emit(Event{Type: "session", Session: info.Session}); err != nil {
+						return err
+					}
 				}
 			}
 		}

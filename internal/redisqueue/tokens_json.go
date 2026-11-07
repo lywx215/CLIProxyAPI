@@ -1,19 +1,24 @@
 package redisqueue
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
+)
 
 func (t tokenStats) MarshalJSON() ([]byte, error) {
 	type wireTokens struct {
-		Input            *int64 `json:"input_tokens"`
-		Output           *int64 `json:"output_tokens"`
-		Reasoning        *int64 `json:"reasoning_tokens"`
-		Cached           *int64 `json:"cached_tokens"`
-		CacheRead        *int64 `json:"cache_read_tokens"`
-		CacheReadPresent bool   `json:"cache_read_tokens_present"`
-		CacheCreation    *int64 `json:"cache_creation_tokens"`
-		Total            *int64 `json:"total_tokens"`
+		Input            *int64                   `json:"input_tokens"`
+		Output           *int64                   `json:"output_tokens"`
+		Reasoning        *int64                   `json:"reasoning_tokens"`
+		Cached           *int64                   `json:"cached_tokens"`
+		CacheRead        *int64                   `json:"cache_read_tokens"`
+		CacheReadPresent bool                     `json:"cache_read_tokens_present"`
+		CacheCreation    *int64                   `json:"cache_creation_tokens"`
+		Total            *int64                   `json:"total_tokens"`
+		Estimate         *coreusage.TokenEstimate `json:"estimate,omitempty"`
 	}
-	w := wireTokens{&t.InputTokens, &t.OutputTokens, &t.ReasoningTokens, &t.CachedTokens, &t.CacheReadTokens, t.CacheReadTokensPresent, &t.CacheCreationTokens, &t.TotalTokens}
+	w := wireTokens{&t.InputTokens, &t.OutputTokens, &t.ReasoningTokens, &t.CachedTokens, &t.CacheReadTokens, t.CacheReadTokensPresent, &t.CacheCreationTokens, &t.TotalTokens, t.Estimate}
 	if p := t.TokenPresence; p != nil {
 		if !p.InputTokens {
 			w.Input = nil

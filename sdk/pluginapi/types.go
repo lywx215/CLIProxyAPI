@@ -1551,6 +1551,8 @@ type UsageFailure struct {
 
 // UsageDetail contains token accounting counters.
 type UsageDetail struct {
+	// Estimate describes optional local text measurements, separate from input totals.
+	Estimate *TokenEstimate
 	// TokenPresence is optional; nil preserves existing producer semantics.
 	TokenPresence *TokenPresence
 	// InputTokens is the prompt or input token count.
@@ -1567,6 +1569,14 @@ type UsageDetail struct {
 	CacheCreationTokens int64
 	// TotalTokens is the total token count.
 	TotalTokens int64
+}
+
+// TokenEstimate carries local provenance without prompt or response content.
+type TokenEstimate struct {
+	Source           string
+	InputTextTokens  *int64
+	Incomplete       bool
+	ResponseComplete bool
 }
 
 // TokenPresence distinguishes unavailable counters from genuine zero values.

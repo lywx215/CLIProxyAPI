@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import deploy
 
@@ -94,6 +95,27 @@ class SnapshotTests(unittest.TestCase):
             deploy.validate_arguments(args)
 
 
+class MaintenancePolicyTests(unittest.TestCase):
+    def arguments(self, action):
+        return argparse.Namespace(action=action, directory='/opt/cpa', project='cpa',
+                                  port=8317, ssh_port=22, lines=100, host='example.invalid',
+                                  maintenance={'minimum_completed_percent': 95,
+                                               'state': 'awaiting_verified_drain_controller'})
+
+    def test_mutating_actions_stop_before_snapshot_or_ssh(self):
+        for action in ('deploy', 'update', 'restart'):
+            with self.subTest(action=action), patch.object(deploy, 'SSH') as ssh, patch.object(deploy, 'make_snapshot') as snapshot:
+                with self.assertRaisesRegex(ValueError, '95% completion'):
+                    deploy.run(self.arguments(action))
+                ssh.assert_not_called()
+                snapshot.assert_not_called()
+
+    def test_read_only_actions_remain_available(self):
+        for action in ('probe', 'status', 'logs', 'package'):
+            with self.subTest(action=action):
+                deploy.validate_arguments(self.arguments(action))
+
+
 BASH = shutil.which('bash') or ('C:/Program Files/Git/bin/bash.exe' if os.name == 'nt' else None)
 
 
@@ -114,6 +136,15 @@ class ManagerTests(unittest.TestCase):
 
     def test_successful_update_preserves_credentials_data_and_port(self):
         self.run_fixture('success')
+
+    def test_first_deployment_defaults_to_loopback(self):
+        self.run_fixture('fresh-private')
+
+    def test_first_public_deployment_publishes_all_ipv4_interfaces(self):
+        self.run_fixture('fresh-public')
+
+    def test_update_preserves_the_saved_public_binding(self):
+        self.run_fixture('public-update')
 
 
 if __name__ == '__main__':

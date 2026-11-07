@@ -24,6 +24,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/mediajobs"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -259,6 +260,8 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 					errType = "server_error"
 				}
 			}
+		} else if message, mediaCode := web.PublicErrorDetail(err, status); message != "" {
+			fixedMessage, code, param = message, mediaCode, safeErrorParam(web.PublicErrorParam(err, status))
 		}
 	}
 	var upstream *enterprise.UpstreamDiagnostic

@@ -598,6 +598,7 @@ func (m *Manager) rebuildAPIKeyModelAliasFromRuntimeConfig() {
 		cfg = &internalconfig.Config{}
 	}
 	m.rebuildAPIKeyModelAliasLocked(cfg)
+	m.rebuildEnterpriseWebModelsLocked()
 }
 
 // RefreshAPIKeyModelAlias rebuilds the API-key model alias table from the current runtime config.

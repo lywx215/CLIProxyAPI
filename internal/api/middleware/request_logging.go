@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	log "github.com/sirupsen/logrus"
 )
@@ -47,7 +48,7 @@ func RequestLoggingMiddleware(logger logging.RequestLogger) gin.HandlerFunc {
 		}
 
 		loggerEnabled := logger.IsEnabled()
-		captureBody := shouldCaptureRequestBody(loggerEnabled, c.Request)
+		captureBody := shouldCaptureRequestBody(loggerEnabled, c.Request) && !c.GetBool("enterprise_web_body_managed")
 
 		// Capture request information
 		requestInfo, err := captureRequestInfo(c, captureBody)
@@ -56,6 +57,11 @@ func RequestLoggingMiddleware(logger logging.RequestLogger) gin.HandlerFunc {
 			// In a real implementation, you might want to use a proper logger here
 			c.Next()
 			return
+		}
+
+		if c.GetBool("enterprise_web_body_managed") {
+			body, _ := web.Body(c.Request.Context())
+			requestInfo.Body = []byte(fmt.Sprintf(`{"inline_media":"omitted","request_bytes":%d}`, len(body)))
 		}
 
 		// Create response writer wrapper

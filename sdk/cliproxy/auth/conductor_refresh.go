@@ -14,6 +14,7 @@ import (
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	log "github.com/sirupsen/logrus"
 )
@@ -326,7 +327,12 @@ func lookupMetadataTime(meta map[string]any, keys ...string) (time.Time, bool) {
 func (m *Manager) markRefreshPending(loop *authAutoRefreshLoop, id string, registrationEpoch uint64, now time.Time) *authRefreshJob {
 	m.mu.Lock()
 	auth := m.auths[id]
-	if auth == nil || auth.RegistrationEpoch != registrationEpoch || hasUnauthorizedAuthFailure(auth) || hasDisabledInvalidGrantFailure(auth) {
+	if auth == nil || auth.RegistrationEpoch != registrationEpoch {
+		m.mu.Unlock()
+		return nil
+	}
+	webCookie := auth.Provider == web.Provider
+	if !webCookie && (hasUnauthorizedAuthFailure(auth) || hasDisabledInvalidGrantFailure(auth)) {
 		m.mu.Unlock()
 		return nil
 	}
@@ -339,14 +345,17 @@ func (m *Manager) markRefreshPending(loop *authAutoRefreshLoop, id string, regis
 		registrationEpoch: registrationEpoch,
 		pendingUntil:      now.Add(refreshPendingBackoff),
 		loop:              loop,
+		webCookie:         webCookie,
 	}
 	if m.refreshJobs == nil {
 		m.refreshJobs = make(map[string]*authRefreshJob)
 	}
 	m.refreshJobs[id] = job
 	auth.NextRefreshAfter = job.pendingUntil
-	auth.Generation++
-	auth.UpdatedAt = now
+	if !webCookie {
+		auth.Generation++
+		auth.UpdatedAt = now
+	}
 	m.mu.Unlock()
 
 	m.queueRefreshReschedule(id)
@@ -374,8 +383,10 @@ func (m *Manager) finishRefreshJob(job *authRefreshJob, retryAt time.Time, queue
 	if auth := m.auths[job.id]; auth != nil && auth.RegistrationEpoch == job.registrationEpoch && auth.NextRefreshAfter.Equal(job.pendingUntil) {
 		// Clear only this job's pending marker, preserving newer refresh outcomes.
 		auth.NextRefreshAfter = retryAt
-		auth.Generation++
-		auth.UpdatedAt = time.Now()
+		if !job.webCookie {
+			auth.Generation++
+			auth.UpdatedAt = time.Now()
+		}
 	}
 	m.mu.Unlock()
 	// Notify the current loop, which may differ from the job's original loop.
@@ -420,6 +431,13 @@ func CredentialsChanged(existing, incoming *Auth) bool {
 	}
 	if existing.Provider == ge.Provider && incoming.Provider == ge.Provider && ge.Binding(ge.FromMetadata(existing.Metadata)) != ge.Binding(ge.FromMetadata(incoming.Metadata)) {
 		return true
+	}
+	if existing.Provider == "gemini-enterprise-web" && incoming.Provider == existing.Provider {
+		a, _ := json.Marshal(existing.Metadata["enterprise_web"])
+		b, _ := json.Marshal(incoming.Metadata["enterprise_web"])
+		if string(a) != string(b) {
+			return true
+		}
 	}
 	if authAccessToken(existing) != authAccessToken(incoming) {
 		return true
@@ -673,6 +691,10 @@ func (m *Manager) refreshAuthForRequestAtEpochDirect(ctx context.Context, id, fa
 
 	base := auth.Clone()
 	updated, err := exec.Refresh(ctx, base.Clone())
+	if err != nil && auth.Provider == web.Provider {
+		m.queueRefreshReschedule(id)
+		return nil, err
+	}
 	now := time.Now()
 	if err != nil && errors.Is(err, context.Canceled) {
 		log.Debugf("refresh canceled for %s, %s", auth.Provider, auth.ID)
@@ -903,7 +925,7 @@ func (m *Manager) ForceRefreshAll(ctx context.Context) []ForceRefreshResult {
 	m.mu.RLock()
 	ids := make([]string, 0, len(m.auths))
 	for id, auth := range m.auths {
-		if auth != nil && !auth.Disabled && !IsEnterpriseCollectionAuth(auth) && !enterpriseRetired(auth) && (authHasRefreshCredential(auth) || auth.Runtime != nil) {
+		if auth != nil && !auth.Disabled && !IsEnterpriseCollectionAuth(auth) && !enterpriseRetired(auth) && (authHasRefreshCredential(auth) || auth.Runtime != nil || auth.Provider == web.Provider) {
 			ids = append(ids, id)
 		}
 	}

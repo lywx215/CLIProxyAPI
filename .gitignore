@@ -34,6 +34,12 @@ docs/*
 !docs/management-api-v8.md
 !docs/enterprise-shared-quota-validation.md
 !docs/enterprise-model-policy.md
+!docs/gemini-enterprise-carbon-admission.md
+!docs/gemini-enterprise-carbon-verification.md
+!docs/gemini-enterprise-web-phase1.md
+!docs/gemini-enterprise-web-phase1-verification.md
+!docs/gemini-enterprise-web-history.md
+!docs/gemini-enterprise-web-input-limits.md
 !docs/gemini-enterprise-regions.md
 !docs/GEMINI_ENTERPRISE_NATIVE_COMPATIBILITY_CN.md
 AGENTS.md
@@ -87,3 +93,4 @@ docker-compose.override.yml
 !/test/gemini_enterprise_shared_quota_test.go
 !/test/gemini_enterprise_model_policy_test.go
 !/test/gemini_enterprise_reasoning_contract_test.go
+!/test/gemini_enterprise_carbon_test.go

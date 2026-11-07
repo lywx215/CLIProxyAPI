@@ -168,15 +168,16 @@ type reviewedInPlaceByteWrite struct {
 }
 
 var reviewedInPlaceByteWrites = map[string]reviewedInPlaceByteWrite{
-	"internal/translator/common/apply_patch_responses.go":   {1, "shifts [][]byte item references in a private output slice; no byte of any JSON payload is rewritten"},
-	"internal/runtime/executor/claude_signing.go":           {2, "writes CCH digits into bytes.Clone(body); the caller's body is never touched"},
-	"internal/runtime/executor/claude_executor_cloaking.go": {1, "shifts []string headers to prepend a block; no byte of any payload is rewritten"},
-	"internal/runtime/executor/claude_executor_request.go":  {3, "shifts []string headers to insert a part; no byte of any payload is rewritten"},
-	"internal/runtime/executor/helps/claude_mcp_alias.go":   {1, "copies an HMAC sum into a local fixed-size digest array"},
-	"internal/runtime/budget/wal.go":                        {1, "copies json.Marshal output into a freshly allocated binary WAL frame before any reader can observe it; caller JSON bytes are never mutated"},
-	"internal/client/codex/live/tcp_proxy.go":               {1, "copies header and payload into a freshly allocated frame"},
-	"internal/home/client.go":                               {1, "zeroes a secret buffer after json.Unmarshal has copied every value out"},
-	"internal/pluginstore/auth.go":                          {1, "zeroes a locally built credential buffer after base64 encoding copied it out"},
+	"internal/runtime/executor/helps/enterpriseweb/resources/read.go": {1, "copies input chunks into a newly allocated result before it is returned or any JSON reader can observe it"},
+	"internal/translator/common/apply_patch_responses.go":             {1, "shifts [][]byte item references in a private output slice; no byte of any JSON payload is rewritten"},
+	"internal/runtime/executor/claude_signing.go":                     {2, "writes CCH digits into bytes.Clone(body); the caller's body is never touched"},
+	"internal/runtime/executor/claude_executor_cloaking.go":           {1, "shifts []string headers to prepend a block; no byte of any payload is rewritten"},
+	"internal/runtime/executor/claude_executor_request.go":            {3, "shifts []string headers to insert a part; no byte of any payload is rewritten"},
+	"internal/runtime/executor/helps/claude_mcp_alias.go":             {1, "copies an HMAC sum into a local fixed-size digest array"},
+	"internal/runtime/budget/wal.go":                                  {1, "copies json.Marshal output into a freshly allocated binary WAL frame before any reader can observe it; caller JSON bytes are never mutated"},
+	"internal/client/codex/live/tcp_proxy.go":                         {1, "copies header and payload into a freshly allocated frame"},
+	"internal/home/client.go":                                         {1, "zeroes a secret buffer after json.Unmarshal has copied every value out"},
+	"internal/pluginstore/auth.go":                                    {1, "zeroes a locally built credential buffer after base64 encoding copied it out"},
 }
 
 // TestInPlaceByteWritesAreReviewed keeps the set of in-place byte writes small

@@ -186,7 +186,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	d.mu.Lock()
 	catalog := d.catalogs[key]
 	d.mu.Unlock()
-	if catalog.known || catalog.revision > 0 {
+	if catalog.known || catalog.revision > 0 || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while

@@ -89,5 +89,6 @@ func installEnterpriseAuthorization(current, incoming *Auth) (*Auth, error) {
 	} else {
 		updated.Status = StatusActive
 	}
+	reconcileEnterpriseCarbonAuthorization(current, updated, updateModeEnterpriseReauthorize)
 	return updated, nil
 }

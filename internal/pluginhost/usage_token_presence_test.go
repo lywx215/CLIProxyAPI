@@ -20,3 +20,19 @@ func TestUsageTokenPresenceClone(t *testing.T) {
 		t.Fatal("plugin mutated shared usage")
 	}
 }
+
+func TestUsageTokenEstimateClone(t *testing.T) {
+	if cloneUsageTokenEstimate(nil) != nil {
+		t.Fatal("legacy estimates changed")
+	}
+	input := int64(23)
+	original := &coreusage.TokenEstimate{Source: coreusage.LocalGemma3SentencePiece, InputTextTokens: &input, Incomplete: true, ResponseComplete: true}
+	cloned := cloneUsageTokenEstimate(original)
+	if cloned.Source != original.Source || cloned.InputTextTokens == nil || *cloned.InputTextTokens != 23 || !cloned.Incomplete || !cloned.ResponseComplete {
+		t.Fatal("plugin lost estimate")
+	}
+	*cloned.InputTextTokens = 1
+	if input != 23 {
+		t.Fatal("plugin mutated original estimate")
+	}
+}

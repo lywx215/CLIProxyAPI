@@ -211,6 +211,11 @@ func (h *BaseAPIHandler) getRequestDetailsWithOptions(modelName string, allowIma
 	if h != nil && h.AuthManager != nil && h.AuthManager.HomeEnabled() {
 		return []string{"home"}, resolvedModelName, nil
 	}
+	// Closed Carbon applications remain addressable for an explicit 503 after
+	// the manager's existing media-to-Web routing. They never fall across providers.
+	if h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseCarbonRoute(baseModel) {
+		return []string{"gemini-enterprise"}, resolvedModelName, nil
+	}
 
 	providers = util.GetProviderName(baseModel)
 	// Fallback: if baseModel has no provider but differs from resolvedModelName,
@@ -220,6 +225,10 @@ func (h *BaseAPIHandler) getRequestDetailsWithOptions(modelName string, allowIma
 	// custom model registrations that include thinking suffixes.
 	if len(providers) == 0 && baseModel != resolvedModelName {
 		providers = util.GetProviderName(resolvedModelName)
+	}
+	// Keep catalog-backed Web names routable to an explicit policy rejection.
+	if len(providers) == 0 && h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseWebModel(baseModel) {
+		providers = []string{"gemini-enterprise-web"}
 	}
 
 	if len(providers) == 0 {

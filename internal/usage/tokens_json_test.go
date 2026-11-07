@@ -70,6 +70,47 @@ func TestTokenPresenceSnapshotRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWebTokenEstimateSnapshotRoundTrip(t *testing.T) {
+	input := int64(23)
+	estimate := &coreusage.TokenEstimate{Source: coreusage.LocalGemma3SentencePiece, InputTextTokens: &input, Incomplete: true, ResponseComplete: true}
+	stats := NewRequestStatistics()
+	stats.Record(context.Background(), coreusage.Record{Provider: "gemini-enterprise-web", APIKey: "fixture", Model: "web", RequestedAt: time.Unix(1, 0), Detail: coreusage.Detail{
+		OutputTokens: 7, ReasoningTokens: 3, TokenPresence: &coreusage.TokenPresence{OutputTokens: true, ReasoningTokens: true}, Estimate: estimate,
+	}})
+	input = 999
+	estimate.Source = "modified"
+	first := stats.Snapshot()
+	*first.APIs["fixture"].Models["web"].Details[0].Tokens.Estimate.InputTextTokens = 888
+	data, err := json.Marshal(stats.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens := gjson.GetBytes(data, "apis.fixture.models.web.details.0.tokens")
+	if tokens.Get("estimate.input_text_tokens").Int() != 23 || tokens.Get("estimate.source").String() != coreusage.LocalGemma3SentencePiece || !tokens.Get("estimate.incomplete").Bool() || tokens.Get("output_tokens").Int() != 7 || tokens.Get("reasoning_tokens").Int() != 3 {
+		t.Fatalf("estimate was aliased or lost: %s", data)
+	}
+	for _, field := range []string{"input_tokens", "cached_tokens", "total_tokens"} {
+		if tokens.Get(field).Type != gjson.Null {
+			t.Fatalf("%s fabricated: %s", field, data)
+		}
+	}
+	var snapshot StatisticsSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	imported := NewRequestStatistics()
+	if r := imported.MergeSnapshot(snapshot); r.Added != 1 || imported.Snapshot().TotalTokens != 0 {
+		t.Fatalf("subset promoted into total: %+v", r)
+	}
+	if r := imported.MergeSnapshot(snapshot); r.Skipped != 1 {
+		t.Fatal("estimate import duplicated record")
+	}
+	copyData, _ := json.Marshal(imported.Snapshot())
+	if gjson.GetBytes(copyData, "apis.fixture.models.web.details.0.tokens").Raw != tokens.Raw {
+		t.Fatal("snapshot roundtrip changed estimate")
+	}
+}
+
 func TestTokenPresencePreservesLegacyZero(t *testing.T) {
 	data, _ := json.Marshal(TokenStats{})
 	if strings.Contains(string(data), "null") {

@@ -85,6 +85,10 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	summary["account_management_supported"] = true
 	summary["model_policy_supported"] = true
 	summary["catalog_fallback_supported"] = true
+	summary["carbon_admission_supported"] = true
+	summary["carbon_authorization_revision"] = h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID)
+	summary["carbon_registration_epoch"] = root.RegistrationEpoch
+	summary["google_carbon_configure_supported"] = true
 	summary["discovery"] = ge.CloneAccount(account).Discovery
 	children := map[string]*coreauth.Auth{}
 	for _, child := range h.authManager.EnterpriseCollections(root.ID) {
@@ -94,6 +98,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	}
 	now := time.Now().UTC()
 	collections := make([]gin.H, 0, len(account.Collections))
+	carbonEnabled, carbonAvailable := 0, 0
 	for _, collection := range account.Collections {
 		child := children[collection.ID]
 		if child == nil && !coreauth.IsEnterpriseAccountAuth(root) {
@@ -110,6 +115,17 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 		}
 		if child != nil {
 			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
+			carbon := h.authManager.EnterpriseCarbonAdmissionView(child)
+			entry["carbon_admission_supported"], entry["carbon_admission"] = true, carbon
+			if carbon.Enabled {
+				carbonEnabled++
+			}
+			if carbon.Available {
+				carbonAvailable++
+			}
+			if len(account.Collections) == 1 {
+				summary["carbon_admission"] = carbon
+			}
 			unavailable, status, message, _ := reconcileAuthFileCooldownState(child, now)
 			entry["auth_index"], entry["status"], entry["status_message"] = lockedAuthIndex(child), status, message
 			entry["unavailable"] = unavailable || collection.Missing
@@ -123,6 +139,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 		collections = append(collections, entry)
 	}
 	summary["collections"] = collections
+	summary["carbon_enabled_count"], summary["carbon_available_count"] = carbonEnabled, carbonAvailable
 	return summary
 }
 
@@ -163,7 +180,7 @@ func (h *Handler) addEnterpriseAccountSummary(entry gin.H, auth *coreauth.Auth) 
 
 func enterpriseCollectionSettings(settings map[string]any) map[string]any {
 	result := map[string]any{}
-	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests"} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", "carbon_enabled"} {
 		if value, exists := settings[key]; exists {
 			result[key] = value
 		}
@@ -345,6 +362,7 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		Disabled         *bool               `json:"disabled"`
 		Resources        *ge.ResourceBinding `json:"resources"`
 		Fields           map[string]any      `json:"fields"`
+		CarbonTestID     string              `json:"carbon_test_id"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
 	if c.ShouldBindJSON(&req) != nil || req.Name == "" || req.AuthIndex == "" || req.BindingID == "" || req.ExpectedRevision == 0 || (req.Disabled == nil && req.Resources == nil && len(req.Fields) == 0) {
@@ -378,7 +396,37 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		return
 	}
 	coreauth.NormalizeCredentialMetadata(req.Fields)
-	for _, key := range []string{"enforced_allowed_models", "enforced_reason"} {
+	if value, carbonChange := req.Fields[ge.CarbonEnabledKey]; carbonChange {
+		enabled, valid := value.(bool)
+		if !valid || len(req.Fields) != 1 || req.Disabled != nil || req.Resources != nil {
+			enterpriseManagementFailure(c, 400, "invalid_carbon_change", "carbon_enabled must be a boolean changed separately from other application settings")
+			return
+		}
+		updated, err := h.authManager.UpdateEnterpriseCarbonEnabled(c.Request.Context(), auth, req.ExpectedRevision, enabled, req.CarbonTestID)
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		if err != nil {
+			enterpriseCarbonManagementFailure(c, err)
+			return
+		}
+		if errHook := h.invokePostAuthPersistHooks(c.Request.Context(), []*coreauth.Auth{updated}); errHook != nil {
+			enterpriseManagementFailure(c, 500, "runtime_sync_failed", "Application state was saved, but runtime synchronization failed; reload")
+			return
+		}
+		current, found := h.enterpriseTarget(req.Name, req.AuthIndex, req.BindingID)
+		if !found {
+			enterpriseManagementFailure(c, 409, "credential_changed", "Application changed while saving; reload")
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok", "carbon_admission_supported": true, "carbon_admission": h.authManager.EnterpriseCarbonAdmissionView(current), "gemini_enterprise": h.enterpriseAccountSummary(updated)})
+		return
+	}
+	if req.CarbonTestID != "" || containsCarbonManagedFields(req.Fields) {
+		enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Carbon verification evidence is server-owned; use the dedicated application switch")
+		return
+	}
+	for _, key := range []string{"enforced_allowed_models", "enforced_excluded_models", "enforced_reason"} {
 		if _, exists := req.Fields[key]; exists {
 			enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Enforced model restrictions are read-only and come from the verified subscription")
 			return

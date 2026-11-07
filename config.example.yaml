@@ -367,6 +367,31 @@ client:
 
 # Shared upstream behavior applies to OAuth and API-key credentials.
 upstream:
+  # Optional cookie-based attachment and image-input channel. Plain text stays on Enterprise.
+  # Limits apply to new admissions; disabling drains requests already admitted.
+  gemini-enterprise-web:
+    # Keep the single-turn default; opt in to self-contained serialized history.
+    history-mode: single-turn
+    enabled: false
+    max-concurrent: 2
+    max-inflight-bytes: 268435456
+    # Parser limits are independent of Google quotas and apply to new requests.
+    # A logical content is one adjacent group of user or model fragments, not a full round.
+    input-limits:
+      max-contents: 50
+      max-segments: 4129
+      max-text-bytes: 4194304 # 4 MiB, including system text, signatures and tool records
+      max-user-parts: 256
+      max-model-parts: 4096
+      max-system-parts: 256
+      max-attachments: 12
+      max-attachment-bytes: 52428800 # 50 MiB after Base64 decoding
+      max-request-bytes: 71303168 # 68 MiB on the wire
+      max-json-object-fields: 256
+      max-tool-depth: 64
+      max-tool-nodes: 100000
+      max-tool-array-entries: 4096
+      max-generation-config-bytes: 1048576
   codex:
     # Experimental full-duplex Codex Responses WebSocket steering (default: false).
     # Keeps one upstream account/model per socket; accepted input is never replayed.

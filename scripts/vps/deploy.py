@@ -100,6 +100,8 @@ def make_snapshot(root: Path, output: Path) -> dict:
 
 
 def validate_arguments(args: argparse.Namespace) -> None:
+    if not isinstance(getattr(args, 'public', False), bool):
+        raise ValueError('The public option must be a boolean.')
     root = PurePosixPath(args.directory)
     if (not re.fullmatch(r'/[A-Za-z0-9_./-]+', args.directory) or len(root.parts) < 3
             or '..' in root.parts):
@@ -114,6 +116,14 @@ def validate_arguments(args: argparse.Namespace) -> None:
         raise ValueError('Specify --host or create .codex/vps-deploy.json (see scripts/vps/README.md).')
     if getattr(args, 'domain', None) and not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?', args.domain):
         raise ValueError('Domain must be a lowercase DNS hostname.')
+    maintenance = getattr(args, 'maintenance', None)
+    if maintenance and args.action in {'deploy', 'update', 'restart'}:
+        raise ValueError(
+            'Production maintenance is locked until the channel-stop, drain, and restore controller is integrated. '
+            'The policy requires confirmed channel stoppage, then 95% completion when measurable; '
+            'otherwise it permits 60 seconds of quiet New API request logs or a 300-second wait limit. '
+            'Read-only status, logs, probe, and package actions remain available.'
+        )
 
 
 class SSH:
@@ -229,7 +239,8 @@ def run(args: argparse.Namespace) -> None:
                     sftp.chmod(remote, 0o600)
                     uploaded.append(remote)
             command = ['bash', upload + '/manage.sh', args.action, args.directory,
-                       args.project, str(args.port), upload, str(args.lines), '1' if args.follow else '0', args.domain or '']
+                       args.project, str(args.port), upload, str(args.lines), '1' if args.follow else '0', args.domain or '',
+                       '1' if getattr(args, 'public', False) else '0']
             if args.sudo:
                 command = ['sudo', '-n', '--', *command]
             connection.run(command)
@@ -250,10 +261,11 @@ def main() -> int:
     initial.add_argument('--profile', default=str(PROFILE))
     selected, _ = initial.parse_known_args()
     defaults = json.loads(Path(selected.profile).read_text(encoding='utf-8-sig')) if Path(selected.profile).exists() else {}
-    fields = {'host', 'user', 'ssh_port', 'directory', 'project', 'port', 'identity', 'sudo', 'domain'}
+    fields = {'host', 'user', 'ssh_port', 'directory', 'project', 'port', 'identity', 'sudo', 'domain', 'maintenance', 'public'}
     if defaults.keys() - fields:
         raise ValueError('Profile contains unsupported fields. Do not store passwords in profiles.')
     parser = argparse.ArgumentParser(description=__doc__, parents=[initial])
+    parser.set_defaults(maintenance=defaults.get('maintenance'))
     parser.add_argument('action', choices=['deploy', 'update', 'restart', 'logs', 'status', 'probe', 'package'])
     parser.add_argument('--host', default=defaults.get('host'))
     parser.add_argument('--user', default=defaults.get('user', 'root'))
@@ -262,6 +274,8 @@ def main() -> int:
     parser.add_argument('--project', default=defaults.get('project', 'cliproxyapi-vps'))
     parser.add_argument('--domain', default=defaults.get('domain'), help='Configure HTTPS through an existing BaoTa Nginx installation.')
     parser.add_argument('--port', type=int, default=defaults.get('port', 8317))
+    parser.add_argument('--public', action='store_true', default=defaults.get('public', False),
+                        help='Publish a first deployment on all IPv4 interfaces for direct IP access. Updates preserve the saved binding.')
     parser.add_argument('--identity', default=defaults.get('identity'))
     authentication = parser.add_mutually_exclusive_group()
     authentication.add_argument('--password', action='store_true', help='Prompt for the SSH password without echo.')

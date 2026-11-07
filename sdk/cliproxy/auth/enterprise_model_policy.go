@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -248,13 +249,15 @@ type EnterprisePolicyModel struct {
 
 type EnterpriseModelPolicyView struct {
 	ge.ModelPolicy
-	GlobalExcludedModels    []string                   `json:"global_excluded_models"`
-	Subscription            ge.SubscriptionObservation `json:"subscription"`
-	ImageGenerationDisabled bool                       `json:"image_generation_disabled"`
-	CatalogState            ge.CatalogState            `json:"catalog_state"`
-	CatalogKnown            bool                       `json:"catalog_known"`
-	CatalogModels           []EnterprisePolicyModel    `json:"catalog_models"`
-	EffectiveModels         []string                   `json:"effective_models"`
+	CarbonAdmissionSupported bool                       `json:"carbon_admission_supported"`
+	CarbonAdmission          ge.CarbonAdmission         `json:"carbon_admission"`
+	GlobalExcludedModels     []string                   `json:"global_excluded_models"`
+	Subscription             ge.SubscriptionObservation `json:"subscription"`
+	ImageGenerationDisabled  bool                       `json:"image_generation_disabled"`
+	CatalogState             ge.CatalogState            `json:"catalog_state"`
+	CatalogKnown             bool                       `json:"catalog_known"`
+	CatalogModels            []EnterprisePolicyModel    `json:"catalog_models"`
+	EffectiveModels          []string                   `json:"effective_models"`
 }
 
 func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) {
@@ -273,6 +276,10 @@ func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) 
 }
 
 func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyView {
+	return m.enterpriseModelPolicyView(auth, true)
+}
+
+func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) EnterpriseModelPolicyView {
 	subscription := m.EnterpriseSubscriptionSnapshot(auth)
 	policy := ge.ModelPolicyFor(auth.Metadata, subscription)
 	var excluded []string
@@ -293,7 +300,12 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 			policy.ExcludedModels = append(policy.ExcludedModels, pattern)
 		}
 	}
-	view := EnterpriseModelPolicyView{ModelPolicy: policy, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
+	var admission ge.CarbonAdmission
+	if includeCarbon {
+		admission = m.enterpriseCarbonAdmissionView(auth, subscription)
+	}
+	policy.CarbonAllowed = admission.Available
+	view := EnterpriseModelPolicyView{ModelPolicy: policy, CarbonAdmissionSupported: includeCarbon, CarbonAdmission: admission, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
 	c := &m.enterprisePolicies
 	c.mu.Lock()
 	models, known := c.catalogs[enterprisePolicyCatalogKey(auth)]
@@ -319,16 +331,31 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 		}
 	}
 	view.CatalogState, view.CatalogKnown = state, known
+	// Manual admission is independent of catalog and diagnostic test history.
+	// Never register the closed Carbon candidate.
+	carbonSupplement := false
+	if admission.Available &&
+		!slices.ContainsFunc(models, func(model ge.Model) bool { return model.ID == ge.CarbonModel }) {
+		models = append(models, ge.Model{ID: ge.CarbonModel, DisplayName: ge.CarbonModel})
+		carbonSupplement = true
+	}
 	view.ImageGenerationDisabled = cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 	for _, model := range models {
 		automatic := strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto")
 		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
+		if model.ID == ge.CarbonModel {
+			allowed = admission.Available
+			model.MediaKind = ""
+		}
 		mediaDisabled := model.MediaKind == "image" && cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 		if mediaDisabled {
 			allowed = false
 		}
 		reason := ""
 		if !allowed {
+			if model.ID == ge.CarbonModel {
+				reason = admission.Reason
+			}
 			if mediaDisabled {
 				reason = "image_generation_disabled"
 			}
@@ -342,7 +369,11 @@ func (m *Manager) EnterpriseModelPolicyView(auth *Auth) EnterpriseModelPolicyVie
 				reason = "model_not_allowed"
 			}
 		}
-		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: state.Source, UpstreamListed: state.Source == "upstream" || state.Source == "cached"})
+		source := state.Source
+		if carbonSupplement && model.ID == ge.CarbonModel {
+			source = "manual"
+		}
+		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: source, UpstreamListed: source == "upstream" || source == "cached"})
 		if allowed {
 			view.EffectiveModels = append(view.EffectiveModels, model.ID)
 		}
@@ -359,7 +390,8 @@ func (view EnterpriseModelPolicyView) Signature() string {
 		Policy ge.ModelPolicy
 		Source string
 		Models []EnterprisePolicyModel
-	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels})
+		Carbon ge.CarbonAdmission
+	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels, view.CarbonAdmission})
 	return string(data)
 }
 
@@ -392,7 +424,7 @@ func policyError(policy ge.ModelPolicy, model string) error {
 	}
 	if !policy.Allows(canonicalModelKey(model)) {
 		if policy.EnforcedReason == "paid_subscription_restricted" {
-			return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
+			return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
 		}
 		return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
 	}
@@ -400,7 +432,14 @@ func policyError(policy ge.ModelPolicy, model string) error {
 }
 
 func (m *Manager) validateEnterprisePolicy(auth *Auth, model string, catalog bool) error {
-	view := m.EnterpriseModelPolicyView(auth)
+	return m.validateEnterprisePolicyForRequest(context.Background(), auth, model, catalog)
+}
+
+func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *Auth, model string, catalog bool) error {
+	if canonicalModelKey(model) == ge.CarbonModel || model == "" && enterpriseCarbonTestMatches(ctx, auth, model) {
+		return m.validateEnterpriseCarbonPolicy(ctx, auth)
+	}
+	view := m.enterpriseModelPolicyView(auth, false)
 	if model == "" && view.Status != "blocked" && (!catalog || !view.Restricted()) {
 		return nil
 	}

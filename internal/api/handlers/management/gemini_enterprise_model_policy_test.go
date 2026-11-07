@@ -116,7 +116,7 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 	child := children[0]
 	catalog := []ge.Model{{ID: ge.ArgonModel}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"}, {ID: "gemini-3.8-flash"}}
 	registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{
-		{ID: ge.ArgonModel}, {ID: "gemini-3-pro-image", EnterpriseMedia: "image"}, {ID: "veo-3.1", EnterpriseMedia: "video"},
+		{ID: ge.ArgonModel}, {ID: ge.CarbonModel}, {ID: "gemini-3-pro-image", EnterpriseMedia: "image"}, {ID: "veo-3.1", EnterpriseMedia: "video"},
 		{ID: "paid-team/flash(high)", MetadataModelID: "gemini-3.8-flash"},
 	})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
@@ -140,12 +140,12 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 			reason := gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_reason").String()
 			switch state {
 			case "paid":
-				if enforced.Raw != `["gemini-4-argon","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 3 {
+				if enforced.Raw != `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 3 || !gjson.GetBytes(w.Body.Bytes(), "test_candidates.0.test_candidate").Bool() || gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
 					t.Fatalf("paid state was not enforced: %s", w.Body.String())
 				}
 			case "trial":
-				if enforced.Raw != "null" || reason != "" {
-					t.Fatalf("trial hard restriction changed: %s", w.Body.String())
+				if enforced.Raw != "null" || reason != "" || len(gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_excluded_models").Array()) != 0 || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.can_test").Bool() || gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
+					t.Fatalf("trial Carbon should remain closed but independently testable: %s", w.Body.String())
 				}
 			case "blocked":
 				if enforced.Raw != "[]" || reason != "license_unassigned" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 0 {
@@ -158,13 +158,13 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 				if response.Code != http.StatusConflict {
 					t.Fatalf("restricted alias probe: %s", response.Body.String())
 				}
-				if state == "paid" && !strings.Contains(response.Body.String(), "Paid Enterprise subscriptions permit only") {
+				if state == "paid" && (!strings.Contains(response.Body.String(), "Paid Enterprise subscriptions permit only") || !strings.Contains(response.Body.String(), ge.CarbonModel)) {
 					t.Fatalf("paid alias probe lost the hard-restriction explanation: %s", response.Body.String())
 				}
 			}
 		})
 	}
-	for _, field := range []string{"enforced_allowed_models", "enforced_reason"} {
+	for _, field := range []string{"enforced_allowed_models", "enforced_excluded_models", "enforced_reason"} {
 		payload := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": 1, "fields": map[string]any{field: nil}}
 		response := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, "PATCH", payload)
 		if response.Code != http.StatusBadRequest || gjson.GetBytes(response.Body.Bytes(), "code").String() != "read_only_collection_fields" {

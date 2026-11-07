@@ -18,6 +18,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	cliproxysession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
@@ -122,7 +123,7 @@ func preferredExecutionAttemptError(fallback, upstream error) error {
 
 // Execute performs a non-streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
-func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut cliproxyexecutor.Response, resultErr error) {
 	ctx = withEnterpriseModelAttempts(ctx)
 	ctx = budget.WithRequest(ctx)
 	ctx = withGeminiAdmissionRequest(ctx)
@@ -134,8 +135,25 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 		req.Model = NormalizeGeminiBudgetThinkingModel(req.Model)
 	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
-	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
+	var webDone func()
+	var webErr error
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	if webErr != nil {
+		return cliproxyexecutor.Response{}, webErr
+	}
+	defer webDone()
+	if web.ExistingLease(ctx) != nil {
+		defer func() { m.WebRuntime().RecordPreflight(ctx, resultErr) }()
+	}
+	if web.ExistingLease(ctx) == nil {
+		var carbonErr error
+		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		if carbonErr != nil {
+			return cliproxyexecutor.Response{}, carbonErr
+		}
+		req, opts = cliproxysession.Enrich(req, opts)
+	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
 	if errOperation != nil {
 		return cliproxyexecutor.Response{}, errOperation
@@ -201,8 +219,22 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
-	req, opts = cliproxysession.Enrich(req, opts)
 	normalized := m.normalizeProviders(providers)
+	var webDone func()
+	var webErr error
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	if webErr != nil {
+		return cliproxyexecutor.Response{}, webErr
+	}
+	defer webDone()
+	if web.ExistingLease(ctx) == nil {
+		var carbonErr error
+		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		if carbonErr != nil {
+			return cliproxyexecutor.Response{}, carbonErr
+		}
+		req, opts = cliproxysession.Enrich(req, opts)
+	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, true, m.HomeEnabled())
 	if errOperation != nil {
 		return cliproxyexecutor.Response{}, errOperation
@@ -256,7 +288,7 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 
 // ExecuteStream performs a streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
-func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
+func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut *cliproxyexecutor.StreamResult, resultErr error) {
 	ctx = withEnterpriseModelAttempts(ctx)
 	ctx = budget.WithRequest(ctx)
 	ctx = withGeminiAdmissionRequest(ctx)
@@ -268,13 +300,35 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 		req.Model = NormalizeGeminiBudgetThinkingModel(req.Model)
 	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
-	req, opts = cliproxysession.Enrich(req, opts)
+	normalized := m.normalizeProviders(providers)
+	var webDone func()
+	var webErr error
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	if webErr != nil {
+		return nil, webErr
+	}
+	if web.ExistingLease(ctx) == nil {
+		req, opts = cliproxysession.Enrich(req, opts)
+	}
 	if m.HomeEnabled() {
 		if unlockSession := m.lockHomeWebsocketSession(ctx, opts); unlockSession != nil {
 			defer unlockSession()
 		}
 	}
-	normalized := m.normalizeProviders(providers)
+	webHandedOff := false
+	defer func() {
+		if !webHandedOff {
+			m.WebRuntime().RecordPreflight(ctx, resultErr)
+			webDone()
+		}
+	}()
+	if web.ExistingLease(ctx) == nil {
+		var carbonErr error
+		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		if carbonErr != nil {
+			return nil, carbonErr
+		}
+	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
 	if errOperation != nil {
 		return nil, errOperation
@@ -297,6 +351,7 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 		roundOpts := withAttemptedAuthTracker(opts, roundAttempted)
 		result, errStream := m.executeStreamMixedOnce(ctx, normalized, req, roundOpts, maxRetryCredentials, &homeRetryLimit, attempt, defaultRequestRetry)
 		if errStream == nil {
+			webHandedOff = true
 			return result, nil
 		}
 		if hasUpstreamExecutionAttempt(errStream) {
@@ -350,6 +405,7 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 		}
 		var bootstrapErr *streamBootstrapError
 		if errors.As(lastErr, &bootstrapErr) && bootstrapErr != nil {
+			m.WebRuntime().RecordPreflight(ctx, lastErr)
 			return streamErrorResult(bootstrapErr.Headers(), lastErr), nil
 		}
 		return nil, lastErr
@@ -522,6 +578,7 @@ func executorForAuth(executor ProviderExecutor, auth *Auth) ProviderExecutor {
 }
 
 func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options, maxRetryCredentials int, retryRound int, defaultRequestRetry int) (cliproxyexecutor.Response, error) {
+	maxRetryCredentials = webPreflightLimit(providers, maxRetryCredentials)
 	ctx = withGeminiAdmissionRequest(ctx)
 	var admissionCtx context.Context
 	defer func() { budget.ReleaseAdmissionTurn(admissionCtx) }()
@@ -640,7 +697,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 			if len(payload) == 0 {
 				payload = execReq.Payload
 			}
-			execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload)
+			execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload, ctx)
 			var errIntercept error
 			execReq, execOpts, errIntercept = applyRequestAfterAuthInterceptor(execCtx, executor, provider, execReq, execOpts, requestedModelAliasFromOptions(execOpts, routeModel))
 			if errIntercept != nil {
@@ -658,6 +715,13 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 				}
 				if errCtx := execCtx.Err(); errCtx != nil {
 					return cliproxyexecutor.Response{}, errCtx
+				}
+				if next, retry, handled := m.nextWebPreflightError(auth, execOpts, tried, lastErr, errExec); handled {
+					if !retry {
+						return cliproxyexecutor.Response{}, next
+					}
+					lastErr, authErr = next, nil
+					break
 				}
 				refreshCtx := newUpstreamAttemptContext(execCtx)
 				if refreshed, okRefresh := m.tryRefreshAfterUnauthorized(refreshCtx, auth, errExec, didRefreshOnUnauthorized); okRefresh {
@@ -852,7 +916,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 			if len(payload) == 0 {
 				payload = execReq.Payload
 			}
-			execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload)
+			execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload, ctx)
 			var errIntercept error
 			execReq, execOpts, errIntercept = applyRequestAfterAuthInterceptor(execCtx, executor, provider, execReq, execOpts, requestedModelAliasFromOptions(execOpts, routeModel))
 			if errIntercept != nil {
@@ -966,6 +1030,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 }
 
 func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options, maxRetryCredentials int, homeRetryLimit *int, retryRound int, defaultRequestRetry int) (*cliproxyexecutor.StreamResult, error) {
+	maxRetryCredentials = webPreflightLimit(providers, maxRetryCredentials)
 	ctx = withGeminiAdmissionRequest(ctx)
 	var admissionCtx context.Context
 	defer func() { budget.ReleaseAdmissionTurn(admissionCtx) }()
@@ -1245,7 +1310,7 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 		if len(payload) == 0 {
 			payload = execReq.Payload
 		}
-		execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload)
+		execOpts.Metadata = ensureCanonicalSessionMetadata(execOpts.Metadata, execOpts.Headers, payload, ctx)
 		execCtx = syncMetadataSessionToContext(execCtx, execOpts.Metadata)
 		if homeMode && len(models) > 1 {
 			models = models[:1]
@@ -1275,6 +1340,13 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			}
 			if errCtx := execCtx.Err(); errCtx != nil && ctx != nil && ctx.Err() != nil {
 				return nil, errCtx
+			}
+			if next, retry, handled := m.nextWebPreflightError(auth, execOpts, tried, lastErr, errStream); handled {
+				if !retry {
+					return nil, next
+				}
+				lastErr = next
+				continue
 			}
 			action, okAction := matchRequestScopedErrorAction(auth, errStream, m.runtimeConfigSnapshot())
 			if okAction {
@@ -2162,7 +2234,11 @@ func (m *Manager) HttpRequest(ctx context.Context, auth *Auth, req *http.Request
 	return exec.HttpRequest(ctx, auth, req)
 }
 
-func ensureCanonicalSessionMetadata(metadata map[string]any, headers http.Header, payload []byte) map[string]any {
+func ensureCanonicalSessionMetadata(metadata map[string]any, headers http.Header, payload []byte, ctx context.Context) map[string]any {
+	// Single-turn Web requests always use a fresh upstream session.
+	if web.ExistingLease(ctx) != nil {
+		return metadata
+	}
 	if metadata != nil {
 		if canonicalID, ok := metadata[cliproxyexecutor.CanonicalSessionIDMetadataKey].(string); ok && strings.TrimSpace(canonicalID) != "" {
 			return metadata

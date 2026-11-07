@@ -1,0 +1,12 @@
+# Merge this rule into requests.payload.override in the existing configuration.
+# It forces summary visibility without changing the requested thinking level.
+requests:
+  payload:
+    override:
+      - models:
+          - name: "gemini-3.8-flash"
+            protocol: "gemini-enterprise"
+          - name: "gemini-3.1-pro-preview"
+            protocol: "gemini-enterprise"
+        params:
+          "generationSpec.thinkingConfig.includeThoughts": true

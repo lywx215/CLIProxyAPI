@@ -197,6 +197,7 @@ func (a *usageAdapter) HandleUsage(ctx context.Context, record coreusage.Record)
 			Body:       record.Fail.Body,
 		},
 		Detail: pluginapi.UsageDetail{
+			Estimate:            cloneUsageTokenEstimate(record.Detail.Estimate),
 			TokenPresence:       cloneUsageTokenPresence(record.Detail.TokenPresence),
 			InputTokens:         record.Detail.InputTokens,
 			OutputTokens:        record.Detail.OutputTokens,
@@ -208,6 +209,14 @@ func (a *usageAdapter) HandleUsage(ctx context.Context, record coreusage.Record)
 		},
 		ResponseHeaders: cloneHeader(record.ResponseHeaders),
 	})
+}
+
+func cloneUsageTokenEstimate(e *coreusage.TokenEstimate) *pluginapi.TokenEstimate {
+	if e == nil {
+		return nil
+	}
+	copy := pluginapi.TokenEstimate(*e.Clone())
+	return &copy
 }
 
 func cloneUsageTokenPresence(p *coreusage.TokenPresence) *pluginapi.TokenPresence {

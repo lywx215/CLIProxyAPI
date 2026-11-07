@@ -1,5 +1,45 @@
 # Deploy the local working tree to a Linux VPS
 
+## Production maintenance gate
+
+Only one CLIProxyAPI server may be under maintenance at a time across all Zeabur
+and VPS instances. Complete its channel stoppage, drain, deployment, health
+checks, real channel-call tests, and verified routing restoration before starting
+the next server. Resolve failed recovery first. Do not overlap these stages or
+push a shared branch that would automatically deploy multiple instances.
+
+This user's `gemini30.pro` entry point must remain running. CLIProxyAPI restarts,
+updates, redeployments, rollback, and container recreation must first disable all
+related New API channels and verify that at least 95% of the baseline live work
+has completed naturally. Preserve original channel states and restore only
+previously enabled channels after health and management/model-list checks pass
+and real model calls through those New API channels succeed while disabled.
+Use each channel's configured mapping and request settings, including streaming
+when applicable. A model list or HTTP 200 alone is insufficient. Restore only
+previously enabled channels whose functional tests passed; leave failures off.
+For a baseline N, no more than floor(0.05*N) baseline requests may remain.
+
+When the completion count cannot be measured reliably, the user authorizes an
+alternative after confirmed channel stoppage: observe 60 continuous seconds with
+no new New API request logs, or wait 300 seconds from confirmed stoppage,
+whichever occurs first. Use global New API request logs unless the user specifies
+another scope. Failed log observations do not establish silence. This fallback
+must be reported as log/time admission, not verified 95% completion.
+
+The decision logic is implemented and tested in `maintenance.py`. It is not yet
+an integrated channel-stop/drain/restore controller. A nonempty `maintenance`
+policy therefore still blocks `deploy`, `update`, and `restart` before snapshots
+or SSH activity. `probe`, `status`, `logs`, and offline `package` remain available.
+Do not remove the policy or use raw Docker/SSH/Zeabur commands to bypass the
+controlled workflow.
+
+Idle TCP keep-alive counts, historical usage, and Gemini-only budget counters do
+not verify 95% completion. A current human request is still required for
+production maintenance; a saved policy is not permission to change routing or
+restart a service.
+
+## Requirements
+
 Run these commands from the local checkout. The server must already have Docker
 and Docker Compose (v2 or later). The scripts do not install or upgrade the host's
 Docker, Compose, BaoTa, or other applications. Python 3.10+ and Git are needed
@@ -118,6 +158,14 @@ deployment to choose a different host port. Do not change the container's intern
 `http://127.0.0.1:8317`, enable HTTPS and WebSocket support, and disable proxy
 buffering for streaming responses. The management page is `/management.html`;
 the OpenAI-compatible API base path is `/v1`.
+
+For direct public IP access, use `--public` with Python or `-PublicAccess` with
+PowerShell on the first deployment. This publishes the host port on `0.0.0.0`;
+the server and provider firewalls must permit the chosen port. Public access
+still requires the client API key or management key for the respective APIs.
+Updates preserve the original host binding as well as the port. The non-secret
+profile can save `"public": true` for a dedicated new server. Do not use this
+option to change the exposure of an existing production deployment.
 
 When `-Domain` is supplied, the script configures this reverse proxy automatically
 in `/www/server/panel/vhost/nginx/<domain>.conf`. Certificates are stored in

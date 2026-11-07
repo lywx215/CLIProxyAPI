@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
 
 // RefreshAuthFiles triggers active refresh for a single auth file or all auth files.
@@ -42,6 +44,18 @@ func (h *Handler) RefreshAuthFiles(c *gin.Context) {
 
 	if req.All {
 		results := h.authManager.ForceRefreshAll(ctx)
+		for i := range results {
+			if !results[i].Success {
+				continue
+			}
+			account, ok := h.authManager.GetByID(results[i].ID)
+			if !ok || account.Provider != web.Provider {
+				continue
+			}
+			if errHook := h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{account}); errHook != nil {
+				results[i].Success, results[i].Error = false, "Model catalog saved but runtime synchronization is pending"
+			}
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"ok":      true,
 			"results": results,
@@ -69,6 +83,14 @@ func (h *Handler) RefreshAuthFiles(c *gin.Context) {
 		return
 	}
 
+	if targetAuth.Provider == web.Provider {
+		if errHook := h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{refreshed}); errHook != nil {
+			c.JSON(500, gin.H{"error": "Model catalog saved but runtime synchronization is pending; refresh the model list"})
+			return
+		}
+		c.JSON(200, gin.H{"ok": true, "credential": h.addEnterpriseWebSummary(refreshed)})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"ok":   true,
 		"auth": refreshed,

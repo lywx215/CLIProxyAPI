@@ -70,6 +70,7 @@ var v8KeyFamilies = []configPath{
 
 func buildV8Paths() []configPath {
 	prefixes := []configPath{
+		{"gemini-enterprise-web", "upstream.gemini-enterprise-web"},
 		{"host", "server.host"}, {"port", "server.port"}, {"trusted-proxies", "server.trusted-proxies"},
 		{"github-token", "server.github-token"},
 		{"tls", "server.tls"}, {"commercial-mode", "server.commercial-mode"}, {"discovery", "server.discovery"},
@@ -935,6 +936,9 @@ func ValidateV8Config(data []byte) error {
 	var cfg legacyConfig
 	if errDecode := decoder.Decode(&cfg); errDecode != nil {
 		return errDecode
+	}
+	if errWeb := cfg.GeminiEnterpriseWeb.WithDefaults().Validate(); errWeb != nil {
+		return errWeb
 	}
 	if errPolicy := cfg.GeminiFreeTierPolicy.Validate(); errPolicy != nil {
 		return errPolicy

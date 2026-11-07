@@ -63,6 +63,7 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	// Unmarshal the YAML data into the Config struct.
 	var cfg Config
 	// Set defaults before unmarshal so that absent keys keep defaults.
+	cfg.GeminiEnterpriseWeb = (GeminiEnterpriseWebConfig{}).WithDefaults()
 	cfg.Host = "" // Default empty: binds to all interfaces (IPv4 + IPv6)
 	cfg.LoggingToFile = false
 	cfg.LogsMaxTotalSizeMB = 0
@@ -100,6 +101,10 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 		}
 	}
 
+	if errWeb := cfg.GeminiEnterpriseWeb.Validate(); errWeb != nil {
+		return nil, errWeb
+	}
+	cfg.GeminiEnterpriseWeb = cfg.GeminiEnterpriseWeb.WithDefaults()
 	cfg.CredentialConcurrency = cfg.CredentialConcurrency.WithDefaults()
 	if errValidate := cfg.CredentialInFlight.Validate(); errValidate != nil {
 		return nil, errValidate

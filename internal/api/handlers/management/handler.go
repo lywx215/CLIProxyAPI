@@ -64,6 +64,7 @@ type Handler struct {
 	pluginStoreRateLimiter  *pluginstore.GitHubRateLimiter
 	pluginReleases          pluginReleaseCache
 	enterpriseQuotas        enterpriseQuotaCache
+	enterpriseCarbonGoogle  enterpriseCarbonGoogleCoordinator
 }
 
 type configReloadSnapshot struct {

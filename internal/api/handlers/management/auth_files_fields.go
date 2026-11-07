@@ -19,6 +19,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/synthesizer"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -130,8 +131,19 @@ func (h *Handler) PatchAuthFileStatus(c *gin.Context) {
 		return
 	}
 
-	applyAuthDisabledState(targetAuth, *req.Disabled)
-	updatedAuth, err := h.authManager.Update(ctx, targetAuth)
+	var updatedAuth *coreauth.Auth
+	var err error
+	if targetAuth.Provider == web.Provider {
+		credential, errCredential := web.CredentialFrom(targetAuth.Metadata)
+		if errCredential != nil {
+			c.JSON(400, gin.H{"error": "invalid Web credential"})
+			return
+		}
+		updatedAuth, err = h.authManager.UpdateEnterpriseWebCredential(ctx, targetAuth.ID, credential.Revision, func(a *coreauth.Auth, _ *web.Credential) error { applyAuthDisabledState(a, *req.Disabled); return nil })
+	} else {
+		applyAuthDisabledState(targetAuth, *req.Disabled)
+		updatedAuth, err = h.authManager.Update(ctx, targetAuth)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update auth: %v", err)})
 		return
@@ -331,14 +343,22 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": errPluginVirtualAuth.Error()})
 		return
 	}
+	if targetAuth.Provider == ge.Provider && containsCarbonManagedFields(req) {
+		enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Manage Carbon through the selected application's dedicated switch and test")
+		return
+	}
 	if c.GetBool(ConfigV8ContextKey) && targetAuth.Provider == ge.Provider {
 		for key := range req {
 			switch rootAuthFileField(key) {
-			case "enterprise_catalog_cache", "catalog_state", "catalog_fallback_supported", "enforced_allowed_models", "enforced_reason", "model_policy_state":
+			case "enterprise_catalog_cache", "catalog_state", "catalog_fallback_supported", "enforced_allowed_models", "enforced_excluded_models", "enforced_reason", "model_policy_state":
 				enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Catalog observations and enforced restrictions are read-only")
 				return
 			}
 		}
+	}
+	if targetAuth.Provider == web.Provider {
+		h.patchEnterpriseWebCommonFields(c, targetAuth, req)
+		return
 	}
 	coreauth.NormalizeCredentialMetadata(targetAuth.Metadata)
 

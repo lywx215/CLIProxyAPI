@@ -12,6 +12,7 @@ import (
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -97,6 +98,10 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 			return nil, errProject
 		}
 		auth = projected[0]
+	} else if auth.Provider == ge.Provider {
+		if _, errCarbon := ge.ReadCarbonEnabled(auth.Metadata); errCarbon != nil {
+			return nil, fmt.Errorf("register auth: %w", errCarbon)
+		}
 	}
 	NormalizeCredentialMetadata(auth.Metadata)
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
@@ -132,6 +137,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 			return nil, errAuthorization
 		}
 	}
+	m.reconcileEnterpriseCarbonMutationLocked(m.auths[auth.ID], auth, updateModeReplace)
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
 	}
@@ -151,11 +157,12 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	auth.Generation = 1
 	m.applyEnterpriseRetirementLocked(auth)
+	reconcileEnterpriseCarbonAdmissionWindow(m.auths[auth.ID], auth)
 	// Serialize this credential, but release the manager lock during store I/O.
 	// Persist failures stay non-fatal, but must not be silent: a restart would
 	// lose the credential that only exists in memory.
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
-		if IsEnterpriseAccountAuth(auth) {
+		if IsEnterpriseAccountAuth(auth) || auth.Provider == web.Provider {
 			m.authEpochs[auth.ID] = registrationEpochBefore
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
@@ -170,6 +177,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	m.attachEnterpriseQuotaLocked(authClone)
 	auth.enterpriseQuota = authClone.enterpriseQuota
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
+	m.invalidateEnterpriseWebCredentialLocked(m.auths[auth.ID], authClone, false)
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
@@ -205,6 +213,7 @@ const (
 	updateModePrepare
 	updateModeEnterpriseResources
 	updateModeEnterpriseReauthorize
+	updateModeEnterpriseWeb
 )
 
 // UpdatePreparedAuth atomically merges request preparation results into the latest runtime auth
@@ -244,6 +253,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			return nil, errProject
 		}
 		auth = projected[0]
+	} else if auth.Provider == ge.Provider {
+		if _, errCarbon := ge.ReadCarbonEnabled(auth.Metadata); errCarbon != nil {
+			return nil, fmt.Errorf("update auth: %w", errCarbon)
+		}
 	}
 	NormalizeCredentialMetadata(auth.Metadata)
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
@@ -262,6 +275,29 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			return nil, ErrEnterpriseResourcesChanged
 		}
 		return nil, nil
+	}
+	verifiedWebRotation := false
+	if mode == updateModeEnterpriseWeb {
+		mutation, _ := ctx.Value(webMutationKey{}).(webMutation)
+		verifiedWebRotation = mutation.verifiedRotation
+		c, err := web.CredentialFrom(existing.Metadata)
+		if err != nil || existing.Provider != web.Provider || c.Revision != mutation.revision {
+			m.mu.Unlock()
+			return nil, web.Fail(409, "Credential changed; reload before saving")
+		}
+		auth = existing.Clone()
+		mutation.sourceFingerprint, mutation.sourcePolicy = c.Fingerprint(), c.Policy()
+		ctx = context.WithValue(ctx, webMutationKey{}, mutation)
+		if err = mutation.mutate(auth, &c); err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
+		if err = c.Validate(); err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
+		c.Revision++
+		auth.Metadata["enterprise_web"] = c.MetadataValue()
 	}
 	resourcesRebound := false
 	var enterprisePersistError error
@@ -315,6 +351,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			NormalizeCredentialMetadata(auth.Metadata)
 		}
 	}
+	m.reconcileEnterpriseCarbonMutationLocked(existing, auth, mode)
 	if auth.RegistrationEpoch != 0 && auth.RegistrationEpoch < m.authEpochs[auth.ID] {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("update auth %s: stale registration epoch %d < %d", auth.ID, auth.RegistrationEpoch, m.authEpochs[auth.ID])
@@ -388,12 +425,13 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	auth.EnsureIndex()
 	// Save before publication, including the transactional Meta mint path.
 	m.applyEnterpriseRetirementLocked(auth)
+	reconcileEnterpriseCarbonAdmissionWindow(existing, auth)
 	// Runtime-only changes made during I/O are merged below, never overwritten.
 	existingBeforeSave := existing.Clone()
 	persistMetaMint := (mode == updateModePrepare || mode == updateModeRefresh) && strings.EqualFold(strings.TrimSpace(auth.Provider), "meta")
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
 		// A minted Meta key must reach the store before requests can use it.
-		if persistMetaMint {
+		if persistMetaMint || mode == updateModeEnterpriseWeb || auth.Provider == web.Provider {
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist meta auth: %w", errPersist)
 		}
@@ -436,6 +474,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	m.attachEnterpriseQuotaLocked(authClone)
 	auth.enterpriseQuota = authClone.enterpriseQuota
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
+	m.invalidateEnterpriseWebCredentialLocked(existing, authClone, verifiedWebRotation)
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
@@ -503,6 +542,10 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 		}
 	}
 	delete(m.auths, id)
+	if provider == web.Provider {
+		m.rebuildEnterpriseWebModelsLocked()
+		m.webRuntime.ForgetCredential(id)
+	}
 	m.enterpriseQuota.mu.Lock()
 	m.enterpriseQuota.releaseGateLocked(m.enterpriseQuota.bindings[id])
 	delete(m.enterpriseQuota.bindings, id)
@@ -627,6 +670,7 @@ func (m *Manager) Load(ctx context.Context) error {
 			auth.CredentialVersion = 1
 		}
 		m.attachEnterpriseQuotaLocked(auth)
+		reconcileEnterpriseCarbonAdmissionWindow(previousAuths[auth.ID], auth)
 		m.auths[auth.ID] = auth.Clone()
 	}
 	for id, previous := range previousAuths {
@@ -668,6 +712,7 @@ func (m *Manager) Load(ctx context.Context) error {
 		cfg = &internalconfig.Config{}
 	}
 	m.rebuildAPIKeyModelAliasLocked(cfg)
+	m.reconcileEnterpriseWebLoadLocked(previousAuths)
 	for id := range m.authChangeWatchers {
 		m.notifyAuthChangeLocked(id)
 	}
@@ -680,6 +725,7 @@ func (m *Manager) Load(ctx context.Context) error {
 	}
 	m.structuralEpoch.Add(1)
 	m.syncScheduler()
+	m.rescheduleEnterpriseWebChecks()
 	return nil
 }
 
@@ -733,7 +779,7 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 			return nil
 		}
 		_, err := store.Save(ctx, auth)
-		if err != nil && IsEnterpriseAccountAuth(auth) {
+		if err != nil && (IsEnterpriseAccountAuth(auth) || auth.Provider == web.Provider) {
 			pLock.lastEpoch, pLock.lastGeneration = previousEpoch, previousGeneration
 		}
 		return err

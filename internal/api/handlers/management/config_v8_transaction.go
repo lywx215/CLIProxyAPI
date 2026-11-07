@@ -144,6 +144,9 @@ func (h *Handler) commitConfigV8Locked(ctx context.Context, state *configV8Docum
 	if h.cfg != nil {
 		next.Home = h.cfg.Home
 	}
+	if h.authManager != nil {
+		h.authManager.WebRuntime().Configure(next.GeminiEnterpriseWeb)
+	}
 	h.cfg = next
 	snapshot := h.reloadSnapshotConfigLocked()
 	h.reloadConfigAfterManagementSaveAsync(ctx, snapshot)

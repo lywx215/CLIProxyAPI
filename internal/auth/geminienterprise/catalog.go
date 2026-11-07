@@ -70,7 +70,9 @@ func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservati
 	if setting.Mode == "default" {
 		source = "default"
 		ids = []string{"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro"}
-		if !*subscription.FreeTrial || subscription.Edition == "business_standard" {
+		if !*subscription.FreeTrial {
+			ids = []string{ArgonModel}
+		} else if subscription.Edition == "business_standard" {
 			ids = []string{ArgonModel}
 		}
 	}

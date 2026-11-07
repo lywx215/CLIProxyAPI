@@ -14,14 +14,14 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
-
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	cliproxysession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
+	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 )
 
 // RoundRobinSelector provides a simple provider scoped round-robin selection strategy.
@@ -974,6 +974,11 @@ func (s *SessionAffinitySelector) Trees() *cliproxysession.InMemorySessionTreeSt
 // a session uses multiple models (e.g., gemini-2.5-pro and gemini-3-flash-preview)
 // that may be supported by different auth credentials, and to avoid cross-provider conflicts.
 func (s *SessionAffinitySelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*Auth) (*Auth, error) {
+	// Media input has no reusable conversation in phase one. Keep the configured
+	// fallback rotation without retaining or hashing attachment bodies.
+	if web.ExistingLease(ctx) != nil {
+		return s.fallback.Pick(ctx, provider, model, opts, auths)
+	}
 	entry := selectorLogEntry(ctx)
 	if opts.Metadata == nil {
 		opts.Metadata = make(map[string]any)
