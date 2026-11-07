@@ -475,16 +475,28 @@ func (m *Manager) reconcileEnterpriseAccountLocked(parent *Auth) []*Auth {
 				child.Status = StatusError
 			}
 		}
-		if existing != nil && CredentialsChanged(existing, child) && !hasUnauthorizedAuthFailure(parent) {
+		if existing != nil && CredentialsChanged(existing, child) && !hasUnauthorizedAuthFailure(parent) && !hasDisabledInvalidGrantFailure(parent) {
 			child.RejectedAccessToken = ""
-			clearUnauthorizedModelStates(child, time.Now())
-			if hasUnauthorizedAuthFailure(child) || hasDisabledInvalidGrantFailure(child) {
+			// A retry timestamp or management toggle can mask the old terminal
+			// state. New authorization clears the error independently of that state.
+			if hasUnauthorizedAuthFailure(child) || hasDisabledInvalidGrantFailure(child) || isUnauthorizedError(child.LastError) || isInvalidGrantResultError(child.LastError) {
 				child.LastError, child.Unavailable, child.StatusMessage = nil, false, ""
+				child.NextRetryAfter = time.Time{}
 				if child.Disabled {
 					child.Status = StatusDisabled
 				} else {
 					child.Status = StatusActive
 				}
+			}
+			now := time.Now()
+			clearUnauthorizedModelStates(child, now)
+			// Recompute orphaned aggregate flags while retaining independent
+			// model restrictions, credential quota and collection disablement.
+			blocked, _, retryAt := availabilityBlock(child.Unavailable, child.Quota.Exceeded, child.NextRetryAfter, child.Quota.NextRecoverAt, now)
+			if len(child.ModelStates) == 0 && blocked && retryAt.After(now) {
+				child.Unavailable = true
+			} else {
+				updateAggregatedAvailability(child, now)
 			}
 		}
 		reconcileEnterpriseCarbonAdmissionWindow(existing, child)
