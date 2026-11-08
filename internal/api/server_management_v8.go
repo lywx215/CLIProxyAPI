@@ -33,6 +33,7 @@ func (s *Server) registerManagementV8Routes() {
 	v8.GET("/routing/model-definitions/:channel", s.mgmt.GetStaticModelDefinitions)
 	v8.GET("/quota/gemini-budget", s.mgmt.GetGeminiBudget)
 	v8.GET("/quota/gemini-enterprise", s.mgmt.GetGeminiEnterpriseQuota)
+	v8.GET("/quota/antigravity-enterprise", s.mgmt.GetAntigravityEnterpriseQuota)
 	v8.POST("/quota/gemini-budget/init", s.mgmt.InitializeGeminiBudget)
 
 	v8.GET("/observability/logs", s.mgmt.GetLogs)
@@ -63,6 +64,8 @@ func (s *Server) registerManagementV8Routes() {
 	v8.PATCH("/credentials/fields", s.mgmt.PatchAuthFileFields)
 	v8.PATCH("/credentials/gemini-enterprise/resources", s.mgmt.PatchGeminiEnterpriseResources)
 	v8.POST("/credentials/gemini-enterprise/discover", s.mgmt.DiscoverGeminiEnterpriseResources)
+	v8.POST("/credentials/antigravity-enterprise/discover", s.mgmt.DiscoverAntigravityEnterpriseBindings)
+	v8.PATCH("/credentials/antigravity-enterprise/bindings", s.mgmt.PatchAntigravityEnterpriseBinding)
 	v8.PATCH("/credentials/gemini-enterprise/collections", s.mgmt.PatchGeminiEnterpriseCollection)
 	v8.POST("/credentials/refresh", s.mgmt.RefreshAuthFiles)
 	v8.GET("/credentials/api-keys/gemini/snapshot", s.mgmt.GeminiAPIKeysSnapshot)

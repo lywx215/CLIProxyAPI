@@ -33,6 +33,7 @@ type enterpriseFailure struct {
 	next     time.Time
 }
 type enterpriseProbe struct {
+	authID    string
 	signature string
 	cancel    context.CancelFunc
 	revision  uint64
@@ -43,6 +44,8 @@ type enterpriseDiscovery struct {
 	failures            map[string]enterpriseFailure
 	pending             map[string]enterpriseProbe
 	subscriptionPending map[string]enterpriseProbe
+	quotaPending        map[string]enterpriseProbe
+	quotaNext           map[string]time.Time
 	sequence            uint64
 	closed              bool
 	slots               chan struct{}
@@ -51,6 +54,7 @@ type enterpriseDiscovery struct {
 	// The injected fetch function makes lifecycle tests independent of Google credentials.
 	fetch             func(context.Context, *coreauth.Auth, string) ([]ge.Model, error)
 	fetchSubscription func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation
+	fetchQuota        func(context.Context, *coreauth.Auth, string) ge.QuotaSnapshot
 }
 
 func (s *Service) enterpriseState() *enterpriseDiscovery {
@@ -175,6 +179,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		return
 	}
 	s.queueEnterpriseSubscription(ctx, auth)
+	s.queueEnterpriseQuota(ctx, auth)
 	s.restoreEnterpriseCatalog(auth)
 	key := s.enterpriseKey(auth)
 	if !s.enterpriseActive(auth, key) {
@@ -345,6 +350,12 @@ func (s *Service) cancelEnterpriseProbes(id string) {
 			delete(d.subscriptionPending, authID)
 		}
 	}
+	for key, probe := range d.quotaPending {
+		if id == "" || probe.authID == id {
+			probe.cancel()
+			delete(d.quotaPending, key)
+		}
+	}
 }
 
 func (s *Service) stopEnterpriseDiscovery(ctx context.Context) {
@@ -355,6 +366,9 @@ func (s *Service) stopEnterpriseDiscovery(ctx context.Context) {
 		probe.cancel()
 	}
 	for _, probe := range d.subscriptionPending {
+		probe.cancel()
+	}
+	for _, probe := range d.quotaPending {
 		probe.cancel()
 	}
 	d.mu.Unlock()
@@ -376,6 +390,7 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 			continue
 		}
 		s.queueEnterpriseSubscription(ctx, auth)
+		s.queueEnterpriseQuota(ctx, auth)
 		if auth.Disabled || auth.Status == coreauth.StatusDisabled {
 			continue
 		}

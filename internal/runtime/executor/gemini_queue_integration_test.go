@@ -11,6 +11,7 @@ import (
 
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 )
 
@@ -29,6 +30,8 @@ func (b *queuedGenerationBody) Read(data []byte) (int, error) {
 func (b *queuedGenerationBody) Close() error { return nil }
 
 func TestGeminiAdmissionConductorQueuesBeforeTransmission(t *testing.T) {
+	// The shared usage dispatcher must outlive the synthetic test bubble.
+	usage.StartDefault(context.Background())
 	synctest.Test(t, func(t *testing.T) {
 		manager, _, auths := budgetIntegrationManager(t, 1)
 		gate := make(chan struct{})

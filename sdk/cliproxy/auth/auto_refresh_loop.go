@@ -412,7 +412,7 @@ func (l *authAutoRefreshLoop) remove(authID string) {
 }
 
 func nextRefreshCheckAt(now time.Time, auth *Auth, interval time.Duration) (time.Time, bool) {
-	if auth == nil || IsEnterpriseCollectionAuth(auth) || enterpriseRetired(auth) {
+	if auth == nil || IsBoundChildAuth(auth) || enterpriseRetired(auth) {
 		return time.Time{}, false
 	}
 	if hasUnauthorizedAuthFailure(auth) || hasDisabledInvalidGrantFailure(auth) {

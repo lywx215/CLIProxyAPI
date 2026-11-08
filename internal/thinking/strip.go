@@ -31,7 +31,7 @@ func StripThinkingConfig(body []byte, provider string) []byte {
 	switch provider {
 	case "claude":
 		paths = []string{"thinking", "output_config.effort"}
-	case "gemini":
+	case "gemini", "antigravity-enterprise":
 		paths = []string{"generationConfig.thinkingConfig"}
 	case "gemini-enterprise":
 		paths = []string{"generationSpec.thinkingConfig"}

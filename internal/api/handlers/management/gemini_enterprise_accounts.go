@@ -114,6 +114,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			"settings": enterpriseCollectionSettings(collection.Settings),
 		}
 		if child != nil {
+			entry["quota_balancing"] = h.authManager.EnterpriseQuotaBalance(child)
 			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
 			carbon := h.authManager.EnterpriseCarbonAdmissionView(child)
 			entry["carbon_admission_supported"], entry["carbon_admission"] = true, carbon

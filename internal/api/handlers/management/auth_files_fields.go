@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	ae "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/antigravityenterprise"
 	claudeauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
@@ -71,6 +72,10 @@ func (h *Handler) PatchAuthFileStatus(c *gin.Context) {
 	}
 	if c.GetBool(ConfigV8ContextKey) && coreauth.IsEnterpriseCollectionAuth(targetAuth) {
 		enterpriseManagementFailure(c, http.StatusConflict, "collection_required", "Use the collection switch with its binding identity and revision")
+		return
+	}
+	if c.GetBool(ConfigV8ContextKey) && coreauth.IsAntigravityEnterpriseBindingAuth(targetAuth) {
+		enterpriseManagementFailure(c, http.StatusConflict, "binding_required", "Use the subscription binding switch with its identity and revision")
 		return
 	}
 	if coreauth.IsPluginVirtualAuth(targetAuth) {
@@ -341,6 +346,10 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 	}
 	if coreauth.IsPluginVirtualAuth(targetAuth) {
 		c.JSON(http.StatusConflict, gin.H{"error": errPluginVirtualAuth.Error()})
+		return
+	}
+	if c.GetBool(ConfigV8ContextKey) && targetAuth.Provider == ae.Provider {
+		enterpriseManagementFailure(c, http.StatusConflict, "binding_required", "Use the subscription binding editor with its identity and revision")
 		return
 	}
 	if targetAuth.Provider == ge.Provider && containsCarbonManagedFields(req) {

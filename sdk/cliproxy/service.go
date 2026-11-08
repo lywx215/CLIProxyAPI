@@ -109,32 +109,33 @@ type Service struct {
 	// wsGateway manages websocket Gemini providers.
 	wsGateway *wsrelay.Manager
 
-	homeLifecycleMu              sync.Mutex
-	homeOwnershipMu              sync.Mutex
-	homeConfigCommitMu           sync.Mutex
-	homeConfigStageHook          func()
-	homeConfigCommitHook         func()
-	homeConfigRuntimeHook        func()
-	applyPprofConfigContextFn    func(context.Context, *config.Config) bool
-	updateServerClientsContextFn func(context.Context, *config.Config) bool
-	homeSupervisor               *homeSubscriberSupervisor
-	homeMu                       sync.Mutex
-	homeGeneration               uint64
-	homeClient                   *home.Client
-	homeRegistry                 *executionregistry.Registry
-	homeDispatchBundle           *coreauth.HomeDispatchBundle
-	homeDrainBound               time.Duration
-	homeCancel                   context.CancelFunc
-	runCancel                    context.CancelFunc
-	homeLogForwarder             homeLogForwarder
-	homeLogForwarderClient       *home.Client
-	homePluginSyncMu             sync.Mutex
-	homePluginSyncKey            string
-	homePluginSyncFetch          func(context.Context, sdkpluginstore.PluginSyncRequest) (sdkpluginstore.PluginSyncResponse, error)
-	homePluginDeleteTask         func(context.Context, *config.Config, home.PluginTask) homeplugins.SyncReport
-	enterpriseMu                 sync.Mutex
-	enterpriseDiscovery          *enterpriseDiscovery
-	antigravityProbeWg           sync.WaitGroup
+	homeLifecycleMu               sync.Mutex
+	homeOwnershipMu               sync.Mutex
+	homeConfigCommitMu            sync.Mutex
+	homeConfigStageHook           func()
+	homeConfigCommitHook          func()
+	homeConfigRuntimeHook         func()
+	applyPprofConfigContextFn     func(context.Context, *config.Config) bool
+	updateServerClientsContextFn  func(context.Context, *config.Config) bool
+	homeSupervisor                *homeSubscriberSupervisor
+	homeMu                        sync.Mutex
+	homeGeneration                uint64
+	homeClient                    *home.Client
+	homeRegistry                  *executionregistry.Registry
+	homeDispatchBundle            *coreauth.HomeDispatchBundle
+	homeDrainBound                time.Duration
+	homeCancel                    context.CancelFunc
+	runCancel                     context.CancelFunc
+	homeLogForwarder              homeLogForwarder
+	homeLogForwarderClient        *home.Client
+	homePluginSyncMu              sync.Mutex
+	homePluginSyncKey             string
+	homePluginSyncFetch           func(context.Context, sdkpluginstore.PluginSyncRequest) (sdkpluginstore.PluginSyncResponse, error)
+	homePluginDeleteTask          func(context.Context, *config.Config, home.PluginTask) homeplugins.SyncReport
+	enterpriseMu                  sync.Mutex
+	enterpriseDiscovery           *enterpriseDiscovery
+	antigravityEnterpriseMetadata *antigravityEnterpriseMetadata
+	antigravityProbeWg            sync.WaitGroup
 	// antigravityContext is protected by cfgMu and owns background model probes.
 	antigravityContext       context.Context
 	antigravityProbeMu       sync.Mutex

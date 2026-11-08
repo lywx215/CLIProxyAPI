@@ -111,6 +111,7 @@ func main() {
 	var noBrowser bool
 	var oauthCallbackPort int
 	var antigravityLogin bool
+	var antigravityEnterpriseLogin bool
 	var geminiEnterpriseLogin bool
 	var kimiLogin bool
 	var kimiAILogin bool
@@ -142,6 +143,7 @@ func main() {
 	flag.IntVar(&oauthCallbackPort, "oauth-callback-port", 0, "Override OAuth callback port (defaults to provider-specific port)")
 	flag.BoolVar(&geminiEnterpriseLogin, "gemini-enterprise-login", false, "Login to Gemini Enterprise with your configured OAuth application")
 	flag.BoolVar(&antigravityLogin, "antigravity-login", false, "Login to Antigravity using OAuth")
+	flag.BoolVar(&antigravityEnterpriseLogin, "antigravity-enterprise-login", false, "Login to Antigravity Enterprise and discover subscription bindings")
 	flag.BoolVar(&kimiLogin, "kimi-login", false, "Login to Kimi (.com) using OAuth")
 	flag.BoolVar(&kimiAILogin, "kimi-ai-login", false, "Login to Kimi.ai using OAuth")
 	flag.BoolVar(&xaiLogin, "xai-login", false, "Login to xAI using OAuth")
@@ -669,7 +671,7 @@ func main() {
 		CallbackPort: oauthCallbackPort,
 	}
 
-	commandMode := vertexImport != "" || geminiEnterpriseLogin || antigravityLogin || codexLogin || codexDeviceLogin || claudeLogin || kimiLogin || kimiAILogin || xaiLogin || devinLogin || metaLogin
+	commandMode := vertexImport != "" || geminiEnterpriseLogin || antigravityLogin || antigravityEnterpriseLogin || codexLogin || codexDeviceLogin || claudeLogin || kimiLogin || kimiAILogin || xaiLogin || devinLogin || metaLogin
 	cloudConfigMissing := isCloudDeploy && !configFileExists
 	homeMode := configLoadedFromHome || (cfg != nil && cfg.Home.Enabled)
 	exampleAPIKeySafeMode := shouldEnableExampleAPIKeySafeMode(cfg, commandMode, tuiMode, standalone, cloudConfigMissing, homeMode)
@@ -729,6 +731,8 @@ func main() {
 		cmd.DoVertexImport(cfg, vertexImport, vertexImportPrefix)
 	} else if geminiEnterpriseLogin {
 		cmd.DoGeminiEnterpriseLogin(cfg, options)
+	} else if antigravityEnterpriseLogin {
+		cmd.DoAntigravityEnterpriseLogin(cfg, options)
 	} else if antigravityLogin {
 		// Handle Antigravity login
 		cmd.DoAntigravityLogin(cfg, options)
@@ -960,7 +964,7 @@ func argvEnablesBoolFlag(args []string, name string) bool {
 func argvFlagConsumesValue(name string) bool {
 	switch name {
 	case "codex-login", "codex-device-login", "claude-login", "no-browser",
-		"gemini-enterprise-login", "antigravity-login", "kimi-login", "kimi-ai-login", "xai-login", "devin-login", "meta-login",
+		"gemini-enterprise-login", "antigravity-login", "antigravity-enterprise-login", "kimi-login", "kimi-ai-login", "xai-login", "devin-login", "meta-login",
 		"discover", "discover-json", "home-disable-cluster-discovery",
 		"tui", "standalone", "local-model":
 		return false

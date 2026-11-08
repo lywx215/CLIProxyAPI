@@ -41,6 +41,9 @@ func (h *Handler) ResetQuotaV8(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "auth not found"})
 		return
 	}
+	if h.resetAntigravityEnterpriseQuota(c, a, req.PoolID, req.PoolVersion) {
+		return
+	}
 	result, errReset := h.authManager.ResetSharedQuota(c.Request.Context(), a.ID, req.PoolID, req.PoolVersion)
 	if errReset != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "shared pool changed or unavailable; refresh credentials before retrying"})

@@ -27,6 +27,7 @@ type configCommit struct {
 
 type routingRuntimeState struct {
 	strategy                 string
+	enterpriseQuotaBalancing bool
 	sessionAffinity          bool
 	sessionAffinityTTL       time.Duration
 	sessionAffinitySubagents bool
@@ -41,6 +42,7 @@ func normalizedRoutingRuntimeState(cfg *config.Config) routingRuntimeState {
 	if cfg == nil {
 		return state
 	}
+	state.enterpriseQuotaBalancing = cfg.Routing.GeminiEnterpriseQuotaBalancing
 
 	switch strings.ToLower(strings.TrimSpace(cfg.Routing.Strategy)) {
 	case "weighted-round-robin", "weightedroundrobin", "wrr":
@@ -72,6 +74,9 @@ func newRoutingSelector(state routingRuntimeState) coreauth.Selector {
 		selector = &coreauth.FillFirstSelector{}
 	default:
 		selector = &coreauth.RoundRobinSelector{}
+	}
+	if state.enterpriseQuotaBalancing {
+		selector = &coreauth.QuotaBalancedSelector{Fallback: selector}
 	}
 	if state.sessionAffinity {
 		subagents := state.sessionAffinitySubagents

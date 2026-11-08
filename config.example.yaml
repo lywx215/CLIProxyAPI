@@ -195,6 +195,13 @@ routing:
   #       fork: true # Keep the original model name available.
   #       force-mapping: false
   strategy: "round-robin" # round-robin (default), weighted-round-robin, fill-first
+  # Opt in to smooth dynamic weighting of Gemini Enterprise shared daily pools.
+  # Weight = effective remaining requests / (in-flight requests + 1).
+  # Smooth weights cap one pool/credential at 80% when alternatives are eligible.
+  # Polls quota observations every 2 minutes; expires them after 5 minutes.
+  gemini-enterprise-quota-balancing: false
+  # Optional headroom per shared pool for delayed Monitoring data (0 by default).
+  gemini-enterprise-quota-reserve: 0
   # weighted-round-robin uses each credential's integer weight (default 1, maximum 1,000,000).
   # Non-positive weights exclude the credential while this strategy is active.
   # For OAuth/file credentials, add a top-level numeric "weight" field to the auth JSON.
@@ -1091,6 +1098,10 @@ oauth:
   # Provider options below apply to OAuth/file-backed credentials.
   # API-key credentials use their own group/key options.
   providers:
+    # Antigravity Enterprise uses the packaged Antigravity OAuth client and discovers all visible licenses.
+    # The optional discovery consumer does not filter the discovered project/location bindings.
+    # antigravity-enterprise:
+    #   discovery-quota-project: "YOUR_EXISTING_PROJECT_ID"
     # Optional application-owned Gemini Enterprise OAuth client.
     # See GEMINI_ENTERPRISE_CN.md. Saved accounts keep their own client/resource binding.
     # gemini-enterprise:

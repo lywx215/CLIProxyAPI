@@ -12,6 +12,7 @@ import (
 // One loopback receiver can serve concurrent management sessions. An occupied
 // port leaves manual callback submission available without stopping its owner.
 type enterpriseCallbackReceiver struct {
+	provider string
 	mu       sync.Mutex
 	server   *http.Server
 	sessions map[string]string
@@ -59,7 +60,11 @@ func (r *enterpriseCallbackReceiver) callback(w http.ResponseWriter, request *ht
 	r.mu.Lock()
 	authDir := r.sessions[state]
 	r.mu.Unlock()
-	if authDir == "" || !IsOAuthSessionPending(state, ge.Provider) {
+	provider := r.provider
+	if provider == "" {
+		provider = ge.Provider
+	}
+	if authDir == "" || !IsOAuthSessionPending(state, provider) {
 		http.Error(w, "Unknown or expired OAuth state", http.StatusBadRequest)
 		return
 	}
@@ -67,7 +72,7 @@ func (r *enterpriseCallbackReceiver) callback(w http.ResponseWriter, request *ht
 		http.Error(w, "Google authorization was not completed", http.StatusBadRequest)
 		return
 	}
-	if _, err := WriteOAuthCallbackFileForPendingSession(authDir, ge.Provider, state, query.Get("code"), query.Get("error")); err != nil {
+	if _, err := WriteOAuthCallbackFileForPendingSession(authDir, provider, state, query.Get("code"), query.Get("error")); err != nil {
 		http.Error(w, "OAuth callback was not accepted", http.StatusBadRequest)
 		return
 	}

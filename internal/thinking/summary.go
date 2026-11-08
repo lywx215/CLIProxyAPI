@@ -68,7 +68,7 @@ func ExtractSummaryConfig(body []byte, format string) SummaryConfig {
 		if config, ok := claudeSummaryConfig(body, "thinking.display"); ok {
 			return config
 		}
-	case "gemini":
+	case "gemini", "antigravity-enterprise":
 		if config, ok := firstSummaryBoolConfig(body, []string{
 			"generationConfig.thinkingConfig.includeThoughts",
 			"generationConfig.thinkingConfig.include_thoughts",
@@ -217,7 +217,7 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 			value = "summarized"
 		}
 		body, _ = sjson.SetBytes(body, "thinking.display", value)
-	case "gemini":
+	case "gemini", "antigravity-enterprise":
 		body, _ = sjson.SetBytes(body, "generationConfig.thinkingConfig.includeThoughts", enabled)
 		for _, path := range []string{
 			"generationConfig.thinkingConfig.include_thoughts",
@@ -267,7 +267,7 @@ func applySummaryConfigForProvider(body []byte, format, model, provider string, 
 // intent that this package can read or write.
 func summaryFormatSupported(format string) bool {
 	switch format {
-	case "openai", "openai-response", "codex", "claude", "gemini", "antigravity", "interactions", "gemini-enterprise":
+	case "openai", "openai-response", "codex", "claude", "gemini", "antigravity", "interactions", "gemini-enterprise", "antigravity-enterprise":
 		return true
 	default:
 		return false

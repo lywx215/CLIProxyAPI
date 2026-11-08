@@ -108,7 +108,9 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 	}
 
 	var savedPath string
-	if coreauth.IsEnterpriseAccountAuth(record) {
+	if coreauth.IsAntigravityEnterpriseAccountAuth(record) {
+		record, savedPath, err = m.saveAntigravityEnterpriseAuthorization(ctx, record)
+	} else if coreauth.IsEnterpriseAccountAuth(record) {
 		record, savedPath, err = m.saveEnterpriseAuthorization(ctx, record)
 	} else {
 		savedPath, err = m.store.Save(coreauth.WithAuthCreationIntent(ctx), record)
@@ -147,7 +149,13 @@ func (m *Manager) Login(ctx context.Context, provider string, cfg *config.Config
 			if saveCtx == nil {
 				saveCtx = context.Background()
 			}
-			updated, errSave := m.saveEnterpriseDiscovery(context.WithoutCancel(saveCtx), postBase, record)
+			var updated *coreauth.Auth
+			var errSave error
+			if coreauth.IsAntigravityEnterpriseAccountAuth(record) {
+				updated, errSave = m.saveAntigravityEnterpriseDiscovery(context.WithoutCancel(saveCtx), postBase, record)
+			} else {
+				updated, errSave = m.saveEnterpriseDiscovery(context.WithoutCancel(saveCtx), postBase, record)
+			}
 			if errSave != nil {
 				return record, savedPath, fmt.Errorf("cliproxy auth: authorization saved but post-login account persistence failed: %w", errSave)
 			}

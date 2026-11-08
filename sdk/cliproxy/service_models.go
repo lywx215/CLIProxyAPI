@@ -23,7 +23,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	if a == nil || a.ID == "" {
 		return
 	}
-	if coreauth.IsEnterpriseAccountAuth(a) {
+	if coreauth.IsBoundAccountAuth(a) {
 		s.cancelEnterpriseProbes(a.ID)
 		GlobalModelRegistry().UnregisterClient(a.ID)
 		return
@@ -124,6 +124,9 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 	case "gemini-enterprise-web":
 		models = EnterpriseWebNativeModels(a)
 		models = applyExcludedModels(models, excluded)
+	case "antigravity-enterprise":
+		s.registerAntigravityEnterpriseModels(ctx, a)
+		return
 	case "gemini-enterprise":
 		s.registerEnterpriseModels(ctx, a)
 		return

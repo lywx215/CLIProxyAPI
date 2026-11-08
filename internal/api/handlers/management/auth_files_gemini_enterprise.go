@@ -126,12 +126,16 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 }
 
 func waitEnterpriseCallback(ctx context.Context, state, path string) (oauthCallbackFilePayload, error) {
+	return waitProviderCallback(ctx, state, path, ge.Provider)
+}
+
+func waitProviderCallback(ctx context.Context, state, path, provider string) (oauthCallbackFilePayload, error) {
 	timer := time.NewTimer(5 * time.Minute)
 	defer timer.Stop()
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		if !IsOAuthSessionPending(state, ge.Provider) {
+		if !IsOAuthSessionPending(state, provider) {
 			return oauthCallbackFilePayload{}, errOAuthSessionNotPending
 		}
 		if data, errRead := os.ReadFile(path); errRead == nil {

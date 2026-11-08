@@ -156,6 +156,7 @@ type resultPolicyHolder struct {
 type Manager struct {
 	webRuntime                *web.Runtime
 	webModels                 atomic.Value
+	antigravityEnterprise     antigravityEnterpriseCoordinator
 	enterpriseAccounts        enterpriseAccountCoordinator
 	enterpriseModels          enterpriseModelCoordinator
 	enterprisePolicies        enterprisePolicyCoordinator

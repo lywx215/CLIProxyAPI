@@ -54,7 +54,7 @@ func (m *Manager) SetEnterpriseAccountSyncHook(hook PostAuthHook) {
 }
 
 func (m *Manager) enterpriseAccountPublished(ctx context.Context, parent *Auth) {
-	if !IsEnterpriseAccountAuth(parent) {
+	if !IsBoundAccountAuth(parent) {
 		return
 	}
 	m.enterpriseAccounts.mu.Lock()
@@ -120,6 +120,9 @@ func enterpriseChildID(accountID, bindingID string) string {
 // ProjectEnterpriseAuth expands a saved parent into itself and all its children.
 // Legacy files remain single inference records until explicit consolidation.
 func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
+	if auth != nil && auth.Provider == "antigravity-enterprise" {
+		return projectAntigravityEnterpriseAuth(auth)
+	}
 	if auth == nil {
 		return nil, nil
 	}
@@ -409,6 +412,9 @@ func (m *Manager) EnterpriseCollections(authID string) []*Auth {
 // reconcileEnterpriseAccountLocked publishes every child without resetting its
 // counters or cooldowns. A changed application advances the registration epoch.
 func (m *Manager) reconcileEnterpriseAccountLocked(parent *Auth) []*Auth {
+	if IsAntigravityEnterpriseAccountAuth(parent) {
+		return m.reconcileAntigravityEnterpriseLocked(parent)
+	}
 	if !IsEnterpriseAccountAuth(parent) || enterpriseRetired(parent) {
 		return nil
 	}
@@ -548,12 +554,12 @@ func (m *Manager) publishEnterpriseSnapshots(snapshots []*Auth) {
 		if m.scheduler != nil {
 			m.scheduler.upsertAuth(snapshot)
 		}
-		if IsEnterpriseCollectionAuth(snapshot) || enterpriseRetired(snapshot) {
+		if IsBoundChildAuth(snapshot) || enterpriseRetired(snapshot) {
 			m.queueRefreshUnschedule(snapshot.ID)
 		} else {
 			m.queueRefreshReschedule(snapshot.ID)
 		}
-		if IsEnterpriseAccountAuth(snapshot) || snapshot.Disabled {
+		if IsBoundAccountAuth(snapshot) || snapshot.Disabled {
 			registry.GetGlobalRegistry().UnregisterClient(snapshot.ID)
 		}
 	}

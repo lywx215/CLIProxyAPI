@@ -50,6 +50,9 @@ type enterpriseModelTestRequest struct {
 // TestGeminiEnterpriseModel performs one credential-pinned text generation.
 // Catalog visibility alone is never accepted as evidence of runtime availability.
 func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
+	if h.dispatchAntigravityEnterpriseModelTest(c) {
+		return
+	}
 	c.Header("Cache-Control", "no-store")
 	fail := func(status int, code, message string) {
 		c.JSON(status, gin.H{"error": code, "code": code, "message": message})

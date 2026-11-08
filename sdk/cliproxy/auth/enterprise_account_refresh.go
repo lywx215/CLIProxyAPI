@@ -83,6 +83,9 @@ func (m *Manager) refreshAuthForRequestAtEpoch(ctx context.Context, id, failedAc
 		m.mu.RLock()
 		target := m.auths[id].Clone()
 		m.mu.RUnlock()
+		if IsAntigravityEnterpriseAccountAuth(target) || IsAntigravityEnterpriseBindingAuth(target) {
+			return m.sharedAntigravityEnterpriseRefresh(ctx, target, failedAccessToken, registrationEpoch)
+		}
 		if IsEnterpriseAccountAuth(target) || IsEnterpriseCollectionAuth(target) {
 			return m.sharedEnterpriseAccountRefresh(ctx, target, failedAccessToken, registrationEpoch)
 		}

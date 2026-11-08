@@ -117,7 +117,7 @@ func (m *Manager) queueRefreshUnschedule(authID string) {
 }
 
 func (m *Manager) shouldRefresh(a *Auth, now time.Time) bool {
-	if a == nil || IsEnterpriseCollectionAuth(a) || enterpriseRetired(a) {
+	if a == nil || IsBoundChildAuth(a) || enterpriseRetired(a) {
 		return false
 	}
 	if hasUnauthorizedAuthFailure(a) || hasDisabledInvalidGrantFailure(a) {
@@ -925,7 +925,7 @@ func (m *Manager) ForceRefreshAll(ctx context.Context) []ForceRefreshResult {
 	m.mu.RLock()
 	ids := make([]string, 0, len(m.auths))
 	for id, auth := range m.auths {
-		if auth != nil && !auth.Disabled && !IsEnterpriseCollectionAuth(auth) && !enterpriseRetired(auth) && (authHasRefreshCredential(auth) || auth.Runtime != nil || auth.Provider == web.Provider) {
+		if auth != nil && !auth.Disabled && !IsBoundChildAuth(auth) && !enterpriseRetired(auth) && (authHasRefreshCredential(auth) || auth.Runtime != nil || auth.Provider == web.Provider) {
 			ids = append(ids, id)
 		}
 	}

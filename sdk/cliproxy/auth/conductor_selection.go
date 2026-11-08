@@ -576,11 +576,15 @@ func (m *Manager) availableAuthsForRouteModelForRequest(ctx context.Context, aut
 	var earliest time.Time
 	evaluatedAuths := make([]*Auth, 0, len(auths))
 	deferEnterpriseModelAdmission := false
+	quotaBalancing := m.EnterpriseQuotaBalancingEnabled()
 	if cfg := m.runtimeConfigSnapshot(); cfg != nil {
 		p := cfg.Payload
 		deferEnterpriseModelAdmission = len(p.Default)+len(p.DefaultRaw)+len(p.Override)+len(p.OverrideRaw)+len(p.Filter) > 0
 	}
 	for _, candidate := range auths {
+		if quotaBalancing && candidate != nil && candidate.Provider == ge.Provider && authWeight(candidate) <= 0 {
+			continue
+		}
 		candidate = m.geminiBudgetSelectionAuth(candidate, routeModel)
 		evaluatedAuths = append(evaluatedAuths, candidate)
 		checkModel := m.selectionModelForAuth(candidate, routeModel)
@@ -697,7 +701,8 @@ func selectionArgForSelector(selector Selector, routeModel string) string {
 func selectorContextForAvailableAuths(ctx context.Context, selector Selector, routeModel string) context.Context {
 	ctx = withWeightedSelectorStateModel(ctx, selector, routeModel)
 	if !isBuiltInSelector(selector) {
-		if _, sessionAffinity := selector.(*SessionAffinitySelector); !sessionAffinity {
+		_, balanced := selector.(*QuotaBalancedSelector)
+		if _, sessionAffinity := selector.(*SessionAffinitySelector); !sessionAffinity && !balanced {
 			return ctx
 		}
 	}
@@ -1815,7 +1820,7 @@ func (m *Manager) pickNextLegacy(ctx context.Context, provider, model string, op
 	registryRef := registry.GetGlobalRegistry()
 	targetKey := canonicalSchedulingProvider(provider)
 	for _, candidate := range m.auths {
-		if candidate == nil || IsEnterpriseAccountAuth(candidate) || enterpriseRetired(candidate) || canonicalSchedulingProvider(executorKeyFromAuth(candidate)) != targetKey || candidate.Disabled {
+		if candidate == nil || IsBoundAccountAuth(candidate) || enterpriseRetired(candidate) || canonicalSchedulingProvider(executorKeyFromAuth(candidate)) != targetKey || candidate.Disabled {
 			continue
 		}
 		if pinnedAuthID != "" && candidate.ID != pinnedAuthID {
@@ -2148,7 +2153,7 @@ func (m *Manager) pickNextMixedLegacy(ctx context.Context, providers []string, m
 	}
 	registryRef := registry.GetGlobalRegistry()
 	for _, candidate := range m.auths {
-		if candidate == nil || IsEnterpriseAccountAuth(candidate) || enterpriseRetired(candidate) || candidate.Disabled {
+		if candidate == nil || IsBoundAccountAuth(candidate) || enterpriseRetired(candidate) || candidate.Disabled {
 			continue
 		}
 		if pinnedAuthID != "" && candidate.ID != pinnedAuthID {

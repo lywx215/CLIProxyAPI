@@ -377,6 +377,13 @@ type RoutingConfig struct {
 	// Supported values: "round-robin" (default), "weighted-round-robin", "fill-first".
 	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
 
+	// GeminiEnterpriseQuotaBalancing balances eligible Enterprise pools by remaining
+	// daily quota and live requests. Other providers retain Strategy semantics.
+	GeminiEnterpriseQuotaBalancing bool `yaml:"gemini-enterprise-quota-balancing,omitempty" json:"gemini-enterprise-quota-balancing,omitempty"`
+	// GeminiEnterpriseQuotaReserve leaves this many requests unused per shared pool
+	// to absorb delayed Monitoring observations. Zero uses the full observed balance.
+	GeminiEnterpriseQuotaReserve int64 `yaml:"gemini-enterprise-quota-reserve,omitempty" json:"gemini-enterprise-quota-reserve,omitempty"`
+
 	// SessionAffinity enables universal session-sticky routing for all clients.
 	// Explicit Claude Code, Codex, OpenCode, and pi session headers are preferred,
 	// followed by prompt_cache_key, Responses conversation IDs, legacy body IDs,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
 	exec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -30,6 +31,7 @@ func (e *enterpriseLocalGateError) Unwrap() error { return e.error }
 func (*enterpriseLocalGateError) StatusCode() int { return 429 }
 
 func (e *enterpriseQuotaExecutor) Execute(ctx context.Context, a *Auth, r exec.Request, o exec.Options) (response exec.Response, err error) {
+	defer budget.ReleaseAdmissionTurn(ctx)
 	if err = e.validateModel(ctx, a, r); err != nil {
 		return response, err
 	}
@@ -38,6 +40,7 @@ func (e *enterpriseQuotaExecutor) Execute(ctx context.Context, a *Auth, r exec.R
 		err = stopEnterpriseProbeRetry(ctx, err)
 	}()
 	ticket, err := a.enterpriseQuota.begin()
+	budget.ReleaseAdmissionTurn(ctx)
 	if err != nil {
 		return response, err
 	}
@@ -45,10 +48,12 @@ func (e *enterpriseQuotaExecutor) Execute(ctx context.Context, a *Auth, r exec.R
 	return e.ProviderExecutor.Execute(ctx, a, r, o)
 }
 func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r exec.Request, o exec.Options) (*exec.StreamResult, error) {
+	defer budget.ReleaseAdmissionTurn(ctx)
 	if err := e.validateModel(ctx, a, r); err != nil {
 		return nil, err
 	}
 	ticket, err := a.enterpriseQuota.begin()
+	budget.ReleaseAdmissionTurn(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +86,7 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 					finalErr = chunk.Err
 					observeEnterpriseModelAttempt(ctx, a, r.Model, finalErr)
 					chunk.Err = stopEnterpriseProbeRetry(ctx, finalErr)
-					ticket.finish(finalErr)
-					ticket = nil
+					ticket.finishQuota(finalErr)
 				}
 				select {
 				case out <- chunk:

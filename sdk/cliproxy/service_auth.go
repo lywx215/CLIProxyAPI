@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	ae "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/antigravityenterprise"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -23,6 +24,7 @@ func newDefaultAuthManager() *sdkAuth.Manager {
 		sdkAuth.NewCodexAuthenticator(),
 		sdkAuth.NewClaudeAuthenticator(),
 		sdkAuth.NewAntigravityAuthenticator(),
+		sdkAuth.NewAntigravityEnterpriseAuthenticator(),
 		sdkAuth.NewGeminiEnterpriseAuthenticator(),
 		sdkAuth.NewKimiAuthenticator(),
 		sdkAuth.NewKimiAIAuthenticator(),
@@ -390,7 +392,7 @@ func (s *Service) prepareCoreAuthForModelRegistration(ctx context.Context, auth 
 		}
 		auth = current
 	}
-	if coreauth.IsEnterpriseAccountAuth(auth) || coreauth.IsEnterpriseCollectionAuth(auth) {
+	if coreauth.IsBoundAccountAuth(auth) || coreauth.IsBoundChildAuth(auth) {
 		if current, ok := s.coreManager.GetByID(auth.ID); ok {
 			auth = current
 		}
@@ -502,6 +504,20 @@ func isStaleCoreAuth(existing, incoming *coreauth.Auth) bool {
 			}
 		}
 	}
+	if coreauth.IsAntigravityEnterpriseAccountAuth(existing) && coreauth.IsAntigravityEnterpriseAccountAuth(incoming) {
+		current, currentErr := ae.ReadAccount(existing.Metadata)
+		proposed, proposedErr := ae.ReadAccount(incoming.Metadata)
+		if currentErr == nil && proposedErr == nil && current != nil && proposed != nil && current.ID == proposed.ID {
+			if proposed.Revision < current.Revision {
+				return true
+			}
+			if currentRefresh, err := time.Parse(time.RFC3339Nano, ae.String(existing.Metadata, "last_refresh")); err == nil {
+				if proposedRefresh, err := time.Parse(time.RFC3339Nano, ae.String(incoming.Metadata, "last_refresh")); err == nil && proposedRefresh.Before(currentRefresh) {
+					return true
+				}
+			}
+		}
+	}
 	// If incoming has an explicit registration epoch that is older than existing, it's stale.
 	if incoming.RegistrationEpoch > 0 && incoming.RegistrationEpoch < existing.RegistrationEpoch {
 		return true
@@ -529,10 +545,10 @@ func (s *Service) completeModelRegistrationForAuthWithCache(ctx context.Context,
 	if latest, ok := s.latestAuthForModelRegistration(auth.ID); ok && latest != nil {
 		targetAuth = latest
 	}
-	if coreauth.IsEnterpriseAccountAuth(targetAuth) {
+	if coreauth.IsBoundAccountAuth(targetAuth) {
 		s.cancelEnterpriseProbes(targetAuth.ID)
 		GlobalModelRegistry().UnregisterClient(targetAuth.ID)
-		for _, child := range s.coreManager.EnterpriseCollections(targetAuth.ID) {
+		for _, child := range s.coreManager.BoundAccountBindings(targetAuth.ID) {
 			s.ensureExecutorsForAuthWithContext(ctx, child, false)
 			s.completeModelRegistrationForAuthWithCache(ctx, child, compatCache)
 		}
@@ -561,7 +577,7 @@ func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
 	}
 	id = strings.TrimSpace(id)
 	var provider string
-	children := s.coreManager.EnterpriseCollections(id)
+	children := s.coreManager.BoundAccountBindings(id)
 	if existing, ok := s.coreManager.GetByID(id); ok && existing != nil {
 		provider = strings.TrimSpace(existing.Provider)
 	}
@@ -570,7 +586,7 @@ func (s *Service) applyCoreAuthRemoval(ctx context.Context, id string) {
 	// republish its cached models after the registry has been cleared.
 	s.coreManager.Remove(ctx, id)
 	for _, child := range children {
-		if !coreauth.IsEnterpriseCollectionAuth(child) {
+		if !coreauth.IsBoundChildAuth(child) {
 			continue
 		}
 		s.cancelEnterpriseProbes(child.ID)

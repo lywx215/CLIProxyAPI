@@ -24,6 +24,8 @@ type enterpriseQuotaCoordinator struct {
 	bindings     map[string]*enterpriseQuotaGate
 	nowFunc      func() time.Time
 	nextProbe    uint64
+	balances     map[string]*enterpriseBalancePool
+	balanceTurn  chan struct{}
 }
 
 // SharedQuotaState is one authoritative restriction, independent of Auth/ModelState.
@@ -50,10 +52,12 @@ type enterpriseQuotaGate struct {
 
 type quotaTicketVersion struct{ reset, version uint64 }
 type enterpriseQuotaTicket struct {
-	gate     *enterpriseQuotaGate
-	versions map[string]quotaTicketVersion
-	probes   map[string]uint64
-	finished sync.Once
+	gate            *enterpriseQuotaGate
+	balance         *enterpriseBalancePool
+	versions        map[string]quotaTicketVersion
+	probes          map[string]uint64
+	finished        sync.Once
+	balanceFinished sync.Once
 }
 
 func quotaDigest(value string) string {
@@ -116,6 +120,7 @@ func (m *Manager) attachEnterpriseQuotaLocked(auth *Auth) {
 	policy.enterpriseQuota = nil
 	c.releaseGateLocked(old)
 	g := &enterpriseQuotaGate{manager: m, authID: auth.ID, fingerprint: fingerprint, epoch: auth.RegistrationEpoch, credential: auth.CredentialVersion, identity: identity, policy: policy}
+	c.migrateBalanceLocked(old, g)
 	auth.EnterpriseQuotaIdentity = identity
 	auth.enterpriseQuota = g
 	c.bindings[auth.ID] = g
@@ -174,6 +179,9 @@ func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var next time.Time
+	if blocked, retryAt := g.balanceBlockedLocked(now); blocked {
+		next = retryAt
+	}
 	for _, key := range g.keys() {
 		s := c.pools[quotaDigest(key)]
 		if s == nil {
@@ -213,6 +221,9 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 	keys := g.keys()
 	enabled := g.enabled()
 	var wait time.Duration
+	if blocked, retryAt := g.balanceBlockedLocked(now); blocked {
+		wait = retryAt.Sub(now)
+	}
 	for _, key := range keys {
 		id := quotaDigest(key)
 		s := c.pools[id]
@@ -254,6 +265,9 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 			t.versions[s.PoolID] = quotaTicketVersion{s.ResetEpoch, s.Version}
 		}
 	}
+	t.balance = c.balancePoolLocked(g)
+	t.balance.inFlight++
+	t.balance.byAuth[g.authID]++
 	c.mu.Unlock()
 	if len(t.probes) > 0 {
 		g.manager.publishEnterpriseQuota()
@@ -267,7 +281,20 @@ func (t *enterpriseQuotaTicket) finish(err error) {
 	if t == nil {
 		return
 	}
-	t.finished.Do(func() { t.finishOnce(err) })
+	t.finishQuota(err)
+	t.balanceFinished.Do(func() {
+		c := &t.gate.manager.enterpriseQuota
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		// Always release live occupancy, even if a refresh/removal fenced results.
+		t.finishBalanceLocked(c.now(), err)
+	})
+}
+
+func (t *enterpriseQuotaTicket) finishQuota(err error) {
+	if t != nil {
+		t.finished.Do(func() { t.finishOnce(err) })
+	}
 }
 
 func (t *enterpriseQuotaTicket) finishOnce(err error) {

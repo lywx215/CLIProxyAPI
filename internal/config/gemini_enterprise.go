@@ -11,7 +11,13 @@ type OAuthConfig struct {
 }
 
 type OAuthProviders struct {
-	GeminiEnterprise *GeminiEnterpriseOAuth `yaml:"gemini-enterprise,omitempty" json:"gemini-enterprise,omitempty"`
+	AntigravityEnterprise *AntigravityEnterpriseOAuth `yaml:"antigravity-enterprise,omitempty" json:"antigravity-enterprise,omitempty"`
+	GeminiEnterprise      *GeminiEnterpriseOAuth      `yaml:"gemini-enterprise,omitempty" json:"gemini-enterprise,omitempty"`
+}
+
+// AntigravityEnterpriseOAuth uses the packaged Antigravity desktop OAuth client.
+type AntigravityEnterpriseOAuth struct {
+	DiscoveryQuotaProject string `yaml:"discovery-quota-project,omitempty" json:"discovery-quota-project,omitempty"`
 }
 
 // GeminiEnterpriseOAuth contains no secret values. Saved accounts retain their own binding.

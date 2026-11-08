@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	ae "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/antigravityenterprise"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -333,6 +334,9 @@ func (m *Manager) RestoreCooldownStates(ctx context.Context) error {
 	if errShared := m.restoreSharedQuota(ctx, store); errShared != nil {
 		return errShared
 	}
+	if errAE := m.restoreAntigravityEnterpriseQuota(ctx, store); errAE != nil {
+		return errAE
+	}
 	if len(records) == 0 {
 		return nil
 	}
@@ -378,7 +382,7 @@ func (m *Manager) restoreCooldownRecordLocked(record CooldownStateRecord, now ti
 		return false
 	}
 	auth := m.auths[authID]
-	if auth == nil || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsEnterpriseCollectionAuth(auth)) || m.cooldownDisabledForAuth(auth) || hasUnauthorizedAuthFailure(auth) {
+	if auth == nil || IsBoundAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsBoundChildAuth(auth)) || m.cooldownDisabledForAuth(auth) || hasUnauthorizedAuthFailure(auth) {
 		return false
 	}
 	if auth.Provider == ge.Provider && record.EnterpriseBinding != "" && record.EnterpriseBinding != ge.Binding(ge.FromMetadata(auth.Metadata)) {
@@ -510,6 +514,11 @@ func (m *Manager) ResetQuota(ctx context.Context, authID string) (*Auth, []strin
 		m.mu.Unlock()
 		return nil, nil, nil
 	}
+	if IsAntigravityEnterpriseBindingAuth(auth) {
+		m.antigravityEnterprise.mu.Lock()
+		delete(m.antigravityEnterprise.cooldowns, authID)
+		m.antigravityEnterprise.mu.Unlock()
+	}
 
 	var cooldownRecordsBefore []CooldownStateRecord
 	trackCooldownState := m.cooldownStore != nil
@@ -638,6 +647,12 @@ func (m *Manager) persistCooldownStatesToLocked(ctx context.Context, store Coold
 			return false
 		}
 	}
+	if aeStore, ok := store.(AntigravityEnterpriseQuotaStateStore); ok && !m.HomeEnabled() {
+		if errSave := aeStore.SaveAntigravityEnterpriseQuota(ctx, m.antigravityEnterpriseQuotaSnapshot()); errSave != nil {
+			logEntryWithRequestID(ctx).Warnf("failed to persist antigravity-enterprise quota state: %v", errSave)
+			return false
+		}
+	}
 	return ctx.Err() == nil
 }
 
@@ -664,7 +679,7 @@ func (m *Manager) cooldownStateRecordsSnapshot() []CooldownStateRecord {
 }
 
 func (m *Manager) cooldownStateRecordsForAuthLocked(auth *Auth, now time.Time) []CooldownStateRecord {
-	if auth == nil || auth.ID == "" || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsEnterpriseCollectionAuth(auth)) || m.cooldownDisabledForAuth(auth) {
+	if auth == nil || auth.ID == "" || IsBoundAccountAuth(auth) || enterpriseRetired(auth) || ((auth.Disabled || auth.Status == StatusDisabled) && !IsBoundChildAuth(auth)) || m.cooldownDisabledForAuth(auth) {
 		return nil
 	}
 	records := make([]CooldownStateRecord, 0, 1+len(auth.ModelStates))
@@ -799,6 +814,30 @@ func isStaleExecutionResult(result Result, current *Auth) bool {
 
 // MarkResult records an execution result and notifies hooks.
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
+	if result.Provider == ae.Provider && result.Error != nil && result.Error.Code == "antigravity_enterprise_local_gate" {
+		return
+	}
+	if m.recordAntigravityEnterpriseHistoricalResult(ctx, result) {
+		return
+	}
+	if result.Provider == ae.Provider && result.Error != nil {
+		switch result.Error.Code {
+		case "antigravity_enterprise_local_gate":
+			return
+		case "antigravity_enterprise_weekly_quota", "antigravity_enterprise_diagnostic":
+			m.recordAvailabilityNeutralResult(ctx, result)
+			return
+		case "antigravity_enterprise_permission_denied":
+			m.recordAvailabilityNeutralResult(ctx, result)
+			m.restrictAntigravityEnterpriseBinding(result)
+			return
+		case "antigravity_enterprise_model_not_enabled":
+			result.Error = cloneError(result.Error)
+			result.Error.Message = "model not supported by this subscription binding"
+			wait := 12 * time.Hour
+			result.RetryAfter = &wait
+		}
+	}
 	if m.recordEnterpriseHistoricalResult(ctx, result) {
 		return
 	}
@@ -968,6 +1007,15 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 								state.NextRetryAfter = next
 							}
 						case 429:
+							if result.Provider == ae.Provider && result.Error != nil && result.Error.Code == "antigravity_enterprise_rate_limit" {
+								seconds := 10 << min(state.Quota.BackoffLevel, 3)
+								if seconds > 60 {
+									seconds = 60
+								}
+								delay := time.Duration(seconds) * time.Second
+								result.RetryAfter = &delay
+								state.Quota.BackoffLevel = min(state.Quota.BackoffLevel+1, 3)
+							}
 							var next time.Time
 							var credentialNext time.Time
 							backoffLevel := state.Quota.BackoffLevel
@@ -980,7 +1028,7 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 							if !disableCooling {
 								if result.RetryAfter != nil {
 									cooldown := *result.RetryAfter
-									if cooldown < minQuotaCooldownFloor {
+									if cooldown < minQuotaCooldownFloor && result.Provider != ae.Provider {
 										cooldown = minQuotaCooldownFloor
 									}
 									next = now.Add(cooldown).Round(0)
@@ -1612,6 +1660,29 @@ func isRequestScopedError(err error) bool {
 func resultErrorFromError(err error) *Error {
 	if err == nil {
 		return nil
+	}
+	var aeError *ae.Error
+	if errors.As(err, &aeError) {
+		code := ""
+		switch {
+		case !aeError.Attempted:
+			code = "antigravity_enterprise_local_gate"
+		case aeError.Code == "weekly_quota":
+			code = "antigravity_enterprise_weekly_quota"
+		case aeError.Code == "model_not_enabled":
+			code = "antigravity_enterprise_model_not_enabled"
+		case aeError.HTTP == 403 && aeError.Scope == "binding":
+			code = "antigravity_enterprise_permission_denied"
+		case aeError.Started:
+			code = ErrorCodeRequestScoped
+		case aeError.HTTP == 429 && !aeError.RetryHint:
+			code = "antigravity_enterprise_rate_limit"
+		case aeError.HTTP == 429:
+			code = "antigravity_enterprise_rate_limit_hint"
+		case aeError.IsRequestScoped():
+			code = ErrorCodeRequestScoped
+		}
+		return &Error{Code: code, Message: aeError.Error(), HTTPStatus: aeError.HTTP}
 	}
 	var enterpriseErr *ge.GenerationError
 	if errors.As(err, &enterpriseErr) && enterpriseErr.ModelNotEnabled {

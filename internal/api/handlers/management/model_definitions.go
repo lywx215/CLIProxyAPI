@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	ae "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/antigravityenterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 )
 
@@ -16,6 +18,10 @@ func (h *Handler) GetStaticModelDefinitions(c *gin.Context) {
 	channel := strings.TrimSpace(c.Param("channel"))
 	if channel == "" {
 		channel = strings.TrimSpace(c.Query("channel"))
+	}
+	if c.GetBool(ConfigV8ContextKey) && strings.EqualFold(channel, ae.Provider) {
+		c.JSON(200, gin.H{"channel": ae.Provider, "models": executor.AntigravityEnterpriseModels(ae.Config{}), "catalog_source": "official_default"})
+		return
 	}
 	if c.GetBool(ConfigV8ContextKey) && strings.EqualFold(channel, web.Provider) {
 		models := []*registry.ModelInfo{}

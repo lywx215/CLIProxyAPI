@@ -20,17 +20,18 @@ var providerAppliersMu sync.RWMutex
 
 // nativeProviderAppliers maps built-in provider names to their implementations.
 var nativeProviderAppliers = map[string]ProviderApplier{
-	"gemini":            nil,
-	"gemini-enterprise": nil,
-	"claude":            nil,
-	"openai":            nil,
-	"codex":             nil,
-	"antigravity":       nil,
-	"kimi":              nil,
-	"kimi-ai":           nil,
-	"kimi.ai":           nil,
-	"kimi.com":          nil,
-	"xai":               nil,
+	"gemini":                 nil,
+	"gemini-enterprise":      nil,
+	"claude":                 nil,
+	"openai":                 nil,
+	"codex":                  nil,
+	"antigravity":            nil,
+	"antigravity-enterprise": nil,
+	"kimi":                   nil,
+	"kimi-ai":                nil,
+	"kimi.ai":                nil,
+	"kimi.com":               nil,
+	"xai":                    nil,
 }
 
 // pluginProviderAppliers maps plugin-owned provider names to their implementations.
@@ -602,7 +603,7 @@ func extractThinkingConfig(body []byte, provider string) ThinkingConfig {
 	switch provider {
 	case "claude":
 		return extractClaudeConfig(body)
-	case "gemini", "antigravity", "gemini-enterprise":
+	case "gemini", "antigravity", "gemini-enterprise", "antigravity-enterprise":
 		return extractGeminiConfig(body, provider)
 	case "interactions":
 		return extractInteractionsConfig(body)

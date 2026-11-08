@@ -212,6 +212,7 @@ func baselineExecutorAuths() []*coreauth.Auth {
 		"vertex",
 		"aistudio",
 		"antigravity",
+		"antigravity-enterprise",
 		"gemini-enterprise",
 		"kimi",
 		"kimi-ai",
@@ -300,6 +301,13 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 		s.coreManager.RegisterExecutor(executor.NewGeminiEnterpriseWebExecutor(cfg, s.coreManager.WebRuntime()))
 	case "gemini-enterprise":
 		s.coreManager.RegisterExecutor(executor.NewGeminiEnterpriseExecutor(cfg))
+	case "antigravity-enterprise":
+		if current, ok := s.coreManager.Executor("antigravity-enterprise"); ok && !forceReplace {
+			if native, ok := current.(*executor.AntigravityEnterpriseExecutor); ok && native.UsesConfig(cfg) {
+				return
+			}
+		}
+		s.coreManager.RegisterExecutor(executor.NewAntigravityEnterpriseExecutor(cfg).WithManager(s.coreManager))
 	case "antigravity":
 		s.coreManager.RegisterExecutor(executor.NewAntigravityExecutor(cfg))
 	case "claude":

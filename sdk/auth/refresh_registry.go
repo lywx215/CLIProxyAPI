@@ -8,6 +8,7 @@ import (
 
 func init() {
 	registerRefreshLead("gemini-enterprise", func() Authenticator { return NewGeminiEnterpriseAuthenticator() })
+	registerRefreshLead("antigravity-enterprise", func() Authenticator { return NewAntigravityEnterpriseAuthenticator() })
 	registerRefreshLead("codex", func() Authenticator { return NewCodexAuthenticator() })
 	registerRefreshLead("claude", func() Authenticator { return NewClaudeAuthenticator() })
 	registerRefreshLead("antigravity", func() Authenticator { return NewAntigravityAuthenticator() })

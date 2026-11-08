@@ -85,14 +85,14 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	if auth == nil {
 		return nil, nil
 	}
-	if IsEnterpriseCollectionAuth(auth) {
+	if IsBoundChildAuth(auth) {
 		current, ok := m.GetByID(auth.ID)
 		if !ok {
 			return nil, ErrEnterpriseAccountChanged
 		}
 		return current, nil
 	}
-	if IsEnterpriseAccountAuth(auth) {
+	if IsBoundAccountAuth(auth) {
 		projected, errProject := ProjectEnterpriseAuth(auth)
 		if errProject != nil {
 			return nil, errProject
@@ -129,7 +129,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	auth.EnsureIndex()
 	m.mu.Lock()
-	if existing := m.auths[auth.ID]; IsEnterpriseAccountAuth(auth) && IsEnterpriseAccountAuth(existing) {
+	if existing := m.auths[auth.ID]; IsBoundAccountAuth(auth) && IsBoundAccountAuth(existing) {
 		var errAuthorization error
 		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
 		if errAuthorization != nil {
@@ -162,7 +162,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	// Persist failures stay non-fatal, but must not be silent: a restart would
 	// lose the credential that only exists in memory.
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
-		if IsEnterpriseAccountAuth(auth) || auth.Provider == web.Provider {
+		if IsBoundAccountAuth(auth) || auth.Provider == web.Provider {
 			m.authEpochs[auth.ID] = registrationEpochBefore
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
@@ -214,6 +214,7 @@ const (
 	updateModeEnterpriseResources
 	updateModeEnterpriseReauthorize
 	updateModeEnterpriseWeb
+	updateModeAntigravityEnterpriseReauthorize
 )
 
 // UpdatePreparedAuth atomically merges request preparation results into the latest runtime auth
@@ -237,8 +238,15 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	if auth == nil || auth.ID == "" {
 		return nil, nil
 	}
-	if IsEnterpriseCollectionAuth(auth) {
+	if IsBoundChildAuth(auth) {
 		if mode == updateModePrepare {
+			if IsAntigravityEnterpriseBindingAuth(auth) {
+				current, ok := m.GetByID(auth.ID)
+				if !ok {
+					return nil, ErrAntigravityEnterpriseAccountChanged
+				}
+				return current, nil
+			}
 			return m.updatePreparedEnterpriseCollection(ctx, base, auth)
 		}
 		current, ok := m.GetByID(auth.ID)
@@ -247,7 +255,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		}
 		return current, nil
 	}
-	if IsEnterpriseAccountAuth(auth) {
+	if IsBoundAccountAuth(auth) {
 		projected, errProject := ProjectEnterpriseAuth(auth)
 		if errProject != nil {
 			return nil, errProject
@@ -276,6 +284,14 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		}
 		return nil, nil
 	}
+	if mode == updateModeReplace && IsAntigravityEnterpriseAccountAuth(existing) && IsAntigravityEnterpriseAccountAuth(auth) {
+		var errGraph error
+		auth, errGraph = installAntigravityEnterpriseAuthorization(existing, auth)
+		if errGraph != nil {
+			m.mu.Unlock()
+			return nil, errGraph
+		}
+	}
 	verifiedWebRotation := false
 	if mode == updateModeEnterpriseWeb {
 		mutation, _ := ctx.Value(webMutationKey{}).(webMutation)
@@ -301,6 +317,14 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	resourcesRebound := false
 	var enterprisePersistError error
+	if mode == updateModeAntigravityEnterpriseReauthorize {
+		var errAuthorization error
+		auth, errAuthorization = installAntigravityEnterpriseReauthorization(existing, auth)
+		if errAuthorization != nil {
+			m.mu.Unlock()
+			return nil, errAuthorization
+		}
+	}
 	if mode == updateModeEnterpriseReauthorize {
 		var errAuthorization error
 		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
@@ -439,7 +463,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise resources: %w", errPersist)
 		}
-		if IsEnterpriseAccountAuth(auth) {
+		if IsBoundAccountAuth(auth) {
 			if mode != updateModeRefresh {
 				m.mu.Unlock()
 				return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
@@ -454,7 +478,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		}
 		// Ordinary persistence failures remain non-fatal, but never silent.
 		log.WithFields(log.Fields{"auth_id": auth.ID, "credential": auth.ID, "provider": auth.Provider}).Warnf("failed to persist updated auth %s (%s): %v", auth.Provider, auth.ID, errPersist)
-	} else if IsEnterpriseAccountAuth(auth) && !shouldSkipPersist(ctx) {
+	} else if IsBoundAccountAuth(auth) && !shouldSkipPersist(ctx) {
 		delete(m.enterpriseAccounts.pendingSaves, auth.ID)
 	}
 	if m.authEpochs[auth.ID] != auth.RegistrationEpoch {
@@ -529,7 +553,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	provider := strings.TrimSpace(existing.Provider)
 	var removedChildren []*Auth
 	for childID, child := range m.auths {
-		if IsEnterpriseCollectionAuth(child) && EnterpriseOwnerID(child) == id {
+		if IsBoundChildAuth(child) && BoundOwnerID(child) == id {
 			delete(m.auths, childID)
 			delete(m.modelPoolOffsets, childID)
 			m.enterpriseQuota.mu.Lock()
@@ -581,7 +605,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 		m.queueRefreshUnschedule(child.ID)
 		m.invalidateSessionAffinity(child.ID)
 	}
-	if IsEnterpriseAccountAuth(existing) {
+	if IsBoundAccountAuth(existing) {
 		registry.GetGlobalRegistry().UnregisterClient(id)
 	}
 
@@ -644,7 +668,7 @@ func (m *Manager) Load(ctx context.Context) error {
 		m.authEpochs = make(map[string]uint64, len(items))
 	}
 	for _, auth := range items {
-		if auth == nil || auth.ID == "" || IsEnterpriseCollectionAuth(auth) {
+		if auth == nil || auth.ID == "" || IsBoundChildAuth(auth) {
 			continue
 		}
 		if projected, errProject := ProjectEnterpriseAuth(auth); errProject == nil && len(projected) > 0 {
@@ -674,13 +698,13 @@ func (m *Manager) Load(ctx context.Context) error {
 		m.auths[auth.ID] = auth.Clone()
 	}
 	for id, previous := range previousAuths {
-		if IsEnterpriseCollectionAuth(previous) && IsEnterpriseAccountAuth(m.auths[EnterpriseOwnerID(previous)]) {
+		if IsBoundChildAuth(previous) && IsBoundAccountAuth(m.auths[BoundOwnerID(previous)]) {
 			m.auths[id] = previous.Clone()
 		}
 	}
 	var enterpriseParents []*Auth
 	for _, auth := range m.auths {
-		if IsEnterpriseAccountAuth(auth) && !enterpriseRetired(auth) {
+		if IsBoundAccountAuth(auth) && !enterpriseRetired(auth) {
 			enterpriseParents = append(enterpriseParents, auth)
 		}
 	}
@@ -742,7 +766,7 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	if store == nil || auth == nil {
 		return nil
 	}
-	if IsEnterpriseCollectionAuth(auth) {
+	if IsBoundChildAuth(auth) {
 		return nil
 	}
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
@@ -779,7 +803,7 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 			return nil
 		}
 		_, err := store.Save(ctx, auth)
-		if err != nil && (IsEnterpriseAccountAuth(auth) || auth.Provider == web.Provider) {
+		if err != nil && (IsBoundAccountAuth(auth) || auth.Provider == web.Provider) {
 			pLock.lastEpoch, pLock.lastGeneration = previousEpoch, previousGeneration
 		}
 		return err

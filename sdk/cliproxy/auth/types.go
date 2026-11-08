@@ -48,9 +48,10 @@ func GetRequestInfo(ctx context.Context) *RequestInfo {
 // Auth encapsulates the runtime state and metadata associated with a single credential.
 type Auth struct {
 	// EnterpriseQuotaIdentity is verified independently of user-supplied metadata.
-	EnterpriseQuotaIdentity *ge.QuotaIdentity `json:"-"`
-	enterpriseQuota         *enterpriseQuotaGate
-	enterpriseCarbonWindow  uint64
+	EnterpriseQuotaIdentity    *ge.QuotaIdentity `json:"-"`
+	enterpriseQuota            *enterpriseQuotaGate
+	antigravityEnterpriseQuota *antigravityEnterpriseGate
+	enterpriseCarbonWindow     uint64
 	// ID uniquely identifies the auth record across restarts.
 	ID string `json:"id"`
 	// RegistrationEpoch tracks monotonic registration cycles across unregister/re-register.

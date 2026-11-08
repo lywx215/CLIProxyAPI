@@ -192,7 +192,7 @@ func (s *authScheduler) setSelector(selector Selector) {
 // isSchedulableAuth determines whether an auth can be scheduled by a provider scheduler,
 // returning its normalized ID and providerKey.
 func isSchedulableAuth(auth *Auth) (string, string, bool) {
-	if auth == nil || auth.Disabled || auth.Status == StatusDisabled || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+	if auth == nil || auth.Disabled || auth.Status == StatusDisabled || IsBoundAccountAuth(auth) || enterpriseRetired(auth) {
 		return "", "", false
 	}
 	authID := strings.TrimSpace(auth.ID)
@@ -280,6 +280,7 @@ func (s *authScheduler) rebuild(auths []*Auth) {
 	// Capture existing auth metadata so that in-flight MarkResult updates (which advanced
 	// Generation and updated cooldown/quota states) are preserved during rebuild.
 	existingMetas := make(map[string]*scheduledAuthMeta)
+	previousProviders := s.providers
 	for _, pState := range s.providers {
 		if pState == nil {
 			continue
@@ -296,11 +297,29 @@ func (s *authScheduler) rebuild(auths []*Auth) {
 	if s.authGenerations == nil {
 		s.authGenerations = make(map[string]scheduledGenerationMeta)
 	}
-	s.mixedCursors = make(map[string]int)
-	s.mixedWeightedStates = make(map[string]*smoothWeightedState)
 	now := time.Now()
 	for _, auth := range auths {
 		s.upsertAuthRebuildLocked(auth, existingMetas, now)
+	}
+	// Rebuild membership from current metadata, but retain selection progress.
+	// Model shards are otherwise lazy and would restart at the first credential.
+	for provider, previous := range previousProviders {
+		current := s.providers[provider]
+		if previous == nil || current == nil {
+			continue
+		}
+		for model, oldShard := range previous.modelShards {
+			if oldShard == nil {
+				continue
+			}
+			shard := current.ensureModelLocked(model, now)
+			for priority, bucket := range shard.readyByPriority {
+				if old := oldShard.readyByPriority[priority]; old != nil {
+					restoreReadyViewCursors(&bucket.all, snapshotReadyViewCursors(old.all))
+					restoreReadyViewCursors(&bucket.ws, snapshotReadyViewCursors(old.ws))
+				}
+			}
+		}
 	}
 }
 
@@ -810,7 +829,7 @@ func (s *authScheduler) upsertAuthRebuildLocked(auth *Auth, existingMetas map[st
 	}
 
 	providerKey := executorKeyFromAuth(authToSchedule)
-	if providerKey == "" || authToSchedule.Disabled || authToSchedule.Status == StatusDisabled || IsEnterpriseAccountAuth(authToSchedule) || enterpriseRetired(authToSchedule) {
+	if providerKey == "" || authToSchedule.Disabled || authToSchedule.Status == StatusDisabled || IsBoundAccountAuth(authToSchedule) || enterpriseRetired(authToSchedule) {
 		s.removeAuthFromProvidersLocked(authID)
 		return
 	}
@@ -865,7 +884,7 @@ func (s *authScheduler) upsertAuthLifecycleLocked(auth *Auth, now time.Time) {
 	}
 
 	providerKey := executorKeyFromAuth(auth)
-	if providerKey == "" || auth.Disabled || auth.Status == StatusDisabled || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+	if providerKey == "" || auth.Disabled || auth.Status == StatusDisabled || IsBoundAccountAuth(auth) || enterpriseRetired(auth) {
 		s.removeAuthFromProvidersLocked(authID)
 		return
 	}
@@ -888,7 +907,10 @@ func isCredentialBlocked(auth *Auth, supportedModelCount int, now time.Time) boo
 	if auth == nil {
 		return true
 	}
-	if auth.Disabled || auth.Status == StatusDisabled || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+	if auth.Disabled || auth.Status == StatusDisabled || IsBoundAccountAuth(auth) || enterpriseRetired(auth) {
+		return true
+	}
+	if blocked, _ := auth.antigravityEnterpriseBlocked(now); blocked {
 		return true
 	}
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
@@ -937,7 +959,7 @@ func (s *authScheduler) upsertAuthResultLocked(auth *Auth, targetModels []string
 		updatedAt:  auth.UpdatedAt,
 	}
 
-	if providerKey == "" || auth.Disabled || auth.Status == StatusDisabled || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+	if providerKey == "" || auth.Disabled || auth.Status == StatusDisabled || IsBoundAccountAuth(auth) || enterpriseRetired(auth) {
 		s.removeAuthFromProvidersLocked(authID)
 		return
 	}
@@ -1258,8 +1280,12 @@ func (m *modelScheduler) demoteExpiredTokensLocked(now time.Time) bool {
 			continue
 		}
 		sharedBlocked := false
+		if entry.auth.antigravityEnterpriseQuota != nil {
+			sharedBlocked, _ = entry.auth.antigravityEnterpriseBlocked(now)
+		}
 		if entry.auth.enterpriseQuota != nil {
-			sharedBlocked, _ = entry.auth.enterpriseQuota.blocked(now)
+			blocked, _ := entry.auth.enterpriseQuota.blocked(now)
+			sharedBlocked = sharedBlocked || blocked
 		}
 		exp, hasExpiry := entry.auth.AccessTokenExpirationTime()
 		if sharedBlocked || (hasExpiry && !exp.IsZero() && !exp.After(now)) {

@@ -54,6 +54,7 @@ func (s *Service) Run(ctx context.Context) error {
 	}()
 
 	s.startModelCatalogUpdaters(ctx)
+	s.startAntigravityEnterpriseMetadata(ctx)
 
 	usage.StartDefault(ctx)
 	homeEnabled := s.cfg != nil && s.cfg.Home.Enabled
@@ -254,6 +255,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		if runCancel != nil {
 			runCancel()
 		}
+		s.stopAntigravityEnterpriseMetadata(ctx)
 		s.stopEnterpriseDiscovery(ctx)
 
 		s.homeLifecycleMu.Lock()

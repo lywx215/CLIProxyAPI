@@ -132,7 +132,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 	if pagination.enabled {
 		matching := make([]*coreauth.Auth, 0, len(auths))
 		for _, auth := range auths {
-			if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
+			if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsAntigravityEnterpriseBindingAuth(auth) || coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
 				continue
 			}
 			if !matchesAuthFileLookup(auth, nameFilter, authIndexFilter) || !isAuthFileListable(auth) {
@@ -150,6 +150,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 			if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 				addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
 				h.addEnterpriseWebEntry(c, entry, auth)
+				h.addAntigravityEnterpriseSummary(c, entry, auth)
 				if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
 					h.addEnterpriseAccountSummary(entry, auth)
 				}
@@ -165,7 +166,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 	}
 	files := make([]gin.H, 0, len(auths))
 	for _, auth := range auths {
-		if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
+		if c.GetBool(ConfigV8ContextKey) && auth != nil && (coreauth.IsAntigravityEnterpriseBindingAuth(auth) || coreauth.IsEnterpriseCollectionAuth(auth) || (auth.Provider == ge.Provider && ge.String(auth.Metadata, "enterprise_retired_to") != "")) {
 			continue
 		}
 		if !matchesAuthFileLookup(auth, nameFilter, authIndexFilter) {
@@ -174,6 +175,7 @@ func (h *Handler) ListAuthFiles(c *gin.Context) {
 		if entry := h.buildAuthFileEntry(auth, quotaSupportedProviders); entry != nil {
 			addGeminiEnterpriseCredentialSummary(c, entry, auth.Provider, auth.Metadata)
 			h.addEnterpriseWebEntry(c, entry, auth)
+			h.addAntigravityEnterpriseSummary(c, entry, auth)
 			if c.GetBool(ConfigV8ContextKey) && auth.Provider == ge.Provider {
 				h.addEnterpriseAccountSummary(entry, auth)
 			}
@@ -350,6 +352,9 @@ func (h *Handler) lookupAuthFile(name string, authIndex string) (*coreauth.Auth,
 
 // GetAuthFileModels returns the models supported by a specific auth file
 func (h *Handler) GetAuthFileModels(c *gin.Context) {
+	if c.GetBool(ConfigV8ContextKey) && h.authManager != nil && h.getAntigravityEnterpriseModels(c) {
+		return
+	}
 	name := c.Query("name")
 	if name == "" {
 		c.JSON(400, gin.H{"error": "name is required"})

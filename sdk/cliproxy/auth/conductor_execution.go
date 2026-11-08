@@ -636,7 +636,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 
 		tried[auth.ID] = struct{}{}
 		execCtx := pickCtx
-		if !IsOfficialGeminiAuth(auth) {
+		if !IsOfficialGeminiAuth(auth) && auth.enterpriseQuota == nil {
 			budget.ReleaseAdmissionTurn(pickCtx)
 		}
 		if rt := m.roundTripperFor(auth); rt != nil {
@@ -1180,7 +1180,7 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 
 		tried[auth.ID] = struct{}{}
 		execCtx := pickCtx
-		if !IsOfficialGeminiAuth(auth) {
+		if !IsOfficialGeminiAuth(auth) && auth.enterpriseQuota == nil {
 			budget.ReleaseAdmissionTurn(pickCtx)
 		}
 		releaseAttempt := func() {}

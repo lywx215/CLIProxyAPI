@@ -503,8 +503,16 @@ func (m *Manager) pickNextMixedWithAdmission(ctx context.Context, providers []st
 		if errWait != nil {
 			return pickCtx, nil, nil, "", errWait
 		}
+		pickCtx, errWait = m.awaitEnterpriseBalanceTurn(pickCtx, providers)
+		if errWait != nil {
+			budget.ReleaseAdmissionTurn(pickCtx)
+			return pickCtx, nil, nil, "", errWait
+		}
 		auth, executor, provider, errPick := m.pickNextMixed(pickCtx, providers, model, opts, tried)
 		if errPick == nil {
+			if auth == nil || (!IsOfficialGeminiAuth(auth) && auth.enterpriseQuota == nil) {
+				budget.ReleaseAdmissionTurn(pickCtx)
+			}
 			return pickCtx, auth, executor, provider, nil
 		}
 		budget.ReleaseAdmissionTurn(pickCtx)

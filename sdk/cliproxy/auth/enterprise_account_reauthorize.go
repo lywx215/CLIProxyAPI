@@ -57,6 +57,9 @@ func (m *Manager) ReauthorizeEnterpriseAccount(ctx context.Context, record *Auth
 }
 
 func installEnterpriseAuthorization(current, incoming *Auth) (*Auth, error) {
+	if IsAntigravityEnterpriseAccountAuth(current) && IsAntigravityEnterpriseAccountAuth(incoming) {
+		return installAntigravityEnterpriseAuthorization(current, incoming)
+	}
 	if !IsEnterpriseAccountAuth(current) || !sameEnterprisePrincipal(current, incoming) || enterpriseRetired(current) {
 		return nil, ErrEnterpriseAccountChanged
 	}
