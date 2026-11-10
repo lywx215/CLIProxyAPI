@@ -360,7 +360,7 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 	}{
 		{"chat image", "openai", "messages[0].content[0]", "text parts only", map[string]any{"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": privateValue}}}}}}},
 		{"chat malformed tool history", "openai", "messages[0].tool_calls[0].type", "must be function", map[string]any{"messages": []map[string]any{{"role": "assistant", "content": "hi", "tool_calls": []map[string]string{{"id": privateValue}}}, {"role": "user", "content": "hi"}}}},
-		{"gemini inline data", "gemini", "", "Media input channel is disabled", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
+		{"gemini inline data", "gemini", "contents", "No user text remains", map[string]any{"contents": []map[string]any{{"parts": []map[string]any{{"inlineData": map[string]string{"mimeType": "image/png", "data": privateValue}}}}}}},
 		{"gemini malformed function declaration", "gemini", "tools[0].functionDeclarations", "must be an array", map[string]any{"tools": []map[string]any{{"functionDeclarations": privateValue}}}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -372,12 +372,10 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 						response := enterprisePublicCall(router, path, body)
 						wire := response.Body.Bytes()
 						wantCode := "invalid_field"
-						wantStatus := http.StatusBadRequest
 						if scenario.name == "gemini inline data" {
-							wantCode = "media_input_error"
-							wantStatus = http.StatusServiceUnavailable
+							wantCode = "media_fallback_no_text"
 						}
-						if response.Code != wantStatus || gjson.GetBytes(wire, "error.code").String() != wantCode || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
+						if response.Code != http.StatusBadRequest || gjson.GetBytes(wire, "error.code").String() != wantCode || gjson.GetBytes(wire, "error.param").String() != scenario.field || !strings.Contains(gjson.GetBytes(wire, "error.message").String(), scenario.reason) {
 							t.Fatalf("unsupported content diagnostic lost: status=%d body=%s", response.Code, wire)
 						}
 						if strings.Contains(string(wire), privateValue) || transport.calls.Load() != 0 {
@@ -386,6 +384,40 @@ func TestEnterprisePublicRejectsUnsupportedContent(t *testing.T) {
 						enterpriseAssertPublicErrorChannelNeutral(t, wire)
 					})
 				}
+			}
+		})
+	}
+}
+
+func TestEnterprisePublicMediaFallbackUsesOriginalTextModel(t *testing.T) {
+	const model = "gemini-3.8-flash"
+	const payload = `{"contents":[{"parts":[{"text":"Earlier question"}]},{"role":"model","parts":[{"text":"Earlier reply"},{"inlineData":{"mimeType":"image/png","data":"YXJjaGl2ZQ=="}}]},{"parts":[{"file_data":{"file_uri":"files/private-reference"}}]}]}`
+	for _, enabled := range []bool{false, true} {
+		cfg := &config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{
+			Models: []config.PayloadModelRule{{Name: model, Protocol: ge.Provider}},
+			Params: map[string]any{"generationSpec.thinkingConfig.includeThoughts": true},
+		}}}}
+		cfg.GeminiEnterpriseWeb.Enabled = enabled
+		t.Run(fmt.Sprintf("web=%t", enabled), func(t *testing.T) {
+			router, transport, _ := enterpriseFixtureRouterWithConfig(t, cfg)
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+					path, _ := enterprisePublicRequest(t, model, "gemini", stream, nil)
+					before := transport.calls.Load()
+					response := enterprisePublicCall(router, path, []byte(payload))
+					wantHeader := "web_disabled/history_text"
+					if enabled {
+						wantHeader = "no_web_credential/history_text"
+					}
+					if response.Code != http.StatusOK || response.Result().Header.Get("X-CPA-Media-Fallback") != wantHeader || transport.calls.Load() != before+1 || !strings.Contains(response.Body.String(), `"promptTokenCount"`) {
+						t.Fatal(response.Code, response.Header(), response.Body.String(), transport.calls.Load()-before)
+					}
+					upstream := transport.requestBody()
+					query := gjson.GetBytes(upstream, "query.text").String()
+					if gjson.GetBytes(upstream, "generationSpec.modelId").String() != model || !gjson.GetBytes(upstream, "generationSpec.thinkingConfig.includeThoughts").Bool() || strings.Count(query, "Earlier question") != 2 || !strings.Contains(query, "Earlier reply") || strings.Contains(string(upstream), "YXJjaGl2ZQ==") || strings.Contains(string(upstream), "files/private-reference") {
+						t.Fatal("ordinary upstream did not receive the cleaned history and final payload rule", string(upstream))
+					}
+				})
 			}
 		})
 	}

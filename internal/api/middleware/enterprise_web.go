@@ -8,9 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	auth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
@@ -27,15 +25,7 @@ func EnterpriseWebBodyAdmission(m *auth.Manager, authorize ...func(*gin.Context)
 			c.Next()
 			return
 		}
-		eligible := m.EnterpriseWebModel(model)
-		if !eligible {
-			for _, p := range registry.GetGlobalRegistry().GetModelProviders(thinking.ParseSuffix(model).ModelName) {
-				if p == "gemini-enterprise" {
-					eligible = true
-					break
-				}
-			}
-		}
+		model, eligible := handlers.EnterpriseWebNativeModel(m, model)
 		if !eligible {
 			c.Next()
 			return
@@ -44,12 +34,19 @@ func EnterpriseWebBodyAdmission(m *auth.Manager, authorize ...func(*gin.Context)
 			c.AbortWithStatusJSON(415, gin.H{"error": "Native Enterprise requests require uncompressed JSON"})
 			return
 		}
-		body, ctx, lease, err := web.ReadBody(c.Request.Context(), c.Request.Body, c.Request.ContentLength, m.WebRuntime(), func() error {
+		beforeMedia := func() error {
 			if len(authorize) > 0 && authorize[0] != nil && !authorize[0](c) {
 				return web.Fail(401, "Authentication required")
 			}
 			return nil
-		})
+		}
+		fallbackEligibility := func() (bool, bool) {
+			if action == "countTokens" || m.HomeEnabled() || handlers.PinnedAuthIDFromContext(c.Request.Context()) != "" {
+				return false, false
+			}
+			return true, m.EnterpriseWebHasEligibleCredential(model)
+		}
+		body, ctx, lease, err := web.ReadGenerationBody(c.Request.Context(), c.Request.Body, c.Request.ContentLength, m.WebRuntime(), beforeMedia, fallbackEligibility)
 		if err != nil {
 			if c.IsAborted() {
 				return
@@ -67,8 +64,12 @@ func EnterpriseWebBodyAdmission(m *auth.Manager, authorize ...func(*gin.Context)
 		if lease != nil {
 			defer lease.Release()
 		}
-		c.Request = c.Request.WithContext(web.WithBody(ctx, body))
-		c.Set("enterprise_web_body_managed", lease != nil)
+		_, projected := web.MediaFallbackFrom(ctx)
+		if !projected {
+			ctx = web.WithBody(ctx, body)
+		}
+		c.Request = c.Request.WithContext(ctx)
+		c.Set("enterprise_web_body_managed", lease != nil || projected)
 		c.Request.Body = http.NoBody
 		if lease == nil {
 			c.Request.ContentLength = int64(len(body))

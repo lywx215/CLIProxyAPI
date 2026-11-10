@@ -14,6 +14,13 @@ type PreflightFailure struct {
 
 func (e *PreflightFailure) Unwrap() error { return e.error }
 
+// IsCookieLoginRequired distinguishes a confirmed login rejection from a
+// transport, application authorization or rate limit failure.
+func IsCookieLoginRequired(err error) bool {
+	var loginErr *loginRequiredError
+	return errors.As(err, &loginErr)
+}
+
 func AuthenticationPreflightFailure(err error) error {
 	var failure *PreflightFailure
 	if errors.As(err, &failure) {

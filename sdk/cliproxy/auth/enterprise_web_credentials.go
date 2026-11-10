@@ -39,6 +39,7 @@ func (m *Manager) commitEnterpriseWebCookieRotation(ctx context.Context, id stri
 		current.CatalogFingerprint = candidate.CatalogFingerprint
 		current.CatalogUpdatedAt = candidate.CatalogUpdatedAt
 		current.LastRenewedAt = candidate.LastRenewedAt
+		current.LastCCRenewedAt = candidate.LastCCRenewedAt
 		return nil
 	}
 	updated, err := m.updateEnterpriseWebCredential(ctx, id, webMutation{revision: source.Revision, mutate: mutate, verifiedRotation: true})

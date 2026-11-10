@@ -1,6 +1,10 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
 
 const (
 	EnterpriseWebSingleTurn        = "single-turn"
@@ -9,11 +13,26 @@ const (
 
 // GeminiEnterpriseWebConfig controls only the optional inline-media channel.
 type GeminiEnterpriseWebConfig struct {
-	Enabled          bool                           `yaml:"enabled" json:"enabled"`
-	HistoryMode      string                         `yaml:"history-mode" json:"history-mode"`
-	MaxConcurrent    int                            `yaml:"max-concurrent" json:"max-concurrent"`
-	MaxInflightBytes int64                          `yaml:"max-inflight-bytes" json:"max-inflight-bytes"`
-	InputLimits      GeminiEnterpriseWebInputLimits `yaml:"input-limits" json:"input-limits"`
+	Enabled                bool                           `yaml:"enabled" json:"enabled"`
+	CookieCCPollingEnabled bool                           `yaml:"cookie-cc-polling-enabled" json:"cookie-cc-polling-enabled"`
+	HistoryMode            string                         `yaml:"history-mode" json:"history-mode"`
+	MaxConcurrent          int                            `yaml:"max-concurrent" json:"max-concurrent"`
+	MaxInflightBytes       int64                          `yaml:"max-inflight-bytes" json:"max-inflight-bytes"`
+	InputLimits            GeminiEnterpriseWebInputLimits `yaml:"input-limits" json:"input-limits"`
+}
+
+func (c *GeminiEnterpriseWebConfig) UnmarshalYAML(node *yaml.Node) error {
+	var toggle struct {
+		CC yaml.Node `yaml:"cookie-cc-polling-enabled"`
+	}
+	if err := node.Decode(&toggle); err != nil {
+		return err
+	}
+	if toggle.CC.Kind != 0 && toggle.CC.ShortTag() != "!!bool" {
+		return fmt.Errorf("gemini-enterprise-web cookie-cc-polling-enabled must be a boolean")
+	}
+	type plain GeminiEnterpriseWebConfig
+	return node.Decode((*plain)(c))
 }
 
 func (c GeminiEnterpriseWebConfig) WithDefaults() GeminiEnterpriseWebConfig {

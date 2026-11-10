@@ -62,6 +62,9 @@ func (r *Runtime) PrepareCookie(ctx context.Context, credential *Credential, bas
 
 // CheckCookie renews the Google Accounts cookies before verifying the Enterprise session.
 func (r *Runtime) CheckCookie(ctx context.Context, credential *Credential, base *http.Client, selection CookieSelection, route string) error {
+	if epoch := r.dueCookieCCEpoch(selection.ID, *credential); epoch != 0 {
+		return r.checkCookieCC(ctx, credential, base, selection, route, epoch)
+	}
 	_, _, err := r.authenticate(ctx, credential, base, selection, route, cookieAuthOptions{force: true, rotate: true, scheduled: true})
 	return err
 }
@@ -419,7 +422,7 @@ func send(ctx context.Context, base *http.Client, c Credential, token, target st
 	if response.StatusCode != 200 {
 		_ = response.Body.Close()
 		err := Fail(response.StatusCode, "Media upstream rejected the request")
-		if strings.HasSuffix(u.Path, "/lookupWidgetConfig") {
+		if strings.HasSuffix(u.Path, "/lookupWidgetConfig") || strings.HasSuffix(u.Path, "/"+widgetCCAction) {
 			if isLoginRedirect(response) {
 				return nil, loginRequired()
 			}

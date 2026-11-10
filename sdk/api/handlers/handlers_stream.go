@@ -298,6 +298,12 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		return nil, nil, errChan
 	}
 	if routeDecision.ExecutorPluginID != "" {
+		if _, projected := web.MediaFallbackFrom(ctx); projected {
+			errChan := make(chan *interfaces.ErrorMessage, 1)
+			errChan <- mediaFallbackPluginRouteError()
+			close(errChan)
+			return nil, nil, errChan
+		}
 		return h.streamWithPluginExecutor(ctx, entryProtocol, responseProtocol, modelName, originalRequestedModel, rawJSON, alt, routeDecision.ExecutorPluginID, execOptions)
 	}
 	providers, normalizedModel, errMsg := h.providersForExecution(modelName, originalRequestedModel, allowImageModel, routeDecision, execOptions)
@@ -328,16 +334,12 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	setReasoningEffortMetadata(reqMeta, entryProtocol, normalizedModel, rawJSON)
 	setServiceTierMetadata(reqMeta, rawJSON)
 	setGenerateMetadata(reqMeta, rawJSON)
-	if limit := parseModelTokenLimit(normalizedModel); limit > 0 && !(entryProtocol == "gemini" && web.HasMediaInContext(ctx, rawJSON)) {
-		if estimated := len(rawJSON) / 4; estimated > limit {
-			errChan := make(chan *interfaces.ErrorMessage, 1)
-			errChan <- &interfaces.ErrorMessage{
-				StatusCode: http.StatusBadRequest,
-				Error:      fmt.Errorf("estimated input size (%d tokens) exceeds limit (%d) for model %q", estimated, limit, normalizedModel),
-			}
-			close(errChan)
-			return nil, nil, errChan
-		}
+	ctx, errEstimate := checkModelTokenEstimate(ctx, entryProtocol, normalizedModel, rawJSON)
+	if errEstimate != nil {
+		errChan := make(chan *interfaces.ErrorMessage, 1)
+		errChan <- &interfaces.ErrorMessage{StatusCode: http.StatusBadRequest, Error: errEstimate}
+		close(errChan)
+		return nil, nil, errChan
 	}
 	payload := rawJSON
 	if len(payload) == 0 {
@@ -373,6 +375,16 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		return nil, nil, errChan
 	}
 	ctx = enrichContextWithSessionHierarchy(ctx, opts.Headers, req.Payload, opts.Metadata)
+	maxBootstrapRetries := StreamingBootstrapRetries(h.Cfg)
+	if h.AuthManager.HomeEnabled() {
+		maxBootstrapRetries = 0
+	}
+	if maxBootstrapRetries > 0 && entryProtocol == "gemini" && web.MediaResponseReady(ctx) == nil {
+		_, projected := web.MediaFallbackFrom(ctx)
+		if projected || web.HasMediaInContext(ctx, req.Payload) {
+			ctx = web.WithMediaFallbackDelivery(ctx, nil)
+		}
+	}
 	streamResult, err := h.AuthManager.ExecuteStream(ctx, providers, req, opts)
 	if err != nil {
 		err = enrichAuthSelectionError(err, providers, normalizedModel)
@@ -390,6 +402,9 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		errChan <- errMsg
 		close(errChan)
 		return nil, nil, errChan
+	}
+	if entryProtocol == "gemini" {
+		req, opts = mediaFallbackExecutionPayload(ctx, req, opts)
 	}
 	executedRequest := func() (coreexecutor.Request, coreexecutor.Options) {
 		return afterAuthCapture.apply(req, opts)
@@ -568,16 +583,12 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		}
 	}
 
-	maxBootstrapRetries := StreamingBootstrapRetries(h.Cfg)
-	if h.AuthManager.HomeEnabled() {
-		maxBootstrapRetries = 0
-	}
 	for bootstrapRetries := 0; !streamCanceledBeforeRead; {
 		readInitialStreamChunks()
 		if streamCanceledBeforeRead || bootstrapErr != nil || bootstrapStreamErr == nil {
 			break
 		}
-		if bootstrapRetries >= maxBootstrapRetries || !bootstrapEligible(bootstrapStreamErr) {
+		if bootstrapRetries >= maxBootstrapRetries || web.MediaFallbackDispatched(ctx) || !bootstrapEligible(bootstrapStreamErr) {
 			bootstrapErr = executionErrorMessage(bootstrapStreamErr)
 			break
 		}

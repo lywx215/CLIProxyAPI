@@ -3,6 +3,7 @@ package enterpriseweb
 import (
 	"strings"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	"github.com/tidwall/gjson"
 )
 
@@ -21,11 +22,18 @@ func SameFileIDs(body []byte, ids []string) bool {
 }
 
 func RequestsImageOutput(body []byte) bool {
-	for _, path := range []string{"generationConfig.responseModalities", "generation_config.response_modalities"} {
-		for _, value := range gjson.GetBytes(body, path).Array() {
-			if strings.EqualFold(value.String(), "IMAGE") {
-				return true
-			}
+	for _, path := range []string{"generationConfig.responseModalities", "generationConfig.response_modalities", "generation_config.responseModalities", "generation_config.response_modalities"} {
+		modalities := util.GetGJSONBytesNoCopy(body, path)
+		if !modalities.IsArray() {
+			continue
+		}
+		image := false
+		modalities.ForEach(func(_, value gjson.Result) bool {
+			image = value.Type == gjson.String && strings.EqualFold(value.Str, "IMAGE")
+			return !image
+		})
+		if image {
+			return true
 		}
 	}
 	return false

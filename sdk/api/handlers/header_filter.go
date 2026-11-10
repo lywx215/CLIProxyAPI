@@ -43,6 +43,7 @@ var cpaReservedResponseHeaders = map[string]struct{}{
 	"Access-Control-Allow-Origin":      {},
 	"Access-Control-Expose-Headers":    {},
 	"Access-Control-Max-Age":           {},
+	"X-Cpa-Media-Fallback":             {},
 	"X-Cpa-Trace-Id":                   {},
 }
 

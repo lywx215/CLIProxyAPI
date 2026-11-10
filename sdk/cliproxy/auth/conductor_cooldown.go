@@ -163,12 +163,8 @@ func (m *Manager) setConfigSnapshotLocked(cfg *internalconfig.Config) bool {
 	if homeSessionAliasTTL(previousCfg) != homeSessionAliasTTL(cfg) {
 		m.homeSessionAliases.clear()
 	}
-	wasWebEnabled := m.WebRuntime().Enabled()
-	m.WebRuntime().Configure(cfg.GeminiEnterpriseWeb)
 	m.runtimeConfig.Store(cfg)
-	if wasWebEnabled != m.WebRuntime().Enabled() {
-		m.rescheduleEnterpriseWebChecks()
-	}
+	m.ConfigureEnterpriseWeb(cfg.GeminiEnterpriseWeb)
 	clearedCooldowns := m.clearDisabledCooldownStates(cfg)
 	if clearedCooldowns && oldCooldownStore != nil {
 		m.mu.Lock()

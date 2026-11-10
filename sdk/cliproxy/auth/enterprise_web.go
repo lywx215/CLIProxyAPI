@@ -2,16 +2,25 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"strings"
 	"time"
 
+	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	exec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
 func (m *Manager) WebRuntime() *web.Runtime { return m.webRuntime }
+
+// ConfigureEnterpriseWeb applies hot settings and wakes the credential scheduler.
+func (m *Manager) ConfigureEnterpriseWeb(cfg internalconfig.GeminiEnterpriseWebConfig) {
+	if m.webRuntime.Configure(cfg) {
+		m.rescheduleEnterpriseWebChecks()
+	}
+}
 
 func (m *Manager) rescheduleEnterpriseWebChecks() {
 	m.mu.RLock()
@@ -64,7 +73,7 @@ func (m *Manager) checkEnterpriseWebCookie(ctx context.Context, job *authRefresh
 }
 
 // Invalidate at publication, so watcher and management edits share the same barrier.
-func (m *Manager) invalidateEnterpriseWebCredentialLocked(previous, next *Auth, verifiedRotation bool) {
+func (m *Manager) invalidateEnterpriseWebCredentialLocked(previous, next *Auth, verifiedRotation, preserveEvidence bool) {
 	if previous == nil || next == nil || m.webRuntime == nil || (previous.Provider != web.Provider && next.Provider != web.Provider) {
 		return
 	}
@@ -74,7 +83,7 @@ func (m *Manager) invalidateEnterpriseWebCredentialLocked(previous, next *Auth, 
 		m.webRuntime.ForgetCredential(next.ID)
 	} else if previous.Provider != next.Provider || previous.ProxyURL != next.ProxyURL || oldErr != nil || newErr != nil || old.Fingerprint() != updated.Fingerprint() {
 		if verifiedRotation && oldErr == nil && newErr == nil && previous.Provider == next.Provider && previous.ProxyURL == next.ProxyURL && old.Policy() == updated.Policy() && old.CookieKey() == updated.CookieKey() {
-			m.webRuntime.ReplaceVerifiedCookies(next.ID, old, updated, previous.CredentialVersion, next.CredentialVersion)
+			m.webRuntime.ReplaceVerifiedCookies(next.ID, old, updated, previous.CredentialVersion, next.CredentialVersion, preserveEvidence)
 		} else {
 			m.webRuntime.ForgetCredential(next.ID)
 		}
@@ -114,7 +123,7 @@ func (m *Manager) reconcileEnterpriseWebLoadLocked(previous map[string]*Auth) {
 			continue
 		}
 		if next := m.auths[id]; next != nil {
-			m.invalidateEnterpriseWebCredentialLocked(old, next, false)
+			m.invalidateEnterpriseWebCredentialLocked(old, next, false, false)
 		} else {
 			m.webRuntime.ForgetCredential(id)
 		}
@@ -127,10 +136,23 @@ func (m *Manager) EnterpriseWebModel(model string) bool {
 	names, _ := m.webModels.Load().(map[string]bool)
 	return names[thinking.ParseSuffix(model).ModelName]
 }
-func (m *Manager) routeEnterpriseWeb(ctx context.Context, providers []string, req exec.Request, opts exec.Options) (context.Context, []string, func(), error) {
+func (m *Manager) routeEnterpriseWeb(ctx context.Context, providers []string, req *exec.Request, opts *exec.Options, count bool) (context.Context, []string, func(), error) {
 	done := func() {}
 	if opts.SourceFormat.String() != "gemini" {
 		return ctx, excludeWebProvider(providers), done, nil
+	}
+	if fallback, projected := web.MediaFallbackFrom(ctx); projected {
+		if !m.enterpriseMediaFallbackAllowed(ctx, providers, *req, *opts, count) {
+			if fallback.Reason == web.FallbackWebDisabled {
+				return ctx, nil, done, web.Fail(503, "Media input channel is disabled")
+			}
+			if err := m.checkEnterpriseWebRoutePolicy(authSelectionModelFromOptions(*opts, req.Model), *opts); err != nil {
+				return ctx, nil, done, err
+			}
+			return ctx, nil, done, web.Fail(503, "No enabled Web credential is available for this model")
+		}
+		ctx, providers, err := m.startEnterpriseMediaFallback(ctx, providers, req, opts, "")
+		return ctx, providers, done, err
 	}
 	media := web.HasMediaInContext(ctx, req.Payload)
 	if !media {
@@ -143,17 +165,31 @@ func (m *Manager) routeEnterpriseWeb(ctx context.Context, providers []string, re
 	if !eligible {
 		return ctx, providers, done, nil
 	}
-	if opts.Alt == "countTokens" || exec.Operation(opts) == "count_tokens" {
+	if opts.Alt == "countTokens" || exec.Operation(*opts) == "count_tokens" {
 		return ctx, nil, done, web.Fail(501, "Media token counting is unavailable")
 	}
 	if m.HomeEnabled() {
 		return ctx, nil, done, web.Fail(400, "Media input is unavailable in this execution mode")
 	}
+	selectionModel := authSelectionModelFromOptions(*opts, req.Model)
+	allowFallback := m.enterpriseMediaFallbackAllowed(ctx, providers, *req, *opts, count)
+	if allowFallback && !m.enterpriseWebHasEligibleCredential(ctx, selectionModel, *opts, nil) {
+		reason := web.FallbackNoCredential
+		if web.ExistingLease(ctx) == nil && !m.WebRuntime().Enabled() {
+			reason = web.FallbackWebDisabled
+		}
+		ctx, providers, err := m.startEnterpriseMediaFallback(ctx, providers, req, opts, reason)
+		return ctx, providers, done, err
+	}
 	if web.ExistingLease(ctx) == nil {
 		var lease *web.Lease
 		var e error
-		ctx, lease, e = m.WebRuntime().Acquire(ctx, int64(len(req.Payload)))
+		ctx, lease, e = m.WebRuntime().Acquire(ctx, int64(len(req.Payload)), allowFallback)
 		if e != nil {
+			if allowFallback && web.IsChannelDisabled(e) {
+				ctx, providers, err := m.startEnterpriseMediaFallback(ctx, providers, req, opts, web.FallbackWebDisabled)
+				return ctx, providers, done, err
+			}
 			return ctx, nil, done, e
 		}
 		done = lease.Release
@@ -163,7 +199,16 @@ func (m *Manager) routeEnterpriseWeb(ctx context.Context, providers []string, re
 		done()
 		return ctx, nil, func() {}, errHistory
 	}
-	if errPolicy := m.checkEnterpriseWebRoutePolicy(req.Model, opts); errPolicy != nil {
+	if errPolicy := m.checkEnterpriseWebRoutePolicy(selectionModel, *opts); errPolicy != nil {
+		if allowFallback && !m.enterpriseWebHasEligibleCredential(ctx, selectionModel, *opts, nil) {
+			nextCtx, nextProviders, errFallback := m.startEnterpriseMediaFallback(ctx, providers, req, opts, web.FallbackNoCredential)
+			if errFallback == nil {
+				return nextCtx, nextProviders, done, nil
+			}
+			m.WebRuntime().RecordPreflight(ctx, errFallback)
+			done()
+			return nextCtx, nil, func() {}, errFallback
+		}
 		m.WebRuntime().RecordPreflight(ctx, errPolicy)
 		done()
 		return ctx, nil, func() {}, errPolicy
@@ -196,8 +241,18 @@ func (m *Manager) nextWebPreflightError(account *Auth, opts exec.Options, tried 
 	if pinnedAuthIDFromMetadata(opts.Metadata) != "" {
 		return err, false, true
 	}
+	var rejected webRejectedCookies
 	// Imported duplicates of the failed session cannot serve as its backup.
 	if c, credErr := web.CredentialFrom(account.Metadata); credErr == nil {
+		if web.IsCookieLoginRequired(err) {
+			var earlier *webCookieRejection
+			if errors.As(previous, &earlier) {
+				rejected = earlier.rejected
+			} else {
+				rejected = make(webRejectedCookies)
+			}
+			rejected[sha256.Sum256([]byte(c.Cookies))] = struct{}{}
+		}
 		key := c.CookieKey()
 		m.mu.RLock()
 		for id, candidate := range m.auths {
@@ -211,7 +266,11 @@ func (m *Manager) nextWebPreflightError(account *Auth, opts exec.Options, tried 
 		m.mu.RUnlock()
 	}
 	if !failure.SearchModeMismatch || statusCodeFromError(previous) == 503 {
-		return web.Fail(503, "No available Web credential could authenticate this model request"), true, true
+		next := web.Fail(503, "No available Web credential could authenticate this model request")
+		if rejected != nil {
+			next = &webCookieRejection{error: next, rejected: rejected}
+		}
+		return next, true, true
 	}
 	return err, true, true
 }
@@ -227,7 +286,7 @@ func (m *Manager) enterpriseWebAuthAllowsModel(a *Auth, model string) bool {
 }
 
 func (m *Manager) checkEnterpriseWebRoutePolicy(model string, opts exec.Options) error {
-	pinned, _ := opts.Metadata[exec.PinnedAuthMetadataKey].(string)
+	pinned := pinnedAuthIDFromMetadata(opts.Metadata)
 	found, unclassified, rejected := false, false, false
 	m.mu.RLock()
 	defer m.mu.RUnlock()

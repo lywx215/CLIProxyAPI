@@ -393,7 +393,7 @@ func requestExecutionMetadata(ctx context.Context) map[string]any {
 	if requestPath != "" {
 		meta[coreexecutor.RequestPathMetadataKey] = requestPath
 	}
-	if pinnedAuthID := pinnedAuthIDFromContext(ctx); pinnedAuthID != "" {
+	if pinnedAuthID := PinnedAuthIDFromContext(ctx); pinnedAuthID != "" {
 		meta[coreexecutor.PinnedAuthMetadataKey] = pinnedAuthID
 	}
 	if selectedCallback := selectedAuthIDCallbackFromContext(ctx); selectedCallback != nil {
@@ -807,11 +807,22 @@ func (h *BaseAPIHandler) StartNonStreamingKeepAlive(c *gin.Context, ctx context.
 	}
 
 	stopChan := make(chan struct{})
+	mediaReady := web.MediaResponseReady(ctx)
 	var stopOnce sync.Once
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if mediaReady != nil {
+			// A blank line would commit the response before media routing can set its headers.
+			select {
+			case <-mediaReady:
+			case <-stopChan:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {

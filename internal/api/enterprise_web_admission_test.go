@@ -57,7 +57,7 @@ func TestEnterpriseWebAdmissionAuthenticatesOnceBeforeReserving(t *testing.T) {
 				if media {
 					payload = `{"contents":[{"parts":[{"text":"mixed"},{"inlineData":{"mimeType":"image/png","data":"YQ=="}}]}]}`
 				}
-				req := httptest.NewRequest(http.MethodPost, "/v1beta/models/"+model+":generateContent", strings.NewReader(payload))
+				req := httptest.NewRequest(http.MethodPost, "/v1beta/models/"+model+":countTokens", strings.NewReader(payload))
 				if authorized {
 					req.Header.Set("Authorization", "Bearer synthetic-client")
 				}

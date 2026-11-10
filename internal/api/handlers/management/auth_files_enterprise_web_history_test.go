@@ -29,6 +29,12 @@ func TestEnterpriseWebHistoryManagementConfigAndRuntime(t *testing.T) {
 	if gjson.Get(status(), "history_mode").String() != "single-turn" || len(gjson.Get(status(), "supported_history_modes").Array()) != 2 {
 		t.Fatal("default or advertised modes missing")
 	}
+	for _, reason := range []string{"web_disabled", "no_web_credential"} {
+		counter := gjson.Get(status(), "media_fallback_requests."+reason)
+		if counter.Type != gjson.Number || counter.Int() != 0 {
+			t.Fatal("status must advertise a zero counter", reason, counter.Raw)
+		}
+	}
 	patch(`{"history-mode":"serialized-context"}`, 200)
 	if gjson.Get(status(), "enabled").Bool() || gjson.Get(status(), "history_mode").String() != "serialized-context" {
 		t.Fatal("history setting implicitly enabled Web or failed to apply")

@@ -10,6 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/safemode"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	log "github.com/sirupsen/logrus"
@@ -20,6 +21,7 @@ var corsExposedResponseHeaders = []string{
 	"X-Diag-Request-Id",
 	"X-Diag-Trace-Id",
 	logging.CPATraceIDHeader,
+	web.MediaFallbackHeader,
 	"X-CPA-VERSION",
 	"X-CPA-COMMIT",
 	"X-CPA-BUILD-DATE",

@@ -101,7 +101,7 @@ func TestCookieCheckCadenceAndCredentialChanges(t *testing.T) {
 	assertDue(due)
 	beforeCC := c
 	c.Cookies += "; SIDCC=synthetic-new-cc"
-	r.ReplaceVerifiedCookies("web", beforeCC, c, 1, 2)
+	r.ReplaceVerifiedCookies("web", beforeCC, c, 1, 2, false)
 	assertDue(due)
 	now = due
 	r.recordCookieOutcome("web", 1, c, nil, true, cookieRotationUnauthorized)

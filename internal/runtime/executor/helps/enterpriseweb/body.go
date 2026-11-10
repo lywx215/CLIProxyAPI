@@ -265,6 +265,21 @@ func (s *KeyScanner) Feed(b []byte) bool {
 // ReadBody admits media before buffering its data. Only ordinary Enterprise
 // requests drop empty placeholders; Web validates the original attachment fields.
 func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, beforeMedia ...func() error) ([]byte, context.Context, *Lease, error) {
+	var authorize func() error
+	if len(beforeMedia) > 0 {
+		authorize = beforeMedia[0]
+	}
+	return readBody(ctx, r, length, rt, authorize, nil)
+}
+
+// ReadGenerationBody additionally permits text fallback for native generation.
+// The eligibility callback runs only after positively identifying and
+// authorizing media, before reserving the large request buffer.
+func ReadGenerationBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, authorize func() error, fallbackEligibility func() (allowed, hasCredential bool)) ([]byte, context.Context, *Lease, error) {
+	return readBody(ctx, r, length, rt, authorize, fallbackEligibility)
+}
+
+func readBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, authorize func() error, fallbackEligibility func() (bool, bool)) ([]byte, context.Context, *Lease, error) {
 	settings := rt.admissionConfig(ctx)
 	ctx = context.WithValue(ctx, admissionConfigKey{}, settings)
 	// Until media is classified, preserve the existing ordinary Enterprise limit.
@@ -279,6 +294,9 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 	}
 	scan := KeyScanner{skipEmptyAttachments: true}
 	var lease *Lease
+	var fallbackReason FallbackReason
+	var reserveFallback func(int64) (func(), error)
+	var releaseFallback func()
 	var mediaSeen bool
 	var mediaAuthChecked bool
 	capacity := int64(4096)
@@ -290,6 +308,9 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 	var spool *os.File
 	var total int64
 	defer func() {
+		if releaseFallback != nil {
+			releaseFallback()
+		}
 		if spool != nil {
 			_ = spool.Close()
 			_ = os.Remove(spool.Name())
@@ -318,12 +339,12 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 			if total > maxBodyBytes {
 				return fail(InputFailureFrom(contract.LimitFailure("body", "Request exceeds its configured byte limit", contract.InputLimit{Name: contract.LimitRequestBytes, Observed: total, Maximum: maxBodyBytes, AtLeast: true})))
 			}
-			media := lease == nil && scan.Feed(scratch[:n])
+			media := !mediaSeen && scan.Feed(scratch[:n])
 			mediaSeen = mediaSeen || media
 			if !mediaAuthChecked && (media || scan.emptyAttachmentKey != keyOther) {
 				mediaAuthChecked = true
-				if len(beforeMedia) > 0 && beforeMedia[0] != nil {
-					if err := beforeMedia[0](); err != nil {
+				if authorize != nil {
+					if err := authorize(); err != nil {
 						return fail(err)
 					}
 				}
@@ -337,24 +358,48 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 					return fail(InputFailureFrom(contract.LimitFailure("body", "Media request exceeds its configured byte limit", contract.InputLimit{Name: contract.LimitRequestBytes, Observed: total, Maximum: maxBodyBytes, AtLeast: true})))
 				}
 				var err error
-				ctx, lease, err = rt.Acquire(ctx, length)
-				if err != nil {
-					return fail(err)
+				allowFallback := false
+				if fallbackEligibility != nil {
+					var hasCredential bool
+					allowFallback, hasCredential = fallbackEligibility()
+					if allowFallback && !hasCredential {
+						fallbackReason = FallbackNoCredential
+						if !rt.Enabled() {
+							fallbackReason = FallbackWebDisabled
+						}
+					}
+				}
+				if fallbackReason == "" {
+					ctx, lease, err = rt.Acquire(ctx, length, allowFallback)
+					if allowFallback && IsChannelDisabled(err) {
+						fallbackReason = FallbackWebDisabled
+					} else if err != nil {
+						return fail(err)
+					}
 				}
 				capacity := length
 				if capacity < total {
 					capacity = maxBodyBytes
+				}
+				if fallbackReason != "" {
+					if length < 0 {
+						capacity = min(maxBodyBytes, max(total, 4096))
+					}
+					reserveFallback = rt.reserveProjection(ctx)
+					releaseFallback, err = reserveFallback(capacity)
+					if err != nil {
+						return fail(err)
+					}
 				}
 				next := make([]byte, 0, int(capacity))
 				if spool != nil {
 					if _, err = spool.Seek(0, io.SeekStart); err != nil {
 						return fail(err)
 					}
-					buf := bytes.NewBuffer(next)
-					if _, err = io.Copy(buf, spool); err != nil {
+					next = next[:int(total)-n]
+					if _, err = io.ReadFull(spool, next); err != nil {
 						return fail(err)
 					}
-					next = buf.Bytes()
 				} else {
 					next = append(next, body...)
 				}
@@ -363,8 +408,19 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 			if scan.overflow {
 				return fail(Fail(400, "JSON nesting exceeds its limit"))
 			}
+			if fallbackReason != "" && len(body)+n > cap(body) {
+				capacity = min(maxBodyBytes, max(total, int64(cap(body))*3/2))
+				release, err := reserveFallback(capacity)
+				if err != nil {
+					return fail(err)
+				}
+				next := make([]byte, len(body), int(capacity))
+				copy(next, body)
+				releaseFallback()
+				releaseFallback, body = release, next
+			}
 			// Keep the unclassified prefix bounded, even when text precedes the attachment.
-			if lease == nil && (spool != nil || len(body)+n > 64<<10) {
+			if !mediaSeen && (spool != nil || len(body)+n > 64<<10) {
 				if spool == nil {
 					var err error
 					spool, err = os.CreateTemp("", "cpa-media-prefix-*")
@@ -395,6 +451,28 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 	}
 	if length > 0 && total != length {
 		return fail(Fail(400, "Request body is shorter than its declared length"))
+	}
+	if fallbackReason != "" {
+		if !RequestsImageOutput(body) {
+			projected, clean, err := rt.projectMediaFallback(ctx, body, fallbackReason, reserveFallback)
+			if err != nil {
+				return fail(err)
+			}
+			return clean, projected, nil, nil
+		}
+		// Explicit image output retains the strict Web admission path.
+		if fallbackReason == FallbackWebDisabled {
+			err := newChannelDisabledError()
+			rt.recordPreAdmissionFailure(ctx, "channel_disabled", err)
+			return fail(err)
+		}
+		releaseFallback()
+		releaseFallback = nil
+		var err error
+		ctx, lease, err = rt.Acquire(ctx, length)
+		if err != nil {
+			return fail(err)
+		}
 	}
 	if lease == nil && total > MaxBodyBytes {
 		return fail(InputFailureFrom(contract.LimitFailure("body", "Request exceeds its byte limit", contract.InputLimit{Name: contract.LimitRequestBytes, Observed: total, Maximum: MaxBodyBytes})))

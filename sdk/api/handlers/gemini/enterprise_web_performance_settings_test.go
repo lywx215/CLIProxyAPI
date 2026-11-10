@@ -15,7 +15,10 @@ import (
 
 func init() {
 	enterpriseWebPerformanceSetup = func(m *auth.Manager, cfg *config.Config, enabled bool) gin.HandlerFunc {
-		cfg.GeminiEnterpriseWeb = (config.GeminiEnterpriseWebConfig{Enabled: enabled, HistoryMode: os.Getenv("ENTERPRISE_WEB_BENCH_HISTORY_MODE")}).WithDefaults()
+		cfg.GeminiEnterpriseWeb = (config.GeminiEnterpriseWebConfig{
+			Enabled: enabled, HistoryMode: os.Getenv("ENTERPRISE_WEB_BENCH_HISTORY_MODE"),
+			CookieCCPollingEnabled: enabled && os.Getenv("ENTERPRISE_WEB_BENCH_CC_POLLING") == "1",
+		}).WithDefaults()
 		m.SetConfig(cfg)
 		c := web.Credential{ModelPolicy: web.PolicyExcludeArgon, Revision: 1, AvailableModels: []web.AvailableModel{{DisplayName: "gemini-3.8-flash", ID: "gemini-3.8-flash"}}}
 		_ = c.SetCookies("SID=synthetic; SAPISID=synthetic-signing")

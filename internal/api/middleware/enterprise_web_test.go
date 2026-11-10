@@ -55,7 +55,11 @@ func TestEnterpriseWebAdmissionErrorsPreserveSafeClassifications(t *testing.T) {
 			router.Use(EnterpriseWebBodyAdmission(manager))
 			router.POST("/v1beta/models/*action", func(c *gin.Context) { t.Error("rejected body reached execution") })
 			body := `{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"text/plain","data":"eA=="}}]}]}`
-			request := httptest.NewRequest(http.MethodPost, "/v1beta/models/"+model+":generateContent", strings.NewReader(body))
+			action := "generateContent"
+			if tc.name == "capacity" || tc.name == "closed" {
+				action = "countTokens"
+			}
+			request := httptest.NewRequest(http.MethodPost, "/v1beta/models/"+model+":"+action, strings.NewReader(body))
 			if tc.name == "invalid-length" {
 				request.ContentLength++
 			}

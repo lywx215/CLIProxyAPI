@@ -23,6 +23,10 @@ type Runtime struct {
 	tokens               map[string]tokenState
 	cookieChecks         map[string]cookieCheckState
 	checkingCookie       bool
+	ccCommitMu           sync.RWMutex
+	ccEpoch              uint64
+	ccEnabledAt          time.Time
+	ccDeferrals          uint64
 	models               map[string]map[string]bool
 	credentialEpochs     map[string]uint64
 	modelEpochs          map[string]uint64
@@ -32,6 +36,8 @@ type Runtime struct {
 	rejectedConcurrency  uint64
 	rejectedMemory       uint64
 	preflightRejections  map[string]uint64
+	fallbackDisabled     uint64
+	fallbackNoCredential uint64
 	enabled              atomic.Bool
 	now                  func() time.Time
 }
@@ -46,6 +52,7 @@ type Lease struct {
 	runtime        *Runtime
 	reserved       int64
 	released       bool
+	generation     bool
 	once           sync.Once
 	config         config.GeminiEnterpriseWebConfig
 	rejectionOnce  sync.Once
@@ -71,12 +78,24 @@ func (r *Runtime) SetCookieResolver(resolve func(CookieSelection, Credential) (C
 func (r *Runtime) SetCookieRotationCommitter(commit func(context.Context, string, uint64, Credential, Credential) (Credential, error)) {
 	r.commitCookieRotation = commit
 }
-func (r *Runtime) Configure(c config.GeminiEnterpriseWebConfig) {
+
+// Configure reports whether the cookie scheduler must reconsider its deadlines.
+func (r *Runtime) Configure(c config.GeminiEnterpriseWebConfig) bool {
 	c = c.WithDefaults()
+	r.ccCommitMu.Lock()
+	defer r.ccCommitMu.Unlock()
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	webChanged := r.settings.Enabled != c.Enabled
+	ccWasActive := r.cookieCCActiveLocked()
 	r.settings = c
 	r.enabled.Store(c.Enabled)
-	r.mu.Unlock()
+	ccChanged := ccWasActive != r.cookieCCActiveLocked()
+	if ccChanged {
+		r.ccEpoch++
+		r.ccEnabledAt = r.now()
+	}
+	return webChanged || ccChanged
 }
 func (r *Runtime) Enabled() bool               { return r != nil && r.enabled.Load() }
 func ExistingLease(ctx context.Context) *Lease { v, _ := ctx.Value(leaseKey{}).(*Lease); return v }
@@ -86,7 +105,7 @@ func WithBody(ctx context.Context, b []byte) context.Context {
 func Body(ctx context.Context) ([]byte, bool) { v, ok := ctx.Value(bodyKey{}).([]byte); return v, ok }
 
 // Reserve the complete processing envelope before reading the large media value.
-func (r *Runtime) Acquire(ctx context.Context, bodyBytes int64) (context.Context, *Lease, error) {
+func (r *Runtime) Acquire(ctx context.Context, bodyBytes int64, allowFallback ...bool) (context.Context, *Lease, error) {
 	if old := ExistingLease(ctx); old != nil {
 		return ctx, old, nil
 	}
@@ -107,8 +126,10 @@ func (r *Runtime) Acquire(ctx context.Context, bodyBytes int64) (context.Context
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.settings.Enabled {
-		r.incrementPreflightLocked("channel_disabled")
-		return ctx, nil, Fail(503, "Media input channel is disabled")
+		if len(allowFallback) == 0 || !allowFallback[0] {
+			r.incrementPreflightLocked("channel_disabled")
+		}
+		return ctx, nil, newChannelDisabledError()
 	}
 	if r.active >= r.settings.MaxConcurrent {
 		r.rejectedConcurrency++
@@ -120,7 +141,7 @@ func (r *Runtime) Acquire(ctx context.Context, bodyBytes int64) (context.Context
 		r.incrementPreflightLocked("capacity_exhausted")
 		return ctx, nil, Fail(429, "Media buffer budget is exhausted")
 	}
-	l := &Lease{runtime: r, reserved: amount, config: settings}
+	l := &Lease{runtime: r, reserved: amount, config: settings, generation: true}
 	r.active++
 	r.used += amount
 	return context.WithValue(ctx, leaseKey{}, l), l, nil
@@ -133,7 +154,9 @@ func (l *Lease) Release() {
 		r := l.runtime
 		r.mu.Lock()
 		l.released = true
-		r.active--
+		if l.generation {
+			r.active--
+		}
 		r.used -= l.reserved
 		r.mu.Unlock()
 	})
@@ -143,8 +166,9 @@ func (l *Lease) Budget() int64 {
 	defer l.runtime.mu.Unlock()
 	return l.reserved
 }
-func (l *Lease) HistoryMode() string { return l.config.HistoryMode }
-func (l *Lease) MarkSessionStarted() { l.sessionStarted.Store(true) }
+func (l *Lease) HistoryMode() string  { return l.config.HistoryMode }
+func (l *Lease) MarkSessionStarted()  { l.sessionStarted.Store(true) }
+func (l *Lease) SessionStarted() bool { return l != nil && l.sessionStarted.Load() }
 func (r *Runtime) Status() map[string]any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -154,11 +178,16 @@ func (r *Runtime) Status() map[string]any {
 	}
 	return map[string]any{
 		"enabled": r.settings.Enabled, "active_requests": r.active, "inflight_bytes": r.used,
-		"max_concurrent": r.settings.MaxConcurrent, "max_inflight_bytes": r.settings.MaxInflightBytes,
+		"cookie_cc_polling_enabled":  r.settings.CookieCCPollingEnabled,
+		"cookie_cc_polling_deferred": r.ccDeferrals,
+		"max_concurrent":             r.settings.MaxConcurrent, "max_inflight_bytes": r.settings.MaxInflightBytes,
 		"draining": !r.settings.Enabled && r.active > 0, "rejected_concurrency": r.rejectedConcurrency, "rejected_memory": r.rejectedMemory,
 		"history_mode": r.settings.HistoryMode, "supported_history_modes": []string{config.EnterpriseWebSingleTurn, config.EnterpriseWebSerializedContext},
 		"history_count_policy": "unlimited", "supports_model_history_inline_data": true,
 		"preflight_rejections": rejections, "input_limits": r.settings.InputLimits,
+		"media_fallback_requests": map[string]uint64{
+			string(FallbackWebDisabled): r.fallbackDisabled, string(FallbackNoCredential): r.fallbackNoCredential,
+		},
 	}
 }
 func (r *Runtime) AuthStatus(key string) map[string]any {
@@ -185,11 +214,15 @@ func (r *Runtime) ForgetCredential(id string) {
 
 // ReplaceVerifiedCookies invalidates authentication caches while retaining the
 // scheduled rotation deadline across an already verified automatic Cookie update.
-func (r *Runtime) ReplaceVerifiedCookies(id string, previous, next Credential, previousVersion, nextVersion uint64) {
+func (r *Runtime) ReplaceVerifiedCookies(id string, previous, next Credential, previousVersion, nextVersion uint64, preserveEvidence bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	check, ok := r.cookieChecks[cookieCheckKey(id, previous)]
 	versions := r.cookieVersions[id]
+	var evidence map[string]bool
+	if preserveEvidence {
+		evidence = r.models[modelEvidenceKey(id, previous)]
+	}
 	r.forgetCredentialLocked(id)
 	if previousVersion != 0 && nextVersion == previousVersion+1 {
 		if versions.latest != previousVersion || versions.first == 0 {
@@ -200,6 +233,9 @@ func (r *Runtime) ReplaceVerifiedCookies(id string, previous, next Credential, p
 	}
 	if ok && check.status != "relogin_required" {
 		r.cookieChecks[cookieCheckKey(id, next)] = check
+	}
+	if len(evidence) != 0 {
+		r.models[modelEvidenceKey(id, next)] = evidence
 	}
 }
 
@@ -238,7 +274,8 @@ func (r *Runtime) CredentialStatus(id string, c Credential) map[string]any {
 	}
 	sort.Strings(ids)
 	status := map[string]any{"auth_verified": latest.Token != "" && r.now().Before(latest.Expires), "verified_at": latest.Verified, "tested_model_ids": ids}
-	if check, ok := r.cookieChecks[cookieCheckKey(id, c)]; ok {
+	check := r.cookieChecks[cookieCheckKey(id, c)]
+	if check.status != "" {
 		status["cookie_check_status"] = check.status
 		status["cookie_checked_at"] = check.at
 		if !check.verified.IsZero() {
@@ -252,6 +289,9 @@ func (r *Runtime) CredentialStatus(id string, c Credential) map[string]any {
 		}
 	} else if !latest.Verified.IsZero() {
 		status["cookie_last_verified_at"] = latest.Verified
+	}
+	if r.settings.CookieCCPollingEnabled || !c.LastCCRenewedAt.IsZero() {
+		status["cookie_cc_check"] = r.cookieCCStatusLocked(id, c, check)
 	}
 	return status
 }

@@ -48,7 +48,8 @@ func RequestLoggingMiddleware(logger logging.RequestLogger) gin.HandlerFunc {
 		}
 
 		loggerEnabled := logger.IsEnabled()
-		captureBody := shouldCaptureRequestBody(loggerEnabled, c.Request) && !c.GetBool("enterprise_web_body_managed")
+		managedMedia := c.GetBool("enterprise_web_body_managed")
+		captureBody := shouldCaptureRequestBody(loggerEnabled, c.Request) && !managedMedia
 
 		// Capture request information
 		requestInfo, err := captureRequestInfo(c, captureBody)
@@ -59,9 +60,14 @@ func RequestLoggingMiddleware(logger logging.RequestLogger) gin.HandlerFunc {
 			return
 		}
 
-		if c.GetBool("enterprise_web_body_managed") {
-			body, _ := web.Body(c.Request.Context())
-			requestInfo.Body = []byte(fmt.Sprintf(`{"inline_media":"omitted","request_bytes":%d}`, len(body)))
+		if managedMedia {
+			ctx := c.Request.Context()
+			if info, ok := web.MediaFallbackFrom(ctx); ok {
+				requestInfo.Body = []byte(fmt.Sprintf(`{"inline_media":"omitted","request_bytes":%d,"removed_attachments":%d,"media_fallback":"%s"}`, info.RequestBytes, info.RemovedAttachments, info.HeaderValue()))
+			} else {
+				body, _ := web.Body(ctx)
+				requestInfo.Body = []byte(fmt.Sprintf(`{"inline_media":"omitted","request_bytes":%d}`, len(body)))
+			}
 		}
 
 		// Create response writer wrapper
@@ -71,7 +77,9 @@ func RequestLoggingMiddleware(logger logging.RequestLogger) gin.HandlerFunc {
 		}
 		c.Writer = wrapper
 		attachRequestLogSources(c, logger, loggerEnabled)
-		attachDeferredRequestBodyCapture(c.Request, logger, requestInfo, loggerEnabled, captureBody)
+		if !managedMedia {
+			attachDeferredRequestBodyCapture(c.Request, logger, requestInfo, loggerEnabled, captureBody)
+		}
 
 		// Process the request
 		c.Next()

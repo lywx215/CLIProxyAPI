@@ -99,6 +99,7 @@ func applyEnterpriseWebEdit(a *coreauth.Auth, credential *web.Credential, req en
 	if credential.Fingerprint() != previousFingerprint {
 		credential.ClearCatalog()
 		credential.LastRenewedAt = time.Time{}
+		credential.LastCCRenewedAt = time.Time{}
 	}
 	return credential.Validate()
 }
@@ -206,6 +207,12 @@ func (h *Handler) addEnterpriseWebSummary(a *coreauth.Auth) map[string]any {
 	if h.authManager != nil {
 		for k, v := range h.authManager.WebRuntime().CredentialStatus(a.ID, credential) {
 			summary[k] = v
+		}
+	}
+	if a.Disabled || a.Status == coreauth.StatusDisabled {
+		if cc, ok := summary["cookie_cc_check"].(map[string]any); ok {
+			cc["status"], cc["reason"] = "paused", "credential_disabled"
+			delete(cc, "next_check_at")
 		}
 	}
 	return summary

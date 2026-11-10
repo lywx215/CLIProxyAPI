@@ -6,6 +6,7 @@
 package gemini
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -196,6 +197,23 @@ func (h *GeminiAPIHandler) VideoDownload(c *gin.Context) {
 	}
 }
 
+func (h *GeminiAPIHandler) generationContext(c *gin.Context, model string, rawJSON []byte) context.Context {
+	ctx := c.Request.Context()
+	if _, cached := web.Body(ctx); cached {
+		if !c.GetBool("enterprise_web_body_managed") {
+			return ctx
+		}
+	} else {
+		// SDK users can mount the native handler without the body middleware.
+		if _, eligible := handlers.EnterpriseWebNativeModel(h.AuthManager, model); !eligible || !web.HasMedia(rawJSON) {
+			return context.Background()
+		}
+	}
+	return web.WithMediaFallbackDelivery(ctx, func(info web.MediaFallback) {
+		c.Header(web.MediaFallbackHeader, info.HeaderValue())
+	})
+}
+
 // handleStreamGenerateContent handles streaming content generation requests for Gemini models.
 // This function establishes a Server-Sent Events connection and streams the generated content
 // back to the client in real-time. It supports both SSE format and direct streaming based
@@ -224,7 +242,7 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 	throttler := handlers.NewRequestThrottler(h.Cfg)
 	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
-	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
+	cliCtx, cliCancel := h.GetContextWithCancel(h, c, h.generationContext(c, modelName, rawJSON))
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 	flusher = c.Writer.(http.Flusher)
 
@@ -346,7 +364,7 @@ func (h *GeminiAPIHandler) handleGenerateContent(c *gin.Context, modelName strin
 	throttler := handlers.NewRequestThrottler(h.Cfg)
 	defer handlers.ObserveRequestThrottle(c.Request.Context(), throttler)()
 
-	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
+	cliCtx, cliCancel := h.GetContextWithCancel(h, c, h.generationContext(c, modelName, rawJSON))
 	stopKeepAlive := h.StartNonStreamingKeepAlive(c, cliCtx)
 	resp, upstreamHeaders, errMsg := h.ExecuteWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
 	stopKeepAlive()

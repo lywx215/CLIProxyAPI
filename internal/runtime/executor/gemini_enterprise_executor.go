@@ -13,6 +13,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	enterprise "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -262,7 +263,12 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	// Never record bearer credentials or raw upstream assistToken/sessionInfo in request logs.
 	headers := request.Header.Clone()
 	headers.Del("Authorization")
-	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{URL: request.URL.String(), Method: request.Method, Headers: headers, Body: body, Provider: e.Identifier(), AuthID: auth.ID, AuthLabel: auth.Label})
+	logBody := body
+	if _, fallback := web.MediaFallbackFrom(ctx); fallback {
+		// Media requests retain only a bounded summary, including on the text route.
+		logBody = nil
+	}
+	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{URL: request.URL.String(), Method: request.Method, Headers: headers, Body: logBody, Provider: e.Identifier(), AuthID: auth.ID, AuthLabel: auth.Label})
 	client := reporter.TrackHTTPClientRoundTripOnly(newHTTPClient(ctx, e.cfg, auth, 0))
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	request = helps.ObserveEnterpriseRequest(ctx, request, finalModel)

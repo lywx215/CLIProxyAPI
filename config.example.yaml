@@ -376,10 +376,13 @@ client:
 upstream:
   # Optional cookie-based attachment and image-input channel. Plain text stays on Enterprise.
   # Limits apply to new admissions; disabling drains requests already admitted.
+  # Native generation strips attachments when Web is disabled or has no eligible credential.
   gemini-enterprise-web:
     # Keep the single-turn default; opt in to self-contained serialized history.
     history-mode: single-turn
     enabled: false
+    # Opt in to independent 60-second CC Cookie checks for enabled Web credentials.
+    cookie-cc-polling-enabled: false
     max-concurrent: 2
     max-inflight-bytes: 268435456
     # Parser limits are independent of Google quotas and apply to new requests.

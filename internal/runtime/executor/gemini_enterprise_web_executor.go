@@ -58,7 +58,7 @@ func (e *GeminiEnterpriseWebExecutor) CheckCookie(ctx context.Context, a *auth.A
 	}
 	release := e.runtime.ClaimCookieCheck()
 	if release == nil {
-		return false
+		return e.runtime.DeferCookieCC(a.ID, c)
 	}
 	defer release()
 	err = e.runtime.CheckCookie(ctx, &c, e.client(ctx, a), webCookieSelection(a), a.ProxyURL+":"+e.cfg.ProxyURL+":")
@@ -301,6 +301,7 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 	}
 	exec.MarkUpstreamAttempt(ctx)
 	lease.MarkSessionStarted()
+	web.PublishWebSessionStarted(ctx)
 	evidence.stopDelivery = usage.SupportObservedStreamDelivery(ctx)
 	observation.Stage(ctx, "session")
 	sessionResponse, errSession := web.PostJSON(ctx, client, credential, token, "widgetCreateSession", envelope("createSessionRequest", map[string]any{"session": map[string]string{"name": "-", "displayName": ""}}))

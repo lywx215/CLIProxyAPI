@@ -137,9 +137,10 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	normalized := m.normalizeProviders(providers)
+	requestedProviders := normalized
 	var webDone func()
 	var webErr error
-	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, &req, &opts, false)
 	if webErr != nil {
 		return cliproxyexecutor.Response{}, webErr
 	}
@@ -182,6 +183,14 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 		if errExec == nil {
 			return resp, nil
 		}
+		if nextCtx, nextProviders, downgraded, errFallback := m.lateEnterpriseMediaFallback(ctx, requestedProviders, &req, &opts, errExec); downgraded {
+			ctx, normalized = nextCtx, nextProviders
+			if errFallback != nil {
+				return cliproxyexecutor.Response{}, errFallback
+			}
+			lastErr, preferredUpstreamErr, attempt = nil, nil, -1
+			continue
+		}
 		if isRequestTerminatedError(errExec) || isRequestStopError(errExec) {
 			return cliproxyexecutor.Response{}, unwrapExecutionBoundaryError(errExec)
 		}
@@ -212,9 +221,9 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 				return resp, nil
 			}
 		}
-		return cliproxyexecutor.Response{}, lastErr
+		return cliproxyexecutor.Response{}, enterpriseMediaFallbackExecutionError(ctx, lastErr)
 	}
-	return cliproxyexecutor.Response{}, &Error{Code: "auth_not_found", Message: "no auth available"}
+	return cliproxyexecutor.Response{}, enterpriseMediaFallbackExecutionError(ctx, &Error{Code: "auth_not_found", Message: "no auth available"})
 }
 
 // It supports multiple providers for the same model and round-robins the starting provider per model.
@@ -224,7 +233,7 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 	normalized := m.normalizeProviders(providers)
 	var webDone func()
 	var webErr error
-	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, &req, &opts, true)
 	if webErr != nil {
 		return cliproxyexecutor.Response{}, webErr
 	}
@@ -304,9 +313,10 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 	}
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	normalized := m.normalizeProviders(providers)
+	requestedProviders := normalized
 	var webDone func()
 	var webErr error
-	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, req, opts)
+	ctx, normalized, webDone, webErr = m.routeEnterpriseWeb(ctx, normalized, &req, &opts, false)
 	if webErr != nil {
 		return nil, webErr
 	}
@@ -354,8 +364,16 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 		roundOpts := withAttemptedAuthTracker(opts, roundAttempted)
 		result, errStream := m.executeStreamMixedOnce(ctx, normalized, req, roundOpts, maxRetryCredentials, &homeRetryLimit, attempt, defaultRequestRetry)
 		if errStream == nil {
-			webHandedOff = true
+			webHandedOff = web.ExistingLease(ctx) != nil
 			return result, nil
+		}
+		if nextCtx, nextProviders, downgraded, errFallback := m.lateEnterpriseMediaFallback(ctx, requestedProviders, &req, &opts, errStream); downgraded {
+			ctx, normalized = nextCtx, nextProviders
+			if errFallback != nil {
+				return nil, errFallback
+			}
+			lastErr, preferredUpstreamErr, attempt = nil, nil, 0
+			continue
 		}
 		if hasUpstreamExecutionAttempt(errStream) {
 			preferredUpstreamErr = errStream
@@ -411,9 +429,9 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 			m.WebRuntime().RecordPreflight(ctx, lastErr)
 			return streamErrorResult(bootstrapErr.Headers(), lastErr), nil
 		}
-		return nil, lastErr
+		return nil, enterpriseMediaFallbackExecutionError(ctx, lastErr)
 	}
-	return nil, &Error{Code: "auth_not_found", Message: "no auth available"}
+	return nil, enterpriseMediaFallbackExecutionError(ctx, &Error{Code: "auth_not_found", Message: "no auth available"})
 }
 
 type requestToFormatResolver interface {
@@ -442,6 +460,14 @@ func applyRequestAfterAuthInterceptor(ctx context.Context, executor ProviderExec
 	})
 	opts.Headers = mergeRequestHeaders(opts.Headers, resp.Headers, resp.ClearHeaders)
 	if len(resp.Body) > 0 {
+		if _, fallback := web.MediaFallbackFrom(ctx); fallback && !resp.Terminate {
+			if web.HasMedia(resp.Body) {
+				return req, opts, mediaFallbackReintroducedError()
+			}
+			if err := web.ValidateMediaFallback(ctx, resp.Body); err != nil {
+				return req, opts, err
+			}
+		}
 		req.Payload = bytes.Clone(resp.Body)
 		opts.OriginalRequest = bytes.Clone(resp.Body)
 	}

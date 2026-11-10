@@ -119,8 +119,15 @@ followed only by binding validation and transport framing.
 | Malformed or unsupported history | 400 |
 | Body bytes, history text/structure or attachment limit | 413 |
 | Budget/concurrency unavailable | 429 |
-| Channel disabled or no eligible credential | 503 |
+| Channel disabled or no eligible Web credential | Text fallback for eligible native generation requests |
+| Text fallback without usable user text | 400 |
+| Text fallback without an eligible Enterprise model or credential | 503 |
 | Credential replaced or classification changed before submission | 409 |
+
+In a text fallback, the proxy removes media from all turns and keeps the same
+model on ordinary Enterprise. If the latest user turn has no usable input, the
+most recent visible user text is reused. `X-CPA-Media-Fallback` describes the
+decision and `media_fallback_requests` counts it by reason.
 
 The existing status endpoint exposes `history_mode`, `supported_history_modes`,
 `history_count_policy: unlimited`, `supports_model_history_inline_data: true`

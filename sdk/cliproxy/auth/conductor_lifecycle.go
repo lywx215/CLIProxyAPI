@@ -177,7 +177,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	m.attachEnterpriseQuotaLocked(authClone)
 	auth.enterpriseQuota = authClone.enterpriseQuota
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
-	m.invalidateEnterpriseWebCredentialLocked(m.auths[auth.ID], authClone, false)
+	m.invalidateEnterpriseWebCredentialLocked(m.auths[auth.ID], authClone, false, false)
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
@@ -275,6 +275,17 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		return nil, errMutation
 	}
 	defer releaseMutation()
+	var releaseCCCommit func()
+	if mode == updateModeEnterpriseWeb {
+		var err error
+		releaseCCCommit, err = m.WebRuntime().LockCookieCCCommit(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if releaseCCCommit != nil {
+			defer releaseCCCommit()
+		}
+	}
 	m.mu.Lock()
 	existing, ok := m.auths[auth.ID]
 	if !ok || existing == nil {
@@ -498,7 +509,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	m.attachEnterpriseQuotaLocked(authClone)
 	auth.enterpriseQuota = authClone.enterpriseQuota
 	auth.EnterpriseQuotaIdentity = authClone.EnterpriseQuotaIdentity
-	m.invalidateEnterpriseWebCredentialLocked(existing, authClone, verifiedWebRotation)
+	m.invalidateEnterpriseWebCredentialLocked(existing, authClone, verifiedWebRotation, releaseCCCommit != nil)
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
@@ -512,6 +523,9 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		schedulerSnapshot = authClone.Clone()
 	}
 	m.mu.Unlock()
+	if releaseCCCommit != nil {
+		releaseCCCommit()
+	}
 	releaseMutation()
 	m.publishEnterpriseSnapshots(enterpriseSnapshots)
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {

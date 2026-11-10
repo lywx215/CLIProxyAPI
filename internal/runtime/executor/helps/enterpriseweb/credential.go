@@ -36,6 +36,7 @@ type Credential struct {
 	CatalogFingerprint string           `json:"catalog_fingerprint,omitempty"`
 	CatalogUpdatedAt   time.Time        `json:"catalog_updated_at,omitempty"`
 	LastRenewedAt      time.Time        `json:"cookie_last_renewed_at,omitzero"`
+	LastCCRenewedAt    time.Time        `json:"cookie_cc_last_renewed_at,omitzero"`
 	Revision           uint64           `json:"revision"`
 }
 

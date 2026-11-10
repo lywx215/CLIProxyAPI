@@ -466,7 +466,7 @@ func phaseOneManager(t *testing.T) (*auth.Manager, *phaseOnePlainExecutor, *Gemi
 	return m, plain, e, ctx, f
 }
 
-func TestEnterpriseWebManagerRoutesAndNoCrossChannelFallback(t *testing.T) {
+func TestEnterpriseWebManagerRoutesNativeMediaAndTextFallback(t *testing.T) {
 	m, plain, e, ctx, f := phaseOneManager(t)
 	providers := []string{"gemini-enterprise", web.Provider}
 	text := exec.Request{Model: "gemini-3.8-flash", Payload: []byte(`{"contents":[{"parts":[{"text":"ordinary"}]}]}`)}
@@ -479,17 +479,17 @@ func TestEnterpriseWebManagerRoutesAndNoCrossChannelFallback(t *testing.T) {
 	cfg := *e.cfg
 	cfg.GeminiEnterpriseWeb.Enabled = false
 	m.SetConfig(&cfg)
-	if _, err := m.Execute(ctx, providers, phaseOneRequest("image/png"), phaseOneOptions()); err == nil || plain.calls.Load() != 1 {
-		t.Fatal("disabled media fell back to text")
+	if _, err := m.Execute(ctx, providers, phaseOneRequest("image/png"), phaseOneOptions()); err != nil || plain.calls.Load() != 2 || f.calls["widgetStreamAssist"] != 1 {
+		t.Fatal("disabled Web did not fall back to text", err)
 	}
-	if _, err := m.Execute(ctx, providers, text, phaseOneOptions()); err != nil || plain.calls.Load() != 2 {
+	if _, err := m.Execute(ctx, providers, text, phaseOneOptions()); err != nil || plain.calls.Load() != 3 {
 		t.Fatal("disabled Web broke plain text", err)
 	}
 	cfg.GeminiEnterpriseWeb.Enabled = true
 	m.SetConfig(&cfg)
 	payload := phaseOneRequest("image/png")
 	payload.Payload = []byte(`{"contents":[{"role":"user","parts":[{"text":"old"}]},{"role":"model","parts":[{"text":"reply"}]},` + string(payload.Payload[len(`{"contents":[`):]))
-	if _, err := m.Execute(ctx, providers, payload, phaseOneOptions()); err == nil || plain.calls.Load() != 2 {
+	if _, err := m.Execute(ctx, providers, payload, phaseOneOptions()); err == nil || plain.calls.Load() != 3 {
 		t.Fatal("media history not rejected")
 	}
 	req := phaseOneRequest("image/png")
@@ -619,6 +619,7 @@ func testEnterpriseWebManagerSwitchesOnlyBeforeSession(t *testing.T, serialized 
 					return err
 				}
 				err := execute()
+				var wantPlainCalls int32
 				switch scenario {
 				case "rejected-cookie", "search-index":
 					if err != nil || primary == 0 || backupCalls == 0 || !strings.Contains(generatedWith, "SID=synthetic-backup") ||
@@ -634,6 +635,11 @@ func testEnterpriseWebManagerSwitchesOnlyBeforeSession(t *testing.T, serialized 
 					if err == nil || backupCalls != 0 || f.calls["widgetStreamAssist"] != 1 {
 						t.Fatal("uncertain generation replayed", err, backupCalls, f.calls)
 					}
+				case "wrong-class":
+					wantPlainCalls = 1
+					if err != nil || primary != 1 || backupCalls != 0 || f.calls["widgetCreateSession"] != 0 {
+						t.Fatal("no eligible backup did not fall back to text", err, primary, backupCalls, f.calls)
+					}
 				default:
 					want := 503
 					if scenario == "pinned" {
@@ -647,7 +653,7 @@ func testEnterpriseWebManagerSwitchesOnlyBeforeSession(t *testing.T, serialized 
 						t.Fatal("unexpected rejection", err, backupCalls, f.calls)
 					}
 				}
-				if plain.calls.Load() != 0 || e.runtime.Status()["active_requests"] != 0 || e.runtime.Status()["inflight_bytes"] != int64(0) {
+				if plain.calls.Load() != wantPlainCalls || e.runtime.Status()["active_requests"] != 0 || e.runtime.Status()["inflight_bytes"] != int64(0) {
 					t.Fatal("request left the Web channel or leaked resources", e.runtime.Status())
 				}
 			})

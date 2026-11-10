@@ -20,6 +20,7 @@ type cookieCheckState struct {
 	next     time.Time
 	verified time.Time
 	reason   cookieCheckReason
+	cc       cookieCCCheckState
 }
 
 type cookieCheckReason string
@@ -112,12 +113,7 @@ func (r *Runtime) recordCookieOutcome(id string, epoch uint64, c Credential, err
 	interval := cookieCheckInterval + cookieCheckOffset(id)
 	var loginErr *loginRequiredError
 	if errors.As(err, &loginErr) {
-		state.status, state.next, state.reason = "relogin_required", time.Time{}, cookieSessionRejected
-		for key := range r.tokens {
-			if strings.HasPrefix(key, id+":") {
-				delete(r.tokens, key)
-			}
-		}
+		r.markCookieReloginLocked(id, &state)
 	} else if err != nil {
 		state.status, state.reason, interval = "check_failed", cookieTemporaryFailure, cookieCheckBackoff
 		switch failureStatus(err) {
@@ -135,6 +131,9 @@ func (r *Runtime) recordCookieOutcome(id string, epoch uint64, c Credential, err
 		}
 	} else {
 		state.verified = state.at
+		if !scheduled && (previousStatus == "relogin_required" || state.cc.status == cookieCCUnsupported) {
+			state.cc = cookieCCCheckState{epoch: r.ccEpoch, next: state.at.Add(cookieCCOffset(id))}
+		}
 		if degraded != "" {
 			state.status, state.reason, interval = "renewal_degraded", degraded, cookieCheckBackoff
 		}
@@ -143,6 +142,15 @@ func (r *Runtime) recordCookieOutcome(id string, epoch uint64, c Credential, err
 		state.next = state.at.Add(interval)
 	}
 	r.cookieChecks[key] = state
+}
+
+func (r *Runtime) markCookieReloginLocked(id string, state *cookieCheckState) {
+	state.status, state.next, state.reason = "relogin_required", time.Time{}, cookieSessionRejected
+	for key := range r.tokens {
+		if strings.HasPrefix(key, id+":") {
+			delete(r.tokens, key)
+		}
+	}
 }
 
 func (r *Runtime) CookieReloginRequired(id string, c Credential) bool {
@@ -164,6 +172,9 @@ func (r *Runtime) NextCookieCheck(id string, c Credential, now time.Time) (time.
 	}
 	if check.next.IsZero() {
 		return now, true
+	}
+	if nextCC := r.cookieCCNextLocked(id, check); !nextCC.IsZero() && nextCC.Before(check.next) {
+		return nextCC, true
 	}
 	return check.next, true
 }

@@ -176,7 +176,8 @@ func queryFromContext(ctx context.Context) url.Values {
 	return nil
 }
 
-func pinnedAuthIDFromContext(ctx context.Context) string {
+// PinnedAuthIDFromContext returns a trusted execution pin, if present.
+func PinnedAuthIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}

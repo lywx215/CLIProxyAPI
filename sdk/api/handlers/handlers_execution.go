@@ -54,6 +54,9 @@ func (h *BaseAPIHandler) executeWithAuthManagerFormats(ctx context.Context, entr
 		return nil, nil, errMsg
 	}
 	if routeDecision.ExecutorPluginID != "" {
+		if _, projected := web.MediaFallbackFrom(ctx); projected {
+			return nil, nil, mediaFallbackPluginRouteError()
+		}
 		return h.executeWithPluginExecutor(ctx, entryProtocol, responseProtocol, modelName, originalRequestedModel, rawJSON, alt, routeDecision.ExecutorPluginID, execOptions)
 	}
 	providers, normalizedModel, errMsg := h.providersForExecution(modelName, originalRequestedModel, allowImageModel, routeDecision, execOptions)
@@ -81,13 +84,9 @@ func (h *BaseAPIHandler) executeWithAuthManagerFormats(ctx context.Context, entr
 	setReasoningEffortMetadata(reqMeta, entryProtocol, normalizedModel, rawJSON)
 	setServiceTierMetadata(reqMeta, rawJSON)
 	setGenerateMetadata(reqMeta, rawJSON)
-	if limit := parseModelTokenLimit(normalizedModel); limit > 0 && !(entryProtocol == "gemini" && web.HasMediaInContext(ctx, rawJSON)) {
-		if estimated := len(rawJSON) / 4; estimated > limit {
-			return nil, nil, &interfaces.ErrorMessage{
-				StatusCode: http.StatusBadRequest,
-				Error:      fmt.Errorf("estimated input size (%d tokens) exceeds limit (%d) for model %q", estimated, limit, normalizedModel),
-			}
-		}
+	ctx, errEstimate := checkModelTokenEstimate(ctx, entryProtocol, normalizedModel, rawJSON)
+	if errEstimate != nil {
+		return nil, nil, &interfaces.ErrorMessage{StatusCode: http.StatusBadRequest, Error: errEstimate}
 	}
 	payload := rawJSON
 	if len(payload) == 0 {
@@ -126,6 +125,9 @@ func (h *BaseAPIHandler) executeWithAuthManagerFormats(ctx context.Context, entr
 		errMsg := executionErrorMessage(err)
 		lifecycle.completeError(ctx, errMsg)
 		return nil, nil, errMsg
+	}
+	if entryProtocol == "gemini" {
+		req, opts = mediaFallbackExecutionPayload(ctx, req, opts)
 	}
 	executedReq, executedOpts := afterAuthCapture.apply(req, opts)
 	ctx = enrichContextWithSessionHierarchy(ctx, executedOpts.Headers, executedReq.Payload, executedOpts.Metadata)
