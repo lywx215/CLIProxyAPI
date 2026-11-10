@@ -50,7 +50,7 @@ type historyPlan struct {
 func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error) {
 	limits := inputLimits(ctx)
 	webInput := usesWebInputLimits(ctx)
-	maxHistorySegments, maxHistoryContents, maxAttachments := limits.MaxSegments, limits.MaxContents, limits.MaxAttachments
+	maxAttachments := limits.MaxAttachments
 	contents, err := rawArray(raw, maxHistorySegments)
 	if err != nil || len(contents) == 0 {
 		return nil, invalid("contents must contain alternating user/model messages within the configured limits and end with user")

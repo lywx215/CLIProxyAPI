@@ -30,7 +30,11 @@ func (w *observedDeliveryWriter) record(err error) {
 	}
 	first := w.err
 	w.mu.Unlock()
-	usage.FinishObservedDelivery(w.ctx, first)
+	status := 0
+	if w.ResponseWriter.Written() {
+		status = w.ResponseWriter.Status()
+	}
+	usage.FinishObservedHTTPDelivery(w.ctx, first, status)
 	w.cancel()
 }
 

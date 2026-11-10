@@ -123,9 +123,22 @@ func TestEnterpriseWebSerializedAcrossTwoHTTPNodes(t *testing.T) {
 					clone.URL.Scheme, clone.URL.Host = endpoint.Scheme, endpoint.Host
 					return transport.RoundTrip(clone)
 				}))
-				payload := historyTestRequest(phaseOneRequest("image/png", "application/pdf"), true)
+				// The latest input is text. The second node has media only in
+				// model history, including after an unclassified body prefix.
+				payload := historyTestRequest(phaseOneRequest(), true)
+				media := `,{"inlineData":{"mimeType":"image/png","data":"cG5nLWhpc3Rvcnk="}},{"text":"between attachments"},{"inlineData":{"mimeType":"application/pdf","data":"cGRmLWhpc3Rvcnk="}},{"inline_data":{"mime_type":"text/plain","data":"dHh0LWhpc3Rvcnk="}}`
+				payload.Payload = bytes.Replace(payload.Payload, []byte(`{"text":"HISTORY-MODEL-CODE"}`), []byte(`{"text":"HISTORY-MODEL-CODE"}`+media), 1)
+				if node == 0 {
+					payload.Payload = bytes.Replace(payload.Payload, []byte(`{"text":"read these attachments"}`),
+						[]byte(`{"text":"read these attachments"},{"inlineData":{"mimeType":"image/png","data":"dXNlci1wbmc="}}`), 1)
+				}
 				if previous != "" {
 					payload.Payload = bytes.Replace(payload.Payload, []byte("HISTORY-MODEL-CODE"), []byte(previous), 1)
+				}
+				historyPrefix := ""
+				if node == 1 {
+					historyPrefix = strings.Repeat(`{"role":"model","parts":[{"text":"short"}]},`, 5000)
+					payload.Payload = bytes.Replace(payload.Payload, []byte(`"contents":[`), []byte(`"contents":[`+historyPrefix), 1)
 				}
 				router := gin.New()
 				router.Use(middleware.EnterpriseWebBodyAdmission(m))
@@ -137,18 +150,34 @@ func TestEnterpriseWebSerializedAcrossTwoHTTPNodes(t *testing.T) {
 				}
 				response := httptest.NewRecorder()
 				request := httptest.NewRequest("POST", "/v1beta/models/gemini-3.8-flash:"+action, bytes.NewReader(payload.Payload)).WithContext(ctx)
+				if node == 1 {
+					request.ContentLength = -1
+				}
 				router.ServeHTTP(response, request)
 				transport.CloseIdleConnections()
 				mock.Close()
 				registry.GetGlobalRegistry().UnregisterClient(a.ID)
-				if response.Code != 200 || f.calls["widgetCreateSession"] != 1 || f.calls["uploadFile"] != 2 || f.calls["widgetStreamAssist"] != 1 {
+				wantUploads := 3
+				if node == 0 {
+					wantUploads++
+				}
+				if response.Code != 200 || f.calls["widgetCreateSession"] != 1 || f.calls["uploadFile"] != wantUploads || f.calls["widgetStreamAssist"] != 1 {
 					t.Fatal(response.Code, response.Body.String(), f.calls)
 				}
 				query := gjson.GetBytes(f.final, "streamAssistRequest.query.parts.0.text").String()
 				if !strings.Contains(query, "HISTORY-TOOL-CODE") || (previous != "" && !strings.Contains(query, previous)) {
 					t.Fatal("cross-node context lost")
 				}
-				if len(uploads) != 2 || uploads["c0000-p0001.png"] != "input" || uploads["c0000-p0002.pdf"] != "input" {
+				index := "0001"
+				if node == 0 && uploads["c0000-p0001.png"] != "user-png" {
+					t.Fatal("user and model attachments collided", uploads)
+				}
+				if node == 1 {
+					index = "5001"
+				}
+				if len(uploads) != wantUploads || uploads["c"+index+"-p0001.png"] != "png-history" ||
+					uploads["c"+index+"-p0003.pdf"] != "pdf-history" || uploads["c"+index+"-p0004.txt"] != "txt-history" ||
+					!strings.Contains(query, `"role":"model","parts":[{"kind":"text"`) {
 					t.Fatal("history attachments not reuploaded", uploads)
 				}
 				if e.runtime.Status()["active_requests"] != 0 || e.runtime.Status()["inflight_bytes"] != int64(0) {

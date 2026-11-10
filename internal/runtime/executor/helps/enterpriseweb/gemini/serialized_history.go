@@ -103,23 +103,20 @@ func contextLimit(field string, name contract.InputLimitName, observed, maximum 
 // No resolver, network operation or old-session file identifier is involved.
 func serializeHistory(ctx context.Context, root map[string]json.RawMessage, request *contract.Request) error {
 	limits := inputLimits(ctx)
-	maxHistorySegments, maxHistoryContents := limits.MaxSegments, limits.MaxContents
+	webInput := usesWebInputLimits(ctx)
 	maxTextBytes, maxAttachmentBytes := limits.MaxTextBytes, limits.MaxAttachmentBytes
 	maxAttachments := limits.MaxAttachments
-	contents, err := rawArray(root["contents"], maxHistorySegments)
+	contents, err := arrayCursor(root["contents"])
 	if err != nil {
-		if bytes.HasPrefix(bytes.TrimSpace(root["contents"]), []byte("[")) && json.Valid(root["contents"]) {
-			return contextLimit("contents", contract.LimitHistorySegments, int64(maxHistorySegments+1), int64(maxHistorySegments), true)
-		}
 		return contextInvalid("contents", "contents must be an array")
 	}
-	if len(contents) == 0 {
+	if !contents.more() {
 		return contextInvalid("contents", "contents must contain a user input")
 	}
-	if _, err := resources.Reserve(ctx, int64(len(contents))*128); err != nil {
-		return err
+	if !webInput && contents.countUpTo(maxHistorySegments) > maxHistorySegments {
+		return contextLimit("contents", contract.LimitHistorySegments, maxHistorySegments+1, maxHistorySegments, true)
 	}
-	values := make([]contextContent, 0, len(contents))
+	var values []contextContent
 	pending := make([]pendingContextAttachment, 0)
 	textBytes := int64(0)
 	nodes, logical, logicalParts := 0, 0, 0
@@ -143,12 +140,17 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 		}
 		return value, nil
 	}
-	for i, raw := range contents {
+	for i := 0; contents.more(); i++ {
 		if err := ctx.Err(); err != nil {
 			return resources.ContextError(err)
 		}
+		// Charge retained descriptors and slice growth before parsing or
+		// appending. An array of tiny or empty messages still consumes budget.
+		if err := reserveHistory(ctx, 128); err != nil {
+			return err
+		}
 		field := fmt.Sprintf("contents[%d]", i)
-		content, err := objectContext(ctx, raw)
+		content, err := objectContext(ctx, contents.next())
 		if err != nil {
 			return contextParseError(err, field, "Each history content must be an object with unique fields")
 		}
@@ -170,7 +172,7 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 			logical++
 			logicalParts = 0
 			previousRole = role
-			if logical > maxHistoryContents {
+			if !webInput && logical > maxHistoryContents {
 				return contextLimit("contents", contract.LimitHistoryContents, int64(logical), int64(maxHistoryContents), true)
 			}
 		}
@@ -180,28 +182,30 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 			limit = limits.MaxModelParts
 			limitName = contract.LimitModelParts
 		}
-		parts, err := rawArray(content["parts"], limit)
+		parts, err := arrayCursor(content["parts"])
 		if err != nil {
-			if json.Valid(content["parts"]) && bytes.HasPrefix(bytes.TrimSpace(content["parts"]), []byte("[")) {
-				return contextLimit(field+".parts", limitName, int64(logicalParts+limit+1), int64(limit), true)
-			}
 			return contextInvalid(field+".parts", "History parts must be an array")
 		}
-		logicalParts += len(parts)
-		if logicalParts > limit {
-			return contextLimit(field+".parts", limitName, int64(logicalParts), int64(limit), true)
-		}
-		if len(parts) == 0 && role == "user" {
+		if !parts.more() && role == "user" {
 			return contextInvalid(field+".parts", "User input requires content parts")
 		}
-		if _, err := resources.Reserve(ctx, int64(len(parts))*256); err != nil {
-			return err
+		if !webInput {
+			logicalParts += parts.countUpTo(limit)
+			if logicalParts > limit {
+				return contextLimit(field+".parts", limitName, int64(logicalParts), int64(limit), true)
+			}
 		}
-		value := contextContent{Index: i, Role: role, Parts: make([]contextPart, 0, len(parts))}
-		for j, rawPart := range parts {
+		value := contextContent{Index: i, Role: role, Parts: []contextPart{}}
+		for j := 0; parts.more(); j++ {
+			if webInput && j >= limit {
+				return contextLimit(field+".parts", limitName, int64(j+1), int64(limit), true)
+			}
+			if err := reserveHistory(ctx, 256); err != nil {
+				return err
+			}
 			nodes++
 			partField := fmt.Sprintf("%s.parts[%d]", field, j)
-			part, err := objectContext(ctx, rawPart)
+			part, err := objectContext(ctx, parts.next())
 			if err != nil {
 				return contextParseError(err, partField, "Each part must be an object with unique fields")
 			}
@@ -258,7 +262,7 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 				}
 				return contextInvalid(partField, "A part must contain supported content")
 			}
-			if kind == "inlineData" && role != "user" {
+			if kind == "inlineData" && role != "user" && !webInput {
 				return contextInlineError(inlineFailure(contract.AttachmentUnsupportedModel, "", "Model history inlineData is unsupported"), partField+".inlineData")
 			}
 			if thought && kind != "text" {
@@ -356,9 +360,6 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 	// encoder scratch, encoded bytes, the query string and outer payload framing.
 	upper := textBytes*6 + int64(nodes+len(values))*512 + 4096
 	if err := reserveHistory(ctx, upper*4); err != nil {
-		return err
-	}
-	if _, err := resources.Reserve(ctx, upper*4); err != nil {
 		return err
 	}
 	for ordinal, item := range pending {

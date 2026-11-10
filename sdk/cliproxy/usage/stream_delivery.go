@@ -10,6 +10,7 @@ type streamDeliveryKey struct{}
 
 type streamDelivery struct {
 	passive   bool
+	status    uint16
 	observed  atomic.Int32
 	supported atomic.Int32
 	once      sync.Once
@@ -30,11 +31,35 @@ func WithObservedHTTPDelivery(ctx context.Context) context.Context {
 
 // FinishObservedDelivery is a no-op for legacy producers on the same handler.
 func FinishObservedDelivery(ctx context.Context, err error) {
+	FinishObservedHTTPDelivery(ctx, err, 0)
+}
+
+// FinishObservedHTTPDelivery records the status actually committed by the
+// writer. An uncommitted response has no observable HTTP status yet.
+func FinishObservedHTTPDelivery(ctx context.Context, err error, status int) {
 	d, ok := ctx.Value(streamDeliveryKey{}).(*streamDelivery)
 	if !ok || d.observed.Load() == 0 {
 		return
 	}
-	d.once.Do(func() { d.err = err; close(d.done) })
+	d.once.Do(func() {
+		d.err = err
+		if status >= 100 && status <= 599 {
+			d.status = uint16(status)
+		}
+		close(d.done)
+	})
+}
+
+func ObservedDeliveryHTTPStatus(ctx context.Context) int {
+	d, ok := ctx.Value(streamDeliveryKey{}).(*streamDelivery)
+	if ok {
+		select {
+		case <-d.done:
+			return int(d.status)
+		default:
+		}
+	}
+	return 0
 }
 
 func ObservedDeliverySupported(ctx context.Context) bool {

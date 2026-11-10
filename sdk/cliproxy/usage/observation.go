@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"maps"
 	"math"
 
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -32,6 +33,23 @@ type Observation struct {
 	DeliveryResult         string                     `json:"delivery_result"`
 	UsageResult            string                     `json:"usage_result"`
 	Error                  *coreexecutor.FailureFacts `json:"error"`
+	Web                    *WebObservation            `json:"web,omitempty"`
+}
+
+// WebObservation separates the Plus transport and answer from the client write.
+type WebObservation struct {
+	UpstreamHTTPStatus int                `json:"upstream_http_status,omitempty"`
+	ClientHTTPStatus   int                `json:"client_http_status,omitempty"`
+	AnswerState        string             `json:"answer_state,omitempty"`
+	GoogleStatus       string             `json:"google_status,omitempty"`
+	GoogleReason       string             `json:"google_reason,omitempty"`
+	Submitted          bool               `json:"submitted"`
+	OutputStarted      bool               `json:"output_started"`
+	Contents           int                `json:"contents"`
+	Attachments        int                `json:"attachments"`
+	AttachmentBytes    int                `json:"attachment_bytes"`
+	StagesMS           map[string]float64 `json:"stages_ms"`
+	TotalMS            float64            `json:"total_ms"`
 }
 
 type CandidateFinish struct {
@@ -65,6 +83,11 @@ func (o *Observation) Clone() *Observation {
 	c.ResponseModelSequence = append([]string{}, o.ResponseModelSequence...)
 	c.CandidateFinishes = append([]CandidateFinish{}, o.CandidateFinishes...)
 	c.Error = o.Error.Clone()
+	if o.Web != nil {
+		web := *o.Web
+		web.StagesMS = maps.Clone(o.Web.StagesMS)
+		c.Web = &web
+	}
 	return &c
 }
 
@@ -87,8 +110,26 @@ func (o *Observation) Valid() bool {
 		}
 		return false
 	}
-	if !in(o.ModelMatch, "exact", "mapped", "different", "not_reported") || !in(o.UpstreamResult, "complete", "terminal_observed", "compatibility_end", "incomplete", "rejected", "unknown", "not_sent", "continuation_required") || !in(o.TailVerification, "verified", "unverified", "failed") || !in(o.DeliveryResult, "written", "write_failed", "cancelled", "not_tracked") || !in(o.UsageResult, "official_complete", "official_partial", "estimated", "not_reported") || !in(o.CompletionBasis, "candidate_finish", "prompt_block", "compat_tool_eof", "none") {
+	if !in(o.ModelMatch, "exact", "mapped", "different", "not_reported") || !in(o.UpstreamResult, "complete", "terminal_observed", "compatibility_end", "incomplete", "rejected", "unknown", "not_sent", "continuation_required") || !in(o.TailVerification, "verified", "unverified", "failed") || !in(o.DeliveryResult, "written", "write_failed", "cancelled", "not_tracked") || !in(o.UsageResult, "official_complete", "official_partial", "estimated", "not_reported") || !in(o.CompletionBasis, "candidate_finish", "prompt_block", "compat_tool_eof", "web_answer_state", "none") {
 		return false
+	}
+	if o.CompletionBasis == "web_answer_state" && o.Web == nil {
+		return false
+	}
+	if w := o.Web; w != nil {
+		statusOK := func(s int) bool { return s == 0 || s >= 100 && s <= 599 }
+		timeOK := func(ms float64) bool { return ms >= 0 && !math.IsNaN(ms) && !math.IsInf(ms, 0) }
+		if !statusOK(w.UpstreamHTTPStatus) || !statusOK(w.ClientHTTPStatus) || !timeOK(w.TotalMS) ||
+			w.Contents < 0 || w.Attachments < 0 || w.AttachmentBytes < 0 || len(w.StagesMS) > 7 ||
+			!in(w.AnswerState, "", "IN_PROGRESS", "SUCCEEDED", "FAILED", "SKIPPED", "CANCELLED") ||
+			!validWebGoogleCode(w.GoogleStatus) || !validWebGoogleCode(w.GoogleReason) {
+			return false
+		}
+		for stage, ms := range w.StagesMS {
+			if !in(stage, "validation", "authentication", "session", "upload", "generation", "parse", "delivery") || !timeOK(ms) {
+				return false
+			}
+		}
 	}
 	for _, p := range []*float64{o.UpstreamTTFBMS, o.FirstSummaryMS, o.FirstAnswerMS, o.FirstToolCallMS} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
@@ -115,6 +156,19 @@ func (o *Observation) Valid() bool {
 			return false
 		}
 		if e.RetryMS != nil && (*e.RetryMS < 0 || math.IsInf(*e.RetryMS, 0) || math.IsNaN(*e.RetryMS)) {
+			return false
+		}
+	}
+	return true
+}
+
+func validWebGoogleCode(s string) bool {
+	if len(s) > 64 {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		if (c < 'A' || c > 'Z') && (i == 0 || (c < '0' || c > '9') && c != '_') {
 			return false
 		}
 	}

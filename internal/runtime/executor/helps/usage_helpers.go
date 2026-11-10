@@ -526,6 +526,17 @@ func (r *UsageReporter) PublishFailureWithDetail(ctx context.Context, detail usa
 	r.publishWithOutcome(ctx, detail, true, failFromErrors(errs...))
 }
 
+// PublishWebResult attaches the Web execution facts without replacing the
+// existing text-only usage estimate with a native Gemini usage observation.
+func (r *UsageReporter) PublishWebResult(ctx context.Context, detail usage.Detail, observation *usage.Observation, err error) {
+	r.once.Do(func() {
+		detail = normalizeUsageDetailTotal(detail, r.provider, r.executorType)
+		record := r.buildRecord(detail, err != nil || observation.Failed(), failFromErrors(err))
+		record.Observation = observation
+		r.publishAttemptRecord(ctx, record)
+	})
+}
+
 func (r *UsageReporter) TrackFailure(ctx context.Context, errPtr *error) {
 	if r == nil || errPtr == nil {
 		return

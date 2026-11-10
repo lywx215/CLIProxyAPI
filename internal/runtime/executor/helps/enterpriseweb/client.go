@@ -255,10 +255,12 @@ func verifyPlus(ctx context.Context, base *http.Client, c Credential, now time.T
 	}
 	req.Header.Set("Cookie", c.Cookies)
 	req.Header.Set("User-Agent", c.Agent())
+	observeWebHTTPSend(ctx)
 	res, err := clientCopy(base).Do(req)
 	if err != nil {
 		return access, c, CredentialError(502)
 	}
+	observeWebHTTPStatus(ctx, res.StatusCode)
 	defer func() { _ = res.Body.Close() }()
 	if isLoginRedirect(res) || res.StatusCode == http.StatusUnauthorized {
 		return access, c, loginRequired()
@@ -408,10 +410,12 @@ func send(ctx context.Context, base *http.Client, c Credential, token, target st
 	if err = setAuthentication(req, c, token, now); err != nil {
 		return nil, err
 	}
+	observeWebHTTPSend(ctx)
 	response, err := clientCopy(base).Do(req)
 	if err != nil {
 		return nil, Fail(502, "Media upstream connection failed")
 	}
+	observeWebHTTPStatus(ctx, response.StatusCode)
 	if response.StatusCode != 200 {
 		_ = response.Body.Close()
 		err := Fail(response.StatusCode, "Media upstream rejected the request")

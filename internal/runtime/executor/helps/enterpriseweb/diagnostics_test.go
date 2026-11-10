@@ -65,7 +65,6 @@ func TestWebLimitLogRejectsUntrustedDiagnostics(t *testing.T) {
 
 func TestWebAttachment400LogsOnlySafeSubreasonAndPath(t *testing.T) {
 	buffer := captureWebLogs(t)
-	log.SetLevel(log.DebugLevel)
 	rt := enabledRuntime()
 	ctx, lease, err := rt.Acquire(logging.WithRequestID(t.Context(), "12345678"), 1024)
 	if err != nil {
@@ -91,6 +90,34 @@ func TestWebAttachment400LogsOnlySafeSubreasonAndPath(t *testing.T) {
 	}
 	if strings.Contains(line, "PRIVATE-") || strings.Contains(line, "private-mime") || strings.Count(line, "attachment_reason=") != 1 {
 		t.Fatal("untrusted attachment diagnostic leaked", line)
+	}
+}
+
+func TestWebGenerationFailureLogIncludesSafeCauseWithoutDebug(t *testing.T) {
+	buffer := captureWebLogs(t)
+	ctx := logging.WithRequestID(t.Context(), "12345678")
+	o := NewExecutionObservation("gemini-test", "12345678", "synthetic-index", true)
+	o.SetModel("gemini-test")
+	ctx = o.Context(ctx)
+	o.Stage(ctx, "generation")
+	observeWebHTTPSend(ctx)
+	observeWebHTTPStatus(ctx, 200)
+	response := strings.NewReader(`[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"PRIVATE-ERROR","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"PRIVATE-REASON"}]}}]`)
+	err := o.Parse(ctx, response, func(contract.Event) error { return nil })
+	if err == nil {
+		t.Fatal("upstream rejection lost")
+	}
+	o.Stage(ctx, "delivery")
+	o.Finish(ctx, err, nil, false, false)
+	line := buffer.String()
+	for _, want := range []string{`[12345678]`, `upstream_http_status=200`, `google_status="RESOURCE_EXHAUSTED"`,
+		`reason="upstream_rpc_error"`, `upstream_result="rejected"`, `stage="parse"`, `submitted=true`, `status=429`} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("missing %s in %s", want, line)
+		}
+	}
+	if strings.Contains(line, "PRIVATE-") || strings.Count(line, "Web request failed") != 1 {
+		t.Fatal("diagnostic leaked upstream details or emitted duplicates")
 	}
 }
 

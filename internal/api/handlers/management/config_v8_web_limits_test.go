@@ -29,12 +29,13 @@ func TestConfigV8WebInputLimitsPersistAndReloadWithoutEnablingChannel(t *testing
 		t.Fatal(err)
 	}
 	limits := reloaded.GeminiEnterpriseWeb.WithDefaults().InputLimits
-	if limits.MaxContents != 70 || limits.MaxTextBytes != 8<<20 || limits.MaxAttachments != 20 || reloaded.GeminiEnterpriseWeb.Enabled {
+	if limits.MaxContents != 0 || limits.MaxTextBytes != 8<<20 || limits.MaxAttachments != 20 || reloaded.GeminiEnterpriseWeb.Enabled {
 		t.Fatal("persisted limits or channel state changed", reloaded.GeminiEnterpriseWeb)
 	}
 	status := h.authManager.WebRuntime().Status()
 	actual, ok := status["input_limits"].(config.GeminiEnterpriseWebInputLimits)
-	if !ok || actual.MaxContents != 70 || actual.MaxAttachments != 20 || status["enabled"] != false {
+	if !ok || actual.MaxContents != 0 || actual.MaxAttachments != 20 || status["enabled"] != false ||
+		status["history_count_policy"] != "unlimited" || status["supports_model_history_inline_data"] != true {
 		t.Fatal("runtime did not apply limits while keeping Web disabled", status)
 	}
 	before, err := os.ReadFile(path)

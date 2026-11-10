@@ -107,23 +107,51 @@ func jsonStringSize(raw []byte) (int64, error) {
 	return n, nil
 }
 
-func rawArray(data []byte, maximum int) ([]json.RawMessage, error) {
+type jsonArrayCursor struct {
+	data []byte
+	at   int
+}
+
+func arrayCursor(data []byte) (jsonArrayCursor, error) {
 	data = bytes.TrimSpace(data)
 	if len(data) < 2 || data[0] != '[' || !json.Valid(data) {
-		return nil, invalid("expected a JSON array")
+		return jsonArrayCursor{}, invalid("expected a JSON array")
+	}
+	return jsonArrayCursor{data: data, at: skipJSONSpace(data, 1)}, nil
+}
+
+func (a *jsonArrayCursor) more() bool { return a.at < len(a.data)-1 }
+
+func (a jsonArrayCursor) countUpTo(maximum int) int {
+	count := 0
+	for a.more() && count <= maximum {
+		a.next()
+		count++
+	}
+	return count
+}
+
+func (a *jsonArrayCursor) next() json.RawMessage {
+	end := jsonValueEnd(a.data, a.at)
+	raw := a.data[a.at:end]
+	a.at = skipJSONSpace(a.data, end)
+	if a.at < len(a.data) && a.data[a.at] == ',' {
+		a.at = skipJSONSpace(a.data, a.at+1)
+	}
+	return raw
+}
+
+func rawArray(data []byte, maximum int) ([]json.RawMessage, error) {
+	items, err := arrayCursor(data)
+	if err != nil {
+		return nil, err
 	}
 	result := make([]json.RawMessage, 0, min(maximum, 8))
-	at := skipJSONSpace(data, 1)
-	for at < len(data)-1 {
+	for items.more() {
 		if len(result) >= maximum {
 			return nil, invalid("JSON array has too many entries")
 		}
-		end := jsonValueEnd(data, at)
-		result = append(result, data[at:end])
-		at = skipJSONSpace(data, end)
-		if at < len(data) && data[at] == ',' {
-			at = skipJSONSpace(data, at+1)
-		}
+		result = append(result, items.next())
 	}
 	return result, nil
 }

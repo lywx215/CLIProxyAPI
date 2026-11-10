@@ -12,19 +12,19 @@ import (
 
 func TestWebAdmissionKeepsInputLimitSnapshotAndReleasesGrowth(t *testing.T) {
 	r := enabledRuntime()
-	cfg := config.GeminiEnterpriseWebConfig{Enabled: true, HistoryMode: config.EnterpriseWebSerializedContext, InputLimits: config.GeminiEnterpriseWebInputLimits{MaxContents: 70}}
+	cfg := config.GeminiEnterpriseWebConfig{Enabled: true, HistoryMode: config.EnterpriseWebSerializedContext, InputLimits: config.GeminiEnterpriseWebInputLimits{MaxTextBytes: 70}}
 	r.Configure(cfg)
 	ctx, first, err := r.Acquire(context.Background(), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.InputLimits.MaxContents = 10
+	cfg.InputLimits.MaxTextBytes = 10
 	r.Configure(cfg)
 	_, second, err := r.Acquire(context.Background(), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.InputLimits().MaxContents != 70 || second.InputLimits().MaxContents != 10 {
+	if first.InputLimits().MaxTextBytes != 70 || second.InputLimits().MaxTextBytes != 10 {
 		t.Fatal("in-flight limits changed")
 	}
 	if err := first.EnsureBudget(ctx, 80<<20); err != nil {

@@ -13,7 +13,7 @@ import (
 )
 
 func TestSerializedWebDefaultContentsAndAttachments(t *testing.T) {
-	ctx := WithInputLimits(context.Background(), appconfig.GeminiEnterpriseWebInputLimits{})
+	ctx := WithInputLimits(context.Background(), appconfig.GeminiEnterpriseWebInputLimits{MaxContents: 1, MaxSegments: 1})
 	const attachment = `,{"inlineData":{"mimeType":"text/plain","data":"YQ=="}}`
 	for _, tc := range []struct {
 		name                  string
@@ -21,13 +21,12 @@ func TestSerializedWebDefaultContentsAndAttachments(t *testing.T) {
 		field                 string
 		limit                 contract.InputLimit
 	}{
-		{name: "at both limits", contents: 200, attachments: 12},
+		{name: "past old logical limit", contents: 201, attachments: 12},
+		{name: "1000 messages", contents: 1000, attachments: 12},
+		{name: "past old segment limit", contents: 5000, attachments: 12},
+		{name: "past old configuration maximum", contents: 10001, attachments: 12},
 		{
-			name: "one extra logical content", contents: 201, attachments: 12, field: "contents",
-			limit: contract.InputLimit{Name: contract.LimitHistoryContents, Observed: 201, Maximum: 200, AtLeast: true},
-		},
-		{
-			name: "one extra attachment", contents: 200, attachments: 13, field: "contents[199].parts[13].inlineData",
+			name: "combined attachment limit", contents: 201, attachments: 13, field: "contents[200].parts[12].inlineData",
 			limit: contract.InputLimit{Name: contract.LimitAttachments, Observed: 13, Maximum: 12, AtLeast: true},
 		},
 	} {
@@ -40,8 +39,9 @@ func TestSerializedWebDefaultContentsAndAttachments(t *testing.T) {
 				}
 				contents[i] = fmt.Sprintf(`{"role":%q,"parts":[{"text":"turn"}]}`, role)
 			}
+			contents[len(contents)-2] = `{"role":"model","parts":[{"text":"prior output"}` + attachment + `]}`
 			contents[len(contents)-1] = `{"role":"user","parts":[{"text":"read the files"}` +
-				strings.Repeat(attachment, tc.attachments) + `]}`
+				strings.Repeat(attachment, tc.attachments-1) + `]}`
 			body := `{"contents":[` + strings.Join(contents, ",") + `]}`
 			request, err := ParseSerializedBytes(ctx, []byte(body), config.Binding{})
 			if tc.field == "" {
@@ -55,5 +55,16 @@ func TestSerializedWebDefaultContentsAndAttachments(t *testing.T) {
 				t.Fatalf("unexpected limit rejection: %+v", failure)
 			}
 		})
+	}
+}
+
+func TestSerializedWebCountsPartsPerContent(t *testing.T) {
+	ctx := WithInputLimits(t.Context(), appconfig.GeminiEnterpriseWebInputLimits{MaxUserParts: 1, MaxModelParts: 1})
+	user := `{"role":"user","parts":[{"text":"same role"}]},`
+	model := `{"role":"model","parts":[{"text":"same role"}]},`
+	body := `{"contents":[` + strings.Repeat(user, 300) + strings.Repeat(model, 4300) + `{"role":"user","parts":[{"text":"last"}]}]}`
+	request, err := ParseSerializedBytes(ctx, []byte(body), config.Binding{})
+	if err != nil || request.ContextSummary.Contents != 4601 || request.ContextSummary.LogicalContents != 3 {
+		t.Fatalf("message boundaries were lost or limited: %+v (%v)", request.ContextSummary, err)
 	}
 }

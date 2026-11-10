@@ -44,9 +44,9 @@ node, session, file ID or credential is consulted to reconstruct it.
 The query consists of a fixed instruction followed by JSON with schema
 `enterprise-web-context-v1`. The JSON includes `system_instructions`, `history`
 and `current_input`. Content indices, roles, message boundaries and part order
-are preserved. JSON encoding keeps client text inside its own fields. Adjacent
-messages with the same role are grouped only for limit counting, not merged in
-the serialized context.
+are preserved. JSON encoding keeps client text inside its own fields. Consecutive
+messages with the same role remain separate and their parts are checked per
+original Content.
 
 This is a contextual compatibility representation, not Gemini's native role
 hierarchy. It does not promise native system-instruction precedence or native
@@ -58,13 +58,13 @@ application-index checks remain in place.
 | --- | --- |
 | User/model visible text | Preserved in original order |
 | System text parts | Encoded as contextual instructions |
-| User `inlineData` / `inline_data` | Validated, decoded and uploaded in this request |
+| User/model `inlineData` / `inline_data` | Validated and uploaded using the same input rules, with the original role retained |
 | Model `functionCall`, `executableCode`, `codeExecutionResult` | Preserved as historical records |
 | User `functionResponse` | Preserved as historical records |
 | Historical tool names, IDs, arguments and results | Preserved; nested duplicate fields are rejected |
 | Model text marked `thought=true` | Removed from upstream context |
 | `thoughtSignature` / `thought_signature` | Removed; visible text in the same part remains |
-| `fileData`, file links/old file IDs, model media, unknown content kinds | Explicit 400 rejection with a safe field path |
+| `fileData`, file links/old file IDs, unknown content kinds | Explicit 400 rejection with a safe field path |
 
 Omitted roles default to `user`; explicit roles must be `user` or `model`.
 Truncated history may start with `model`, and at least one user Content is
@@ -81,19 +81,20 @@ parameter on `text/plain` is accepted when the decoded bytes match the charset.
 
 ## Limits, lifecycle and errors
 
-Before any upstream operation, the defaults allow 200 logical Contents, 4,129
-raw Content fragments, 256 parts per logical user Content, 4,096 parts per logical
-model Content, 12 attachments, 50 MiB decoded attachment bytes, 68 MiB request
-body and 4 MiB cumulative history text/tool data. Hidden thought/signature data
+Serialized context accepts any number of history messages within the byte,
+structure and memory budgets. Each Content may contain up to 256 user parts or
+4,096 model parts by default. Defaults also allow 12 combined user/model
+attachments, 50 MiB of decoded attachment bytes, a 68 MiB request body and 4 MiB
+of cumulative history text/tool data. Hidden thought/signature data
 also consumes the input limit. Tool objects/arrays have bounded fields, depth
 and node counts. Serialization and escaping allocations are charged before
 encoding; a structurally valid request can still exceed its memory allowance.
 These limits are configurable under `input-limits` and fixed in each admission
 snapshot. See the [input-limit reference](gemini-enterprise-web-input-limits.md).
 
-Incremental HTTP media detection does not depend on the history parser's
-Content limit. An oversized media history cannot silently fall back to text.
-Untrusted bodies are summarized by the existing bounded media logging path.
+Incremental HTTP media detection recognizes attachments at any history position.
+Media requests remain on the Web route when a byte or memory limit is exceeded.
+The parser reserves space before retaining each message and part.
 
 Generation uses the global concurrency and memory budgets. Requests sharing a
 Cookie identity can submit concurrently with the same verified snapshot. Cookie
@@ -116,12 +117,13 @@ followed only by binding validation and transport framing.
 | --- | --- |
 | Multi-turn media with `single-turn` | 409 |
 | Malformed or unsupported history | 400 |
-| Body, history or attachment limit | 413 |
+| Body bytes, history text/structure or attachment limit | 413 |
 | Budget/concurrency unavailable | 429 |
 | Channel disabled or no eligible credential | 503 |
 | Credential replaced or classification changed before submission | 409 |
 
-The existing status endpoint exposes `history_mode`, `supported_history_modes`
+The existing status endpoint exposes `history_mode`, `supported_history_modes`,
+`history_count_policy: unlimited`, `supports_model_history_inline_data: true`
 and `preflight_rejections`. Counters use a bounded set of fixed reason codes and
 are per process. Reading status performs no Google call. Pre-session rejection
 counts are separate from submitted model failures and token usage. Unknown token
@@ -131,6 +133,26 @@ executor rejections. Debug stage logs contain only safe request/model IDs,
 counts, byte totals, fixed stages/reasons and thought/signature filtering counts.
 For attachment validation failures, the preflight log includes a fixed
 `attachment_reason` and the structural field path.
+
+## Execution diagnostics
+
+For submitted model requests, existing usage records may contain a Web
+`observation`. It separates the Google HTTP status, verified answer result,
+and the client HTTP status and delivery result. For example, both HTTP statuses
+can be 200 while `upstream_result` is `incomplete` and `error.code` is
+`stream_truncated_json`. When the successful answer has already been verified,
+a client write failure changes only the delivery result.
+
+Before response headers are sent, a failure can still use its own HTTP status.
+After the stream starts, the handler sends a single safe SSE error if the
+connection can be written. The successful terminal is emitted only after the
+parser verifies the full upstream response. The `Web request failed` warning
+includes the request trace ID, stage, statuses, safe reason and timing without
+requiring debug or full request logging. Timings cover the Web executor from
+validation through client delivery. First byte, summary and answer timings are
+relative to the generation submission. Search for the same trace ID in the
+request details and the log. Old usage records show that details were not
+recorded.
 
 ## Frontend correspondence
 

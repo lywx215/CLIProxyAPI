@@ -27,6 +27,10 @@ func enterpriseDiagnosticLogFields(data log.Fields) []string {
 var enterpriseWebDiagnosticFieldOrder = []string{
 	"stage", "status", "field", "attachment_reason", "limit_name", "observed", "maximum", "observed_at_least",
 	"contents", "logical_contents", "attachments", "attachment_bytes", "filtered_thoughts", "filtered_signatures",
+	"trace_id", "stream", "upstream_http_status", "client_http_status", "upstream_result", "delivery_result",
+	"tail_verification", "answer_state", "google_status", "google_reason", "submitted", "output_started",
+	"validation_ms", "authentication_ms", "session_ms", "upload_ms", "generation_ms", "parse_ms", "delivery_ms",
+	"first_byte_ms", "first_summary_ms", "first_answer_ms", "total_ms",
 }
 
 func enterpriseWebDiagnosticLogFields(data log.Fields) []string {

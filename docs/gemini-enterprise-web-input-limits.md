@@ -8,8 +8,6 @@ independent of Google's model context, file, account and policy limits.
 upstream:
   gemini-enterprise-web:
     input-limits:
-      max-contents: 200
-      max-segments: 4129
       max-text-bytes: 4194304
       max-user-parts: 256
       max-model-parts: 4096
@@ -24,21 +22,20 @@ upstream:
       max-generation-config-bytes: 1048576
 ```
 
-Omitted or zero fields select the defaults above. A lower explicit
-`max-segments` also caps the default for `max-contents`. Negative values and
-values outside the validated safety bounds are rejected. `max-segments` must be
-at least the effective `max-contents`.
+Omitted or zero fields select the defaults above. Active limits reject negative
+values and values outside their safety bounds. Serialized context has no limit on
+the number of messages or fragments. The former `max-contents` and
+`max-segments` keys can remain in an existing YAML file. The Web channel ignores
+them and omits them from the effective `input_limits` status.
 
 | Key | Meaning | Allowed maximum |
 | --- | --- | --- |
-| `max-contents` | Logical contents, with adjacent fragments of the same role counted together. The default of 200 covers about 100 alternating question-and-answer rounds. | 10,000 |
-| `max-segments` | Raw `contents` entries | 100,000 |
 | `max-text-bytes` | Cumulative history/system text, signatures and historical tool records; 4 MiB by default | 64 MiB |
-| `max-user-parts` | Parts per logical user content | 65,536 |
-| `max-model-parts` | Parts per logical model content | 65,536 |
+| `max-user-parts` | Parts in each user Content | 65,536 |
+| `max-model-parts` | Parts in each model Content | 65,536 |
 | `max-system-parts` | Parts in `systemInstruction` | 65,536 |
-| `max-attachments` | User input attachments across the whole request | 128 |
-| `max-attachment-bytes` | Total decoded attachment bytes; 50 MiB by default | 512 MiB |
+| `max-attachments` | Combined user and model attachments across the request (12 by default) | 128 |
+| `max-attachment-bytes` | Combined decoded attachment bytes (50 MiB by default) | 512 MiB |
 | `max-request-bytes` | Complete native JSON request, including Base64 | 1 GiB |
 | `max-json-object-fields` | Fields in any parsed JSON object | 4,096 |
 | `max-tool-depth` | Nesting depth in historical tool data | 256 |
@@ -48,11 +45,10 @@ at least the effective `max-contents`.
 
 The values can be changed through YAML hot reload or the existing v8 configuration
 API at `/v8/management/config/upstream/gemini-enterprise-web/input-limits`.
-Use the normal configuration revision/ETag checks when writing. This change does
-not add visual form controls; the YAML editor and v8 API expose the new fields.
-The YAML editor checks runtime capability before saving changed limits and
-confirms all fourteen effective values afterward. An old backend cannot report
-unsupported changes as applied. Unrelated visual edits do not query these fields.
+Use the normal configuration revision/ETag checks when writing. The configuration
+panel shows the backend's history capabilities. The YAML editor verifies the
+effective limits after saving, using the legacy count settings only when the
+connected backend still enforces them.
 
 Each admitted request retains its own mode and limit snapshot. Updates apply to
 new requests, while accepted requests finish under their original limits.

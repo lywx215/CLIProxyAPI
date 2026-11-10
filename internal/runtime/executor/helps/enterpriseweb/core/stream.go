@@ -18,6 +18,10 @@ const maxStreamBytes = 8 << 20
 // decodeStream consumes one JSON envelope at a time, keeping downstream
 // backpressure. Closing the array without a terminal answer is truncation.
 func decodeStream(r io.Reader, emit func(contract.Event) error) error {
+	return decodeStreamWithState(r, emit, nil)
+}
+
+func decodeStreamWithState(r io.Reader, emit func(contract.Event) error, observeState func(string)) error {
 	reads := &streamReader{reader: r}
 	decodeFailure := func(err error) error {
 		if reads.err != nil {
@@ -110,6 +114,12 @@ func decodeStream(r io.Reader, emit func(contract.Event) error) error {
 		answer := frame.Response.Answer
 		if finished && (answer.State != "" || len(answer.Replies) > 0) {
 			return malformedStreamAt(streamDataAfterTerminal)
+		}
+		if observeState != nil {
+			switch answer.State {
+			case "IN_PROGRESS", "SUCCEEDED", "FAILED", "SKIPPED", "CANCELLED":
+				observeState(answer.State)
+			}
 		}
 		parts := []contract.Part{}
 		replyIDs := make([]string, 0, len(answer.Replies))

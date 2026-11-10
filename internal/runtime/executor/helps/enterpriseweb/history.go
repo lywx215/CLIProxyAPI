@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	webgemini "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/gemini"
 )
 
 func ValidateHistoryMode(ctx context.Context, body []byte) error {
@@ -12,7 +13,7 @@ func ValidateHistoryMode(ctx context.Context, body []byte) error {
 	if lease != nil && lease.HistoryMode() == config.EnterpriseWebSerializedContext {
 		return nil
 	}
-	count := ContentCount(body)
+	count := webgemini.ContentCount(body)
 	if count == 0 {
 		return InputFailure(400, "invalid_history", "contents", "Media requests require a valid contents array")
 	}

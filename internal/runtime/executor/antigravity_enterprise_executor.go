@@ -120,7 +120,7 @@ func (e *AntigravityEnterpriseExecutor) Catalog(ctx context.Context, auth *corea
 	if !refresh && !cached.configAt.IsZero() && time.Since(cached.configAt) < 3*time.Hour {
 		return cached.config, nil
 	}
-	flight := e.flights.DoChan("catalog:"+key, func() (any, error) {
+	value, err := e.metadataFlight(ctx, "catalog:"+key, func() (any, error) {
 		e.mu.Lock()
 		latest := e.metadata[key]
 		e.mu.Unlock()
@@ -141,15 +141,10 @@ func (e *AntigravityEnterpriseExecutor) Catalog(ctx context.Context, auth *corea
 		e.mu.Unlock()
 		return config, nil
 	})
-	select {
-	case result := <-flight:
-		if config, ok := result.Val.(ae.Config); ok {
-			return config, result.Err
-		}
-		return cached.config, result.Err
-	case <-ctx.Done():
-		return cached.config, ctx.Err()
+	if config, ok := value.(ae.Config); ok {
+		return config, err
 	}
+	return cached.config, err
 }
 
 // Quota reads only subscription quota and never changes a binding's user preference.
@@ -170,7 +165,7 @@ func (e *AntigravityEnterpriseExecutor) Quota(ctx context.Context, auth *coreaut
 	if !refresh && antigravityEnterpriseQuotaFresh(cached, time.Now()) {
 		return cached, nil
 	}
-	flight := e.flights.DoChan("quota:"+key, func() (any, error) {
+	value, err := e.metadataFlight(ctx, "quota:"+key, func() (any, error) {
 		e.mu.Lock()
 		latest := e.metadata[key].quota
 		e.mu.Unlock()
@@ -197,14 +192,33 @@ func (e *AntigravityEnterpriseExecutor) Quota(ctx context.Context, auth *coreaut
 		e.mu.Unlock()
 		return quota, nil
 	})
-	select {
-	case result := <-flight:
-		if quota, ok := result.Val.(ae.Quota); ok {
-			return quota, result.Err
+	if quota, ok := value.(ae.Quota); ok {
+		return quota, err
+	}
+	return cached, err
+}
+
+func (e *AntigravityEnterpriseExecutor) metadataFlight(ctx context.Context, key string, fetch func() (any, error)) (any, error) {
+	started := make(chan struct{})
+	result := e.flights.DoChan(key, func() (any, error) {
+		close(started)
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		return cached, result.Err
+		return fetch()
+	})
+	select {
+	case value := <-result:
+		return value.Val, value.Err
 	case <-ctx.Done():
-		return cached, ctx.Err()
+		// The caller that owns the fetch waits for its cancellation to unwind.
+		// A caller that joined another fetch can leave without waiting for it.
+		select {
+		case <-started:
+			<-result
+		default:
+		}
+		return nil, ctx.Err()
 	}
 }
 

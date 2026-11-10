@@ -152,7 +152,14 @@ func (r *Runtime) Status() map[string]any {
 	for key, value := range r.preflightRejections {
 		rejections[key] = value
 	}
-	return map[string]any{"enabled": r.settings.Enabled, "active_requests": r.active, "inflight_bytes": r.used, "max_concurrent": r.settings.MaxConcurrent, "max_inflight_bytes": r.settings.MaxInflightBytes, "draining": !r.settings.Enabled && r.active > 0, "rejected_concurrency": r.rejectedConcurrency, "rejected_memory": r.rejectedMemory, "history_mode": r.settings.HistoryMode, "supported_history_modes": []string{config.EnterpriseWebSingleTurn, config.EnterpriseWebSerializedContext}, "preflight_rejections": rejections, "input_limits": r.settings.InputLimits}
+	return map[string]any{
+		"enabled": r.settings.Enabled, "active_requests": r.active, "inflight_bytes": r.used,
+		"max_concurrent": r.settings.MaxConcurrent, "max_inflight_bytes": r.settings.MaxInflightBytes,
+		"draining": !r.settings.Enabled && r.active > 0, "rejected_concurrency": r.rejectedConcurrency, "rejected_memory": r.rejectedMemory,
+		"history_mode": r.settings.HistoryMode, "supported_history_modes": []string{config.EnterpriseWebSingleTurn, config.EnterpriseWebSerializedContext},
+		"history_count_policy": "unlimited", "supports_model_history_inline_data": true,
+		"preflight_rejections": rejections, "input_limits": r.settings.InputLimits,
+	}
 }
 func (r *Runtime) AuthStatus(key string) map[string]any {
 	r.mu.Lock()

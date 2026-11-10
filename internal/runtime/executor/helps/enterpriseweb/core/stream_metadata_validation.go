@@ -53,12 +53,24 @@ const (
 	streamInvalidSuggestionsJSON         streamDiagnostic = "stream_invalid_suggestions_json"
 )
 
-func malformedStreamAt(reason streamDiagnostic) error {
-	return contract.Fail(502, "DATA_LOSS", "Business response is malformed or incomplete ("+string(reason)+")")
+type streamProblem struct {
+	*contract.Failure
+	reason streamDiagnostic
 }
 
+func (e *streamProblem) Unwrap() error { return e.Failure }
+
+func malformedStreamAt(reason streamDiagnostic) error {
+	return streamProblemAt(reason, "DATA_LOSS")
+}
 func unsupportedStreamAt(reason streamDiagnostic) error {
-	return contract.Fail(502, "UNIMPLEMENTED", "Business response is malformed or incomplete ("+string(reason)+")")
+	return streamProblemAt(reason, "UNIMPLEMENTED")
+}
+func streamProblemAt(reason streamDiagnostic, status string) error {
+	return &streamProblem{
+		Failure: &contract.Failure{Code: 502, Status: status, Message: "Business response is malformed or incomplete (" + string(reason) + ")"},
+		reason:  reason,
+	}
 }
 
 // validateStreamFrame checks wire integrity before typed decoding can collapse

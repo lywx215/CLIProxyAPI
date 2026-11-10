@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/contract"
-	webgemini "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/gemini"
 )
 
 func HasMedia(b []byte) bool {
@@ -29,7 +28,6 @@ func HasMediaInContext(ctx context.Context, b []byte) bool {
 	}
 	return HasMedia(b)
 }
-func ContentCount(b []byte) int { _, count := webgemini.InlineMediaInfo(b); return count }
 
 // KeyScanner observes JSON string keys incrementally without buffering values.
 type KeyScanner struct {

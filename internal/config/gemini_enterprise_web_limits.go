@@ -1,12 +1,17 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+
+	log "github.com/sirupsen/logrus"
+)
 
 // GeminiEnterpriseWebInputLimits bounds request parsing independently of upstream quotas.
 // Zero values select defaults; these limits cannot disable admission accounting.
 type GeminiEnterpriseWebInputLimits struct {
-	MaxContents              int   `yaml:"max-contents" json:"max-contents"`
-	MaxSegments              int   `yaml:"max-segments" json:"max-segments"`
+	// Retained for old YAML and configuration updates. Admission ignores these.
+	MaxContents              int   `yaml:"max-contents,omitempty" json:"-"`
+	MaxSegments              int   `yaml:"max-segments,omitempty" json:"-"`
 	MaxTextBytes             int64 `yaml:"max-text-bytes" json:"max-text-bytes"`
 	MaxUserParts             int   `yaml:"max-user-parts" json:"max-user-parts"`
 	MaxModelParts            int   `yaml:"max-model-parts" json:"max-model-parts"`
@@ -22,15 +27,7 @@ type GeminiEnterpriseWebInputLimits struct {
 }
 
 func (l GeminiEnterpriseWebInputLimits) WithDefaults() GeminiEnterpriseWebInputLimits {
-	if l.MaxContents == 0 {
-		l.MaxContents = 200
-		if l.MaxSegments > 0 {
-			l.MaxContents = min(l.MaxContents, l.MaxSegments)
-		}
-	}
-	if l.MaxSegments == 0 {
-		l.MaxSegments = 4129
-	}
+	l.MaxContents, l.MaxSegments = 0, 0
 	if l.MaxTextBytes == 0 {
 		l.MaxTextBytes = 4 << 20
 	}
@@ -76,8 +73,6 @@ func (l GeminiEnterpriseWebInputLimits) Validate() error {
 		name           string
 		value, maximum int64
 	}{
-		{"max-contents", int64(l.MaxContents), 10000},
-		{"max-segments", int64(l.MaxSegments), 100000},
 		{"max-text-bytes", l.MaxTextBytes, 64 << 20},
 		{"max-user-parts", int64(l.MaxUserParts), 65536},
 		{"max-model-parts", int64(l.MaxModelParts), 65536},
@@ -95,8 +90,11 @@ func (l GeminiEnterpriseWebInputLimits) Validate() error {
 			return fmt.Errorf("gemini-enterprise-web input-limits.%s must be within 1..%d", bound.name, bound.maximum)
 		}
 	}
-	if l.MaxSegments < l.MaxContents {
-		return fmt.Errorf("gemini-enterprise-web input-limits.max-segments must be at least max-contents")
-	}
 	return nil
+}
+
+func (l GeminiEnterpriseWebInputLimits) warnDeprecatedHistoryLimits() {
+	if l.MaxContents != 0 || l.MaxSegments != 0 {
+		log.Warn("gemini-enterprise-web ignores deprecated input-limits.max-contents and max-segments")
+	}
 }

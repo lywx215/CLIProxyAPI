@@ -4,6 +4,7 @@ import (
 	"context"
 
 	appconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/resources"
 )
 
 type inputLimitsKey struct{}
@@ -24,9 +25,12 @@ func WithHistoryReservation(ctx context.Context, reserve func(int64) error) cont
 
 func reserveHistory(ctx context.Context, size int64) error {
 	if reserve, ok := ctx.Value(historyReservationKey{}).(func(int64) error); ok {
-		return reserve(size)
+		if err := reserve(size); err != nil {
+			return err
+		}
 	}
-	return nil
+	_, err := resources.Reserve(ctx, size)
+	return err
 }
 
 func inputLimits(ctx context.Context) appconfig.GeminiEnterpriseWebInputLimits {
@@ -35,8 +39,6 @@ func inputLimits(ctx context.Context) appconfig.GeminiEnterpriseWebInputLimits {
 	}
 	// Other embedders of the Business parser retain their original limits.
 	limits := (appconfig.GeminiEnterpriseWebInputLimits{}).WithDefaults()
-	limits.MaxContents = maxHistoryContents
-	limits.MaxSegments = maxHistorySegments
 	limits.MaxTextBytes = maxTextBytes
 	limits.MaxAttachments = maxAttachments
 	return limits

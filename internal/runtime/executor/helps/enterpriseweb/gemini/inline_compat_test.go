@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	appconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -88,13 +89,28 @@ func TestWebInlineFailureIdentifiesFieldAndReason(t *testing.T) {
 	}
 }
 
-func TestWebModelHistoryAttachmentHasSpecificFailure(t *testing.T) {
-	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"first"}]},{"role":"model","parts":[{"inlineData":{"mimeType":"image/png","data":"YQ=="}}]},{"role":"user","parts":[{"text":"last"}]}]}`)
+func TestWebModelHistoryAttachmentUsesUserValidationAndPreservesRole(t *testing.T) {
+	body := `{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"text/plain","data":"YQ=="}}]},{"role":"model","parts":[{"text":"before"},{"inline_data":{"mime_type":"image/png","data":"Yg=="},"thoughtSignature":"private-signature"},{"text":"after"}]},{"role":"user","parts":[{"text":"last"}]}]}`
 	ctx := WithInputLimits(context.Background(), appconfig.GeminiEnterpriseWebInputLimits{})
-	_, err := ParseSerializedBytes(ctx, body, config.Binding{})
+	request, err := ParseSerializedBytes(ctx, []byte(body), config.Binding{})
+	if err != nil || len(request.Attachments) != 2 || string(request.Attachments[1].Data) != "b" {
+		t.Fatalf("model history attachment lost: %v", err)
+	}
+	query := request.QueryParts[0]["text"]
+	if !strings.Contains(query, `"role":"model","parts":[{"kind":"text","text":"before"},{"kind":"attachment","attachment":{"id":"c1_p1","filename":"c0001-p0001.png","mime_type":"image/png"}},{"kind":"text","text":"after"}]`) ||
+		strings.Contains(query, "private-signature") || strings.Contains(query, "Yg==") {
+		t.Fatal("model role, part order, or visibility changed")
+	}
+	_, err = ParseSerializedBytes(ctx, []byte(strings.Replace(body, "Yg==", "bad base64", 1)), config.Binding{})
 	var failure *contract.Failure
-	if !errors.As(err, &failure) || failure.Code != 400 || failure.Reason != "unsupported_history_content" ||
-		failure.Param != "contents[1].parts[0].inlineData" || failure.AttachmentReason != contract.AttachmentUnsupportedModel {
-		t.Fatalf("wrong model history attachment failure: %#v", failure)
+	if !errors.As(err, &failure) || failure.Code != 400 || failure.Reason != "invalid_history" ||
+		failure.Param != "contents[1].parts[1].inlineData.data" || failure.AttachmentReason != contract.AttachmentInvalidBase64 {
+		t.Fatalf("wrong model attachment failure: %#v", failure)
+	}
+	small := WithInputLimits(t.Context(), appconfig.GeminiEnterpriseWebInputLimits{MaxAttachmentBytes: 1})
+	_, err = ParseSerializedBytes(small, []byte(body), config.Binding{})
+	if !errors.As(err, &failure) || failure.Code != 413 || failure.Limit == nil ||
+		failure.Limit.Name != contract.LimitAttachmentBytes || failure.Limit.Observed != 2 {
+		t.Fatalf("model attachment bypassed the combined byte limit: %#v", failure)
 	}
 }

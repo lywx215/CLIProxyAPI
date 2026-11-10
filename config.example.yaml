@@ -385,8 +385,6 @@ upstream:
     # Parser limits are independent of Google quotas and apply to new requests.
     # A logical content is one adjacent group of user or model fragments, not a full round.
     input-limits:
-      max-contents: 200
-      max-segments: 4129
       max-text-bytes: 4194304 # 4 MiB, including system text, signatures and tool records
       max-user-parts: 256
       max-model-parts: 4096

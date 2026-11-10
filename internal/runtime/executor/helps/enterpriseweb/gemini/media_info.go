@@ -1,42 +1,20 @@
 package gemini
 
-// InlineMediaInfo inspects raw JSON views without copying large base64 strings.
-func InlineMediaInfo(data []byte) (bool, int) {
+// ContentCount inspects the array for the single-turn mode check. Media
+// routing uses the incremental scanner, independently of history size.
+func ContentCount(data []byte) int {
 	root, err := rawObject(data)
 	if err != nil {
-		return false, 0
+		return 0
 	}
-	contents, err := rawArray(root["contents"], maxHistorySegments)
+	contents, err := arrayCursor(root["contents"])
 	if err != nil {
-		return false, 0
+		return 0
 	}
-	found := false
-	for _, raw := range contents {
-		content, err := rawObject(raw)
-		if err != nil {
-			continue
-		}
-		parts, err := rawArray(content["parts"], 4096)
-		if err != nil {
-			continue
-		}
-		for _, raw := range parts {
-			part, err := rawObject(raw)
-			if err != nil {
-				continue
-			}
-			_, camel := part["inlineData"]
-			_, snake := part["inline_data"]
-			_, file := part["fileData"]
-			_, fileSnake := part["file_data"]
-			if camel || snake || file || fileSnake {
-				found = true
-				break
-			}
-		}
-		if found {
-			break
-		}
+	count := 0
+	for contents.more() {
+		contents.next()
+		count++
 	}
-	return found, len(contents)
+	return count
 }

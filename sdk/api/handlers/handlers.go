@@ -732,7 +732,13 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 		if deliveryWriter != nil && deliveryWriter.writeError() != nil {
 			deliveryErr = deliveryWriter.writeError()
 		}
-		coreusage.FinishObservedDelivery(cancelCtx, deliveryErr)
+		if coreusage.ObservedDeliverySupported(cancelCtx) {
+			wireStatus := 0
+			if c != nil && c.Writer.Written() {
+				wireStatus = c.Writer.Status()
+			}
+			coreusage.FinishObservedHTTPDelivery(cancelCtx, deliveryErr, wireStatus)
+		}
 		if c != nil {
 			logging.SetResponseStatus(cancelCtx, c.Writer.Status())
 		}

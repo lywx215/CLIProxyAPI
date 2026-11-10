@@ -14,7 +14,6 @@ import (
 func TestConfiguredWebInputLimitsIdentifyTheActualThreshold(t *testing.T) {
 	const file = `{"inlineData":{"mimeType":"text/plain","data":"YWJj"}}`
 	const user = `{"role":"user","parts":[{"text":"x"}]}`
-	const model = `{"role":"model","parts":[{"text":"x"}]}`
 	base := `{"contents":[{"parts":[{"text":"abcde"},` + file + `]}]}`
 	for _, tc := range []struct {
 		name    string
@@ -23,8 +22,6 @@ func TestConfiguredWebInputLimitsIdentifyTheActualThreshold(t *testing.T) {
 		limit   contract.InputLimitName
 		maximum int64
 	}{
-		{"contents", appconfig.GeminiEnterpriseWebInputLimits{MaxContents: 2}, `{"contents":[` + user + `,` + model + `,` + user + `]}`, contract.LimitHistoryContents, 2},
-		{"segments", appconfig.GeminiEnterpriseWebInputLimits{MaxContents: 1, MaxSegments: 1}, `{"contents":[` + user + `,` + user + `]}`, contract.LimitHistorySegments, 1},
 		{"text", appconfig.GeminiEnterpriseWebInputLimits{MaxTextBytes: 4}, base, contract.LimitHistoryTextBytes, 4},
 		{"user-parts", appconfig.GeminiEnterpriseWebInputLimits{MaxUserParts: 1}, base, contract.LimitUserParts, 1},
 		{"model-parts", appconfig.GeminiEnterpriseWebInputLimits{MaxModelParts: 1}, `{"contents":[{"role":"model","parts":[{"text":"a"},{"text":"b"}]},` + user + `]}`, contract.LimitModelParts, 1},
