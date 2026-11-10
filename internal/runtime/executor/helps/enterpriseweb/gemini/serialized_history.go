@@ -67,6 +67,20 @@ func contextParseError(err error, field, message string) error {
 	return contextInvalid(field, message)
 }
 
+func contextInlineError(err error, field string) error {
+	err = inlineField(err, field)
+	var failure *contract.Failure
+	if errors.As(err, &failure) && failure.Code == 400 {
+		copy := *failure
+		copy.Reason = "invalid_history"
+		if copy.AttachmentReason == contract.AttachmentUnsupportedModel {
+			copy.Reason = "unsupported_history_content"
+		}
+		return &copy
+	}
+	return err
+}
+
 func inputLimitField(err error, field string) error {
 	var failure *contract.Failure
 	if errors.As(err, &failure) && failure.Code == 413 && failure.Param == "" {
@@ -221,13 +235,19 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 				if pair[1] != "" {
 					v, ok, err = alias(part, pair[0], pair[1])
 					if err != nil {
+						if pair[0] == "inlineData" {
+							return contextInlineError(inlineFailure(contract.AttachmentFieldConflict, "", "A part must not contain both inlineData aliases"), partField+".inlineData")
+						}
 						return contextInvalid(partField+"."+pair[0], "Conflicting content aliases")
 					}
 				}
-				if !ok || (pair[0] != "text" && bytes.Equal(v, []byte("null"))) {
+				if !ok || (pair[0] != "text" && pair[0] != "inlineData" && bytes.Equal(v, []byte("null"))) {
 					continue
 				}
 				if kind != "" {
+					if kind == "inlineData" || pair[0] == "inlineData" {
+						return contextInlineError(inlineFailure(contract.AttachmentFieldConflict, "", "An inlineData part must contain only one content kind"), partField+".inlineData")
+					}
 					return contextInvalid(partField, "A part must contain only one content kind")
 				}
 				kind, rawValue = pair[0], v
@@ -237,6 +257,9 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 					continue
 				}
 				return contextInvalid(partField, "A part must contain supported content")
+			}
+			if kind == "inlineData" && role != "user" {
+				return contextInlineError(inlineFailure(contract.AttachmentUnsupportedModel, "", "Model history inlineData is unsupported"), partField+".inlineData")
 			}
 			if thought && kind != "text" {
 				return contextUnsupported(partField)
@@ -253,17 +276,14 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 				}
 				value.Parts = append(value.Parts, contextPart{Kind: "text", Text: &text})
 			case "inlineData":
-				if role != "user" {
-					return contextUnsupported(partField + ".inlineData")
-				}
 				if len(pending) >= maxAttachments {
 					return contextLimit(partField+".inlineData", contract.LimitAttachments, int64(len(pending)+1), int64(maxAttachments), true)
 				}
-				_, mime, err := inlineFields(ctx, rawValue)
+				input, err := inlineFields(ctx, rawValue)
 				if err != nil {
-					return contextParseError(err, partField+".inlineData", "inlineData requires a supported MIME type and Base64 content")
+					return contextInlineError(err, partField+".inlineData")
 				}
-				ref := &contextAttachment{ID: fmt.Sprintf("c%d_p%d", i, j), MIMEType: mime}
+				ref := &contextAttachment{ID: fmt.Sprintf("c%d_p%d", i, j), MIMEType: input.mimeType}
 				pending = append(pending, pendingContextAttachment{content: i, part: j, raw: rawValue, ref: ref})
 				value.Parts = append(value.Parts, contextPart{Kind: "attachment", Attachment: ref})
 			case "fileData":
@@ -344,16 +364,7 @@ func serializeHistory(ctx context.Context, root map[string]json.RawMessage, requ
 	for ordinal, item := range pending {
 		a, err := parseInline(ctx, item.raw, ordinal+1, maxAttachmentBytes-int64(request.ContextSummary.AttachmentBytes))
 		if err != nil {
-			field := fmt.Sprintf("contents[%d].parts[%d].inlineData", item.content, item.part)
-			if failure, ok := err.(*contract.Failure); ok {
-				if failure.Code == 400 {
-					return contextInvalid(field, "Attachment must contain valid supported Base64 input")
-				}
-				if failure.Code == 413 {
-					failure.Param = field
-				}
-			}
-			return err
+			return contextInlineError(err, fmt.Sprintf("contents[%d].parts[%d].inlineData", item.content, item.part))
 		}
 		a.Filename = fmt.Sprintf("c%04d-p%04d%s", item.content, item.part, path.Ext(a.Filename))
 		sum := sha256.Sum256(a.Data)

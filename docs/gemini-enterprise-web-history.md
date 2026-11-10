@@ -76,10 +76,13 @@ as `c0_p1` and a filename such as `c0000-p0001.png`, derived from their original
 Content/part indices. No content-based upload deduplication or cross-request
 attachment cache is used.
 
+Web normalizes `image/jpg` to `image/jpeg`. A single UTF-8 or US-ASCII charset
+parameter on `text/plain` is accepted when the decoded bytes match the charset.
+
 ## Limits, lifecycle and errors
 
-Default limits apply before any upstream operation: 50 logical Contents, 4,129 raw
-Content fragments, 256 parts per logical user Content, 4,096 parts per logical
+Before any upstream operation, the defaults allow 200 logical Contents, 4,129
+raw Content fragments, 256 parts per logical user Content, 4,096 parts per logical
 model Content, 12 attachments, 50 MiB decoded attachment bytes, 68 MiB request
 body and 4 MiB cumulative history text/tool data. Hidden thought/signature data
 also consumes the input limit. Tool objects/arrays have bounded fields, depth
@@ -92,11 +95,15 @@ Incremental HTTP media detection does not depend on the history parser's
 Content limit. An oversized media history cannot silently fall back to text.
 Untrusted bodies are summarized by the existing bounded media logging path.
 
-The existing global budget, per-Cookie exclusivity, Argon classification,
-aliases, exclusions and Auth Manager selection remain in use. Authentication
-and application-search mismatch may use the existing single permitted fallback
-before session creation. Fixed credentials and model tests do not switch.
-Session creation, uploads and generation are never replayed on another account.
+Generation uses the global concurrency and memory budgets. Requests sharing a
+Cookie identity can submit concurrently with the same verified snapshot. Cookie
+renewal waits for those submissions before publishing a new snapshot, and
+submitted requests release the Cookie snapshot while keeping global reservations
+through delivery. The Auth Manager selects credentials using Argon classification,
+aliases and exclusions. Authentication and application-search mismatch may use
+the existing single permitted fallback before session creation. Fixed credentials
+and model tests do not switch. Session creation, uploads and generation are never
+replayed on another account.
 
 Classification and credential identity are rechecked before subsequent uploads
 and generation. Manual Cookie replacement makes a not-yet-submitted request
@@ -122,6 +129,8 @@ counts remain unknown; local text-only subset estimates are marked separately.
 Read-time media limit errors retain the same safe reason/field-path contract as
 executor rejections. Debug stage logs contain only safe request/model IDs,
 counts, byte totals, fixed stages/reasons and thought/signature filtering counts.
+For attachment validation failures, the preflight log includes a fixed
+`attachment_reason` and the structural field path.
 
 ## Frontend correspondence
 

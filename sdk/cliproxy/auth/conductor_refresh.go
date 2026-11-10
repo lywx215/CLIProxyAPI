@@ -549,7 +549,7 @@ func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, e
 	}
 	// Request-scoped failures describe this request, not stale credentials.
 	// Refreshing would turn a direct error response into an implicit retry.
-	if isRequestScopedError(execErr) {
+	if isRequestScopedError(execErr) || cliproxyexecutor.ReplayForbidden(execErr) {
 		return auth, false
 	}
 	if !isUnauthorizedError(execErr) || !authHasRefreshCredential(auth) {

@@ -18,6 +18,13 @@ func rawObject(data []byte) (map[string]json.RawMessage, error) {
 	return objectContext(context.Background(), data)
 }
 
+type duplicateJSONFieldError struct {
+	error
+	field string
+}
+
+func (e duplicateJSONFieldError) Unwrap() error { return e.error }
+
 func objectContext(ctx context.Context, data []byte) (map[string]json.RawMessage, error) {
 	data = bytes.TrimSpace(data)
 	if len(data) < 2 || data[0] != '{' || !utf8.Valid(data) || !json.Valid(data) {
@@ -46,7 +53,7 @@ func objectContext(ctx context.Context, data []byte) (map[string]json.RawMessage
 			return nil, invalid("invalid JSON key")
 		}
 		if _, exists := result[name]; exists {
-			return nil, invalid("duplicate JSON field")
+			return nil, duplicateJSONFieldError{invalid("duplicate JSON field"), name}
 		}
 		at = skipJSONSpace(data, end) + 1
 		at = skipJSONSpace(data, at)

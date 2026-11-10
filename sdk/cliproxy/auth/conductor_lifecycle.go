@@ -524,7 +524,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	m.queueRefreshReschedule(auth.ID)
 	m.hook.OnAuthUpdated(ctx, auth.Clone())
 	m.enterpriseAccountPublished(ctx, authClone)
-	if cooldownStateChanged {
+	if cooldownStateChanged || IsAntigravityEnterpriseAccountAuth(authClone) {
 		m.persistCooldownStates(context.Background())
 	}
 	return auth.Clone(), enterprisePersistError
@@ -554,6 +554,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	var removedChildren []*Auth
 	for childID, child := range m.auths {
 		if IsBoundChildAuth(child) && BoundOwnerID(child) == id {
+			m.clearStaleAntigravityEnterpriseRateLimitLocked(childID, "")
 			delete(m.auths, childID)
 			delete(m.modelPoolOffsets, childID)
 			m.enterpriseQuota.mu.Lock()
@@ -566,6 +567,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 		}
 	}
 	delete(m.auths, id)
+	m.clearStaleAntigravityEnterpriseRateLimitLocked(id, "")
 	if provider == web.Provider {
 		m.rebuildEnterpriseWebModelsLocked()
 		m.webRuntime.ForgetCredential(id)

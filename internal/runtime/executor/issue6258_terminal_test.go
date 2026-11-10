@@ -265,6 +265,9 @@ func TestIssue6258ExecutorCleanEOFControl(t *testing.T) {
 				if patch {
 					// A valid source STOP must not become an invalid patch when Responses finalization is deferred.
 					body, payload = executorPatchResponse, executorPatchRequest
+				} else if provider == "antigravity" {
+					// Ordinary text requires an official candidate finish even at clean EOF.
+					body = strings.Replace(body, `"candidates":[{`, `"candidates":[{"finishReason":"STOP",`, 1)
 				}
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 					if issue6258TokenResponse(w, request) {

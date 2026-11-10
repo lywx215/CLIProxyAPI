@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +47,7 @@ type AntigravityEnterpriseQuotaSnapshot struct {
 	Version       uint64                                 `json:"version"`
 	Pools         []AntigravityEnterprisePoolState       `json:"pools"`
 	Cooldowns     []AntigravityEnterpriseBindingCooldown `json:"cooldowns,omitempty"`
+	RateLimits    []AntigravityEnterpriseRateLimitState  `json:"binding_rate_limits,omitempty"`
 }
 type AntigravityEnterpriseQuotaStateStore interface {
 	LoadAntigravityEnterpriseQuota(context.Context) (AntigravityEnterpriseQuotaSnapshot, error)
@@ -103,6 +105,9 @@ func (g *antigravityEnterpriseGate) blocked(now time.Time) (bool, time.Time) {
 	c := &g.manager.antigravityEnterprise
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if deadline := c.rateLimitDeadline(g.authID, g.fingerprint, now); !deadline.IsZero() {
+		return true, deadline
+	}
 	if failure, ok := c.cooldowns[g.authID]; ok && failure.Fingerprint == g.fingerprint && failure.RetryAt.After(now) {
 		return true, failure.RetryAt
 	}
@@ -252,6 +257,11 @@ func (m *Manager) CheckAntigravityEnterpriseQuota(source *Auth, now time.Time) e
 	}
 	c := &m.antigravityEnterprise
 	c.mu.Lock()
+	if deadline := c.rateLimitDeadline(source.ID, aeBindingFingerprint(source), now); !deadline.IsZero() {
+		c.mu.Unlock()
+		m.mu.RUnlock()
+		return &ae.Error{HTTP: 429, Code: "binding_rate_limit", Scope: "binding", RetryAt: deadline}
+	}
 	if failure, ok := c.cooldowns[source.ID]; ok && failure.Fingerprint == aeBindingFingerprint(source) && failure.RetryAt.After(now) {
 		c.mu.Unlock()
 		m.mu.RUnlock()
@@ -319,6 +329,9 @@ func (g *antigravityEnterpriseGate) views(now time.Time) []CooldownView {
 	defer c.mu.Unlock()
 	p := c.pools[g.pool]
 	views := []CooldownView{}
+	if deadline := c.rateLimitDeadline(g.authID, g.fingerprint, now); !deadline.IsZero() {
+		views = append(views, aeRateLimitView(deadline, now))
+	}
 	if failure, ok := c.cooldowns[g.authID]; ok && failure.Fingerprint == g.fingerprint && failure.RetryAt.After(now) {
 		views = append(views, CooldownView{Scope: "credential", Reason: failure.Reason, RetryAt: failure.RetryAt.UTC(), RemainingSeconds: int64(failure.RetryAt.Sub(now).Seconds()), HTTPStatus: 403})
 	}
@@ -360,9 +373,12 @@ func (g *antigravityEnterpriseGate) views(now time.Time) []CooldownView {
 	return append(views, CooldownView{Origin: "shared_pool", Feature: "ai_developer_tools", PoolID: ae.Digest(g.pool), PoolVersion: p.Version, Phase: phase, RestrictionKind: "weekly", RestrictionScope: "edition", TimeSource: "google", Scope: "credential", Reason: "weekly_quota", RetryAt: retry.UTC(), NextCheckAt: nextCheck, RemainingSeconds: seconds, SharedResetSupported: true})
 }
 func (m *Manager) antigravityEnterpriseQuotaSnapshot() AntigravityEnterpriseQuotaSnapshot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	c := &m.antigravityEnterprise
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.pruneRateLimits(c.currentTime())
 	c.version++
 	snapshot := AntigravityEnterpriseQuotaSnapshot{SchemaVersion: 1, Version: c.version, Pools: []AntigravityEnterprisePoolState{}}
 	for _, p := range c.pools {
@@ -377,15 +393,40 @@ func (m *Manager) antigravityEnterpriseQuotaSnapshot() AntigravityEnterpriseQuot
 	for _, failure := range c.cooldowns {
 		snapshot.Cooldowns = append(snapshot.Cooldowns, failure)
 	}
+	for id, state := range c.rateLimits {
+		auth := m.auths[id]
+		if !IsAntigravityEnterpriseBindingAuth(auth) || m.auths[BoundOwnerID(auth)] == nil || aeBindingFingerprint(auth) != state.Fingerprint {
+			delete(c.rateLimits, id)
+			continue
+		}
+		copyState := *state
+		copyState.Observations = slices.Clone(state.Observations)
+		snapshot.RateLimits = append(snapshot.RateLimits, copyState)
+	}
+	sort.Slice(snapshot.RateLimits, func(i, j int) bool { return snapshot.RateLimits[i].AuthID < snapshot.RateLimits[j].AuthID })
 	sort.Slice(snapshot.Cooldowns, func(i, j int) bool { return snapshot.Cooldowns[i].AuthID < snapshot.Cooldowns[j].AuthID })
 	sort.Slice(snapshot.Pools, func(i, j int) bool { return snapshot.Pools[i].Key < snapshot.Pools[j].Key })
 	return snapshot
 }
 func validateAEQuotaSnapshot(snapshot AntigravityEnterpriseQuotaSnapshot) error {
-	if snapshot.SchemaVersion != 1 || snapshot.Version == 0 || len(snapshot.Pools) > 10000 {
+	if snapshot.SchemaVersion != 1 || snapshot.Version == 0 || len(snapshot.Pools) > 10000 || len(snapshot.RateLimits) > 10000 {
 		return fmt.Errorf("invalid antigravity-enterprise quota snapshot")
 	}
 	seen := map[string]bool{}
+	for _, state := range snapshot.RateLimits {
+		if state.AuthID == "" || len(state.Fingerprint) != 64 || seen[state.AuthID] || len(state.Observations) > aeRateLimitHistoryLimit {
+			return fmt.Errorf("invalid antigravity-enterprise binding rate limit")
+		}
+		seen[state.AuthID] = true
+		attempts := map[string]bool{}
+		for _, observation := range state.Observations {
+			if observation.AttemptID == "" || len(observation.AttemptID) > 128 || observation.RetryAt.IsZero() || attempts[observation.AttemptID] {
+				return fmt.Errorf("invalid antigravity-enterprise rate limit observation")
+			}
+			attempts[observation.AttemptID] = true
+		}
+	}
+	clear(seen)
 	for _, failure := range snapshot.Cooldowns {
 		if failure.AuthID == "" || len(failure.Fingerprint) != 64 || failure.Reason != "permission_denied" || failure.RetryAt.IsZero() {
 			return fmt.Errorf("invalid antigravity-enterprise binding cooldown")
@@ -421,6 +462,7 @@ func (m *Manager) restoreAntigravityEnterpriseQuota(ctx context.Context, store C
 	if err = validateAEQuotaSnapshot(snapshot); err != nil {
 		return err
 	}
+	m.mu.RLock()
 	c := &m.antigravityEnterprise
 	c.mu.Lock()
 	if c.pools == nil {
@@ -441,7 +483,21 @@ func (m *Manager) restoreAntigravityEnterpriseQuota(ctx context.Context, store C
 			c.cooldowns[failure.AuthID] = failure
 		}
 	}
+	if c.rateLimits == nil {
+		c.rateLimits = make(map[string]*AntigravityEnterpriseRateLimitState)
+	}
+	for _, state := range snapshot.RateLimits {
+		auth := m.auths[state.AuthID]
+		if !IsAntigravityEnterpriseBindingAuth(auth) || aeBindingFingerprint(auth) != state.Fingerprint || c.rateLimits[state.AuthID] != nil {
+			continue
+		}
+		copyState := state
+		copyState.Observations = slices.Clone(state.Observations)
+		c.rateLimits[state.AuthID] = &copyState
+	}
+	c.pruneRateLimits(c.currentTime())
 	c.mu.Unlock()
+	m.mu.RUnlock()
 	m.publishAntigravityEnterpriseQuota()
 	return nil
 }

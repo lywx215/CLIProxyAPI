@@ -113,6 +113,11 @@ func SetHeaders(req *http.Request, token, project string) {
 }
 func DecodeError(status int, headers http.Header, data []byte, started bool) *Error {
 	e := &Error{HTTP: status, Code: "upstream_error", Started: started}
+	if len(data) > 64*1024 {
+		e.Body = string(data[:64*1024])
+	} else {
+		e.Body = string(data)
+	}
 	var envelope struct {
 		Error struct {
 			Code    int    `json:"code"`

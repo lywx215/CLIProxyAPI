@@ -33,8 +33,8 @@ func TestEnterpriseWebConfiguredDefaultsThroughExecutor(t *testing.T) {
 		wantMaximum int64
 		wantUploads int
 	}{
-		{"50-contents", func() []byte { return history(50) }, "", 0, 1},
-		{"51-contents", func() []byte { return history(51) }, contract.LimitHistoryContents, 50, 0},
+		{"200-contents", func() []byte { return history(200) }, "", 0, 1},
+		{"201-contents", func() []byte { return history(201) }, contract.LimitHistoryContents, 200, 0},
 		{"4-MiB-text", func() []byte {
 			return bytes.Replace(phaseOneRequest("text/plain").Payload, []byte("read these attachments"), []byte(strings.Repeat("x", 4<<20)), 1)
 		}, "", 0, 1},

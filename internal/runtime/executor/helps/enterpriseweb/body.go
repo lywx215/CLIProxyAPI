@@ -33,14 +33,21 @@ func ContentCount(b []byte) int { _, count := webgemini.InlineMediaInfo(b); retu
 
 // KeyScanner observes JSON string keys incrementally without buffering values.
 type KeyScanner struct {
-	in, escaped, after bool
-	token              []byte
-	key                byte
-	frames             []scanFrame
-	overflow           bool
+	in, escaped, after   bool
+	token                []byte
+	key                  byte
+	frames               []scanFrame
+	overflow             bool
+	skipEmptyAttachments bool
+	emptyAttachmentKey   byte
+	value                byte
+	nullTail             string
 }
 
-type scanFrame struct{ role, key byte }
+type scanFrame struct {
+	role, key byte
+	emptyData bool
+}
 
 const (
 	scanOther byte = iota
@@ -49,12 +56,24 @@ const (
 	scanContent
 	scanParts
 	scanPart
+	scanInline
+	scanFile
 )
 const (
 	keyOther byte = iota
 	keyContents
 	keyParts
 	keyInline
+	keyFile
+	keyData
+	keyFileURI
+)
+
+const (
+	valueNone byte = iota
+	valueAttachment
+	valuePayload
+	valueStringFirstByte
 )
 
 func (s *KeyScanner) open(kind byte) {
@@ -76,6 +95,10 @@ func (s *KeyScanner) open(kind byte) {
 			role = scanParts
 		case parent.role == scanParts && kind == '{':
 			role = scanPart
+		case parent.role == scanPart && parent.key == keyInline && kind == '{':
+			role = scanInline
+		case parent.role == scanPart && parent.key == keyFile && kind == '{':
+			role = scanFile
 		}
 	}
 	s.frames = append(s.frames, scanFrame{role: role})
@@ -123,8 +146,14 @@ func (s *KeyScanner) Feed(b []byte) bool {
 					s.key = keyContents
 				case "parts":
 					s.key = keyParts
-				case "inlineData", "inline_data", "fileData", "file_data":
+				case "inlineData", "inline_data":
 					s.key = keyInline
+				case "fileData", "file_data":
+					s.key = keyFile
+				case "data":
+					s.key = keyData
+				case "fileUri", "file_uri":
+					s.key = keyFileURI
 				}
 			}
 			s.after = true
@@ -132,6 +161,51 @@ func (s *KeyScanner) Feed(b []byte) bool {
 		}
 		value := b[0]
 		b = b[1:]
+		if s.nullTail != "" {
+			if value != s.nullTail[0] {
+				return true
+			}
+			s.nullTail = s.nullTail[1:]
+			if s.nullTail == "" {
+				s.emptyAttachmentKey = keyFile
+			}
+			continue
+		}
+		if s.value != valueNone {
+			if s.value != valueStringFirstByte && (value == ' ' || value == '\r' || value == '\n' || value == '\t') {
+				continue
+			}
+			frame := &s.frames[len(s.frames)-1]
+			if value == 'n' && (s.value == valueAttachment && frame.key == keyFile ||
+				s.value == valuePayload && frame.role == scanFile) {
+				s.nullTail = "ull"
+				s.value = valueNone
+				continue
+			}
+			switch s.value {
+			case valueAttachment:
+				if value != '{' {
+					return true
+				}
+				s.value = valueNone
+			case valuePayload:
+				if value != '"' {
+					return true
+				}
+				s.value = valueStringFirstByte
+				continue
+			case valueStringFirstByte:
+				if value != '"' {
+					return true
+				}
+				if frame.role == scanInline {
+					frame.emptyData = true
+					s.emptyAttachmentKey = keyInline
+				}
+				s.value = valueNone
+				continue
+			}
+		}
 		if s.after {
 			if value == ' ' || value == '\r' || value == '\n' || value == '\t' {
 				continue
@@ -139,11 +213,20 @@ func (s *KeyScanner) Feed(b []byte) bool {
 			if value == ':' && len(s.frames) > 0 {
 				frame := &s.frames[len(s.frames)-1]
 				frame.key = s.key
-				if frame.role == scanPart && s.key == keyInline {
-					return true
+				switch {
+				case frame.role == scanPart && (s.key == keyInline || s.key == keyFile):
+					if !s.skipEmptyAttachments {
+						return true
+					}
+					s.value = valueAttachment
+				case frame.role == scanInline && s.key == keyData, frame.role == scanFile && s.key == keyFileURI:
+					s.value = valuePayload
 				}
 			}
 			s.after = false
+			if s.value != valueNone {
+				continue
+			}
 		}
 		switch value {
 		case '"':
@@ -157,6 +240,14 @@ func (s *KeyScanner) Feed(b []byte) bool {
 			}
 		case '}', ']':
 			if len(s.frames) > 0 {
+				frame := s.frames[len(s.frames)-1]
+				if frame.role == scanInline && !frame.emptyData {
+					return true
+				}
+				if frame.role == scanFile {
+					// A file object reaches its end only if no nonempty URI was found.
+					s.emptyAttachmentKey = keyFile
+				}
 				s.frames = s.frames[:len(s.frames)-1]
 			}
 		case ',':
@@ -173,7 +264,8 @@ func (s *KeyScanner) Feed(b []byte) bool {
 	return false
 }
 
-// ReadBody admits media as soon as its key appears, before buffering its value.
+// ReadBody admits media before buffering its data. Only ordinary Enterprise
+// requests drop empty placeholders; Web validates the original attachment fields.
 func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, beforeMedia ...func() error) ([]byte, context.Context, *Lease, error) {
 	settings := rt.admissionConfig(ctx)
 	ctx = context.WithValue(ctx, admissionConfigKey{}, settings)
@@ -187,9 +279,10 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 		observePreflight(ctx, "input_limit_exceeded", err)
 		return nil, ctx, nil, err
 	}
-	var scan KeyScanner
+	scan := KeyScanner{skipEmptyAttachments: true}
 	var lease *Lease
 	var mediaSeen bool
+	var mediaAuthChecked bool
 	capacity := int64(4096)
 	if length > 0 && length <= 64<<10 {
 		capacity = length
@@ -227,13 +320,17 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 			if total > maxBodyBytes {
 				return fail(InputFailureFrom(contract.LimitFailure("body", "Request exceeds its configured byte limit", contract.InputLimit{Name: contract.LimitRequestBytes, Observed: total, Maximum: maxBodyBytes, AtLeast: true})))
 			}
-			if lease == nil && scan.Feed(scratch[:n]) {
-				mediaSeen = true
+			media := lease == nil && scan.Feed(scratch[:n])
+			mediaSeen = mediaSeen || media
+			if !mediaAuthChecked && (media || scan.emptyAttachmentKey != keyOther) {
+				mediaAuthChecked = true
 				if len(beforeMedia) > 0 && beforeMedia[0] != nil {
 					if err := beforeMedia[0](); err != nil {
 						return fail(err)
 					}
 				}
+			}
+			if media {
 				maxBodyBytes = settings.InputLimits.MaxRequestBytes
 				if length > maxBodyBytes {
 					return fail(InputFailureFrom(contract.LimitFailure("body", "Media request exceeds its configured byte limit", contract.InputLimit{Name: contract.LimitDeclaredRequestBytes, Observed: length, Maximum: maxBodyBytes})))
@@ -314,8 +411,21 @@ func ReadBody(ctx context.Context, r io.Reader, length int64, rt *Runtime, befor
 			return fail(e)
 		}
 	}
+	if lease == nil && scan.emptyAttachmentKey != keyOther {
+		cleaned, err := removeEmptyAttachmentParts(body)
+		if err != nil {
+			return fail(err)
+		}
+		body = cleaned
+	}
 	if lease != nil && !HasMedia(body) {
 		return fail(Fail(400, "Inline media must belong to valid content parts"))
+	}
+	if lease == nil && scan.emptyAttachmentKey != keyOther && HasMedia(body) {
+		if scan.emptyAttachmentKey == keyFile {
+			return fail(InputFailure(400, "invalid_file_data", "contents", "Invalid file attachment in contents"))
+		}
+		return fail(InputFailure(400, "invalid_inline_data", "contents", "Invalid inline attachment in contents"))
 	}
 	return body, ctx, lease, nil
 }

@@ -71,6 +71,7 @@ func EnterpriseWebBodyAdmission(m *auth.Manager, authorize ...func(*gin.Context)
 		c.Set("enterprise_web_body_managed", lease != nil)
 		c.Request.Body = http.NoBody
 		if lease == nil {
+			c.Request.ContentLength = int64(len(body))
 			c.Request.Body = io.NopCloser(bytes.NewReader(body))
 		}
 		c.Next()

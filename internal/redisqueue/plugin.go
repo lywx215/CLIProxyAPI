@@ -108,7 +108,7 @@ func (p *usageQueuePlugin) HandleUsage(ctx context.Context, record coreusage.Rec
 	}
 
 	failed := record.Failed
-	if !failed {
+	if !failed && record.Observation == nil {
 		failed = !resolveSuccess(ctx)
 	}
 	fail := resolveFail(ctx, record, failed)
@@ -138,6 +138,7 @@ func (p *usageQueuePlugin) HandleUsage(ctx context.Context, record coreusage.Rec
 	}
 
 	payload, err := json.Marshal(queuedUsageDetail{
+		Observation:         record.Observation.Clone(),
 		requestDetail:       detail,
 		AccountingVersion:   coreusage.TokenAccountingSchemaVersion,
 		TokenBreakdown:      usageDetail.TokenBreakdown,
@@ -168,6 +169,7 @@ func (p *usageQueuePlugin) HandleUsage(ctx context.Context, record coreusage.Rec
 }
 
 type queuedUsageDetail struct {
+	Observation *coreusage.Observation `json:"observation,omitempty"`
 	requestDetail
 	AccountingVersion   int                      `json:"accounting_version"`
 	TokenBreakdown      coreusage.TokenBreakdown `json:"token_breakdown"`

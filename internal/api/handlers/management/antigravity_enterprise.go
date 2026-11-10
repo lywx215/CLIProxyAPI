@@ -496,7 +496,10 @@ func (h *Handler) GetAntigravityEnterpriseQuota(c *gin.Context) {
 		h.authManager.ObserveAntigravityEnterpriseQuota(auth, quota)
 	}
 	l := coreauth.AntigravityEnterpriseLicense(auth)
-	response := gin.H{"provider": ae.Provider, "account_id": ae.String(auth.Metadata, "antigravity_enterprise_account_id"), "binding_id": ae.String(auth.Metadata, "antigravity_enterprise_binding_id"), "revision": auth.Metadata["antigravity_enterprise_binding_revision"], "pool_id": ae.Digest(l.PoolKey()), "pool_version": h.authManager.AntigravityEnterpriseQuotaVersion(auth), "project_id": l.ProjectID, "location": l.Location, "user_tier": l.UserTier, "quota": quota, "status": status, "stale": err != nil || quota.ObservedAt.IsZero() || time.Since(quota.ObservedAt) > ae.QuotaTTL}
+	now := time.Now().UTC()
+	response := gin.H{"provider": ae.Provider, "account_id": ae.String(auth.Metadata, "antigravity_enterprise_account_id"), "binding_id": ae.String(auth.Metadata, "antigravity_enterprise_binding_id"), "revision": auth.Metadata["antigravity_enterprise_binding_revision"], "pool_id": ae.Digest(l.PoolKey()), "pool_version": h.authManager.AntigravityEnterpriseQuotaVersion(auth), "project_id": l.ProjectID, "location": l.Location, "user_tier": l.UserTier, "quota": quota, "status": status, "stale": err != nil || quota.ObservedAt.IsZero() || now.Sub(quota.ObservedAt) >= ae.QuotaTTL}
+	response["cooldowns"] = coreauth.CooldownSnapshotForAuth(auth, now)
+	response["cooldowns_observed_at"] = now
 	if err != nil {
 		response["message"] = err.Error()
 	}
@@ -615,13 +618,22 @@ func (h *Handler) testAntigravityEnterpriseModel(c *gin.Context) {
 			return
 		}
 	}
+	l := coreauth.AntigravityEnterpriseLicense(auth)
+	resources := gin.H{"project_id": l.ProjectID, "location": l.Location}
 	for _, cooldown := range coreauth.CooldownSnapshotForAuth(auth, time.Now()) {
 		if cooldown.Scope == "credential" || cooldown.ModelKey == req.Model || cooldown.ModelKey == nativeModel {
-			c.JSON(200, gin.H{"status": "cooling", "model": req.Model, "auth_index": req.Index, "binding_id": req.BindingID, "revision": currentRevision, "checked_at": time.Now().UTC(), "http_status": 429, "code": "model_cooldown", "retry_after_seconds": cooldown.RemainingSeconds})
+			code, httpStatus := "model_cooldown", cooldown.HTTPStatus
+			if cooldown.Reason == "weekly_quota" || cooldown.Reason == "binding_rate_limit" {
+				code = cooldown.Reason
+			}
+			if httpStatus == 0 {
+				httpStatus = http.StatusTooManyRequests
+			}
+			c.Header("Cache-Control", "no-store")
+			c.JSON(200, gin.H{"status": "cooling", "model": req.Model, "auth_index": req.Index, "binding_id": req.BindingID, "revision": currentRevision, "checked_at": time.Now().UTC(), "elapsed_ms": 0, "http_status": httpStatus, "code": code, "retry_after_seconds": cooldown.RemainingSeconds, "resources": resources})
 			return
 		}
 	}
-	l := coreauth.AntigravityEnterpriseLicense(auth)
 	options := coreexec.Options{SourceFormat: sdktranslator.FormatOpenAI, Metadata: map[string]any{coreexec.PinnedAuthMetadataKey: auth.ID, "source": "management_model_test"}}
 	options.Metadata["antigravity_enterprise_expected_model"] = nativeModel
 	request := coreexec.Request{Model: req.Model, Payload: []byte(`{"messages":[{"role":"user","content":"Reply exactly OK."}],"max_tokens":1024}`)}
@@ -664,11 +676,24 @@ func (h *Handler) testAntigravityEnterpriseModel(c *gin.Context) {
 		return
 	}
 	status, httpStatus, code, message := "ok", 200, "", ""
+	var retryAfterSeconds int64
 	if err != nil {
 		status, httpStatus, code, message = "failed", 502, "upstream_error", err.Error()
 		var upstream interface{ StatusCode() int }
 		if errors.As(err, &upstream) {
 			httpStatus = upstream.StatusCode()
+		}
+		if httpStatus == http.StatusTooManyRequests {
+			code = "rate_limited"
+			var failure *ae.Error
+			if errors.As(err, &failure) {
+				if failure.Code == "weekly_quota" || failure.Code == "binding_rate_limit" {
+					code = failure.Code
+				}
+				if retryAfter := failure.RetryAfter(); retryAfter != nil {
+					retryAfterSeconds = int64(math.Ceil(retryAfter.Seconds()))
+				}
+			}
 		}
 	} else if strings.TrimSpace(gjson.GetBytes(response.Payload, "choices.0.message.content").String()) == "" {
 		status, httpStatus, code, message = "failed", 502, "empty_response", "No visible model response"
@@ -676,7 +701,11 @@ func (h *Handler) testAntigravityEnterpriseModel(c *gin.Context) {
 		status, httpStatus, code, message = "failed", 502, "incomplete_response", "Model did not complete normally"
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, gin.H{"status": status, "model": req.Model, "auth_index": req.Index, "binding_id": req.BindingID, "revision": currentRevision, "checked_at": time.Now().UTC(), "elapsed_ms": time.Since(start).Milliseconds(), "http_status": httpStatus, "code": code, "message": message, "resources": gin.H{"project_id": l.ProjectID, "location": l.Location}})
+	result := gin.H{"status": status, "model": req.Model, "auth_index": req.Index, "binding_id": req.BindingID, "revision": currentRevision, "checked_at": time.Now().UTC(), "elapsed_ms": time.Since(start).Milliseconds(), "http_status": httpStatus, "code": code, "message": message, "resources": resources}
+	if retryAfterSeconds > 0 {
+		result["retry_after_seconds"] = retryAfterSeconds
+	}
+	c.JSON(200, result)
 }
 
 // Weekly reset is a metadata recheck, never a local grant of additional quota.

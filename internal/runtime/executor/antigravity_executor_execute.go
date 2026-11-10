@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -62,6 +61,7 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
 	defer reporter.TrackFailure(ctx, &err)
+	ctx = helps.WithGeminiReporter(ctx, reporter)
 
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
@@ -136,14 +136,14 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 
 	diagnostics.ObserveNormalized(ctx, originalPayloadSource, requestPayload)
 	diag := diagnostics.NewExchange(ctx, responseFormat.String(), false, false)
-	defer func() { diag.Finish(err) }()
+	defer func() { diag.Finish(helps.GeminiDiagnosticError(err)) }()
 	httpResp, errDo := helps.WithAntigravityHTTPClientTrace(httpClient, auth, "generate").Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
 		if errors.Is(errDo, context.Canceled) || errors.Is(errDo, context.DeadlineExceeded) {
 			return resp, errDo
 		}
-		err = errDo
+		err = cliproxyexecutor.TransportFailure(errDo)
 		return resp, err
 	}
 
@@ -157,7 +157,7 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	}
 	if errRead != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errRead)
-		err = errRead
+		err = reporter.GeminiReadFailure(bodyBytes, errRead)
 		return resp, err
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, bodyBytes)
@@ -189,7 +189,7 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 			// Report the upstream failure rather than the cleanup failure.
 			logAntigravityReasoningReplayDegraded(replayScope, "invalidate", errClear)
 		}
-		err = newAntigravityStatusErr(httpResp.StatusCode, bodyBytes)
+		err = reporter.GeminiResponseFailure(bodyBytes, newAntigravityStatusErr(httpResp.StatusCode, bodyBytes, httpResp.Header))
 		return resp, err
 	}
 
@@ -197,14 +197,18 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	if useCredits {
 		clearAntigravityCreditsFailureState(auth)
 	}
-	cacheAntigravityReasoningReplayFromResponse(ctx, replayScope, requestPayload, bodyBytes)
-	bodyBytes = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, bodyBytes)
 	reporter.ObserveResponseModel(bodyBytes)
+	if err = reporter.ObserveGeminiNonStream(bodyBytes, httpResp.Trailer); err != nil {
+		return resp, err
+	}
+	rawResponse := bytes.Clone(bodyBytes)
+	bodyBytes = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, bodyBytes)
 	var param any
 	converted := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, bodyBytes, &param)
 	if helps.ApplyPatchTranslationError(param) != nil || len(converted) == 0 {
-		return cliproxyexecutor.Response{}, statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}
+		return cliproxyexecutor.Response{}, reporter.GeminiTranslationFailure(statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage})
 	}
+	cacheAntigravityReasoningReplayFromResponse(ctx, replayScope, requestPayload, rawResponse)
 	reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		converted = helps.EnsureResponsesUsageDetails(converted)
@@ -283,6 +287,7 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
 	defer reporter.TrackFailure(ctx, &err)
+	ctx = helps.WithGeminiReporter(ctx, reporter)
 
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
@@ -357,14 +362,14 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 
 	diagnostics.ObserveNormalized(ctx, originalPayloadSource, requestPayload)
 	diag := diagnostics.NewExchange(ctx, responseFormat.String(), true, false)
-	defer func() { diag.Finish(err) }()
+	defer func() { diag.Finish(helps.GeminiDiagnosticError(err)) }()
 	httpResp, errDo := helps.WithAntigravityHTTPClientTrace(httpClient, auth, "generate").Do(httpReq)
 	if errDo != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
 		if errors.Is(errDo, context.Canceled) || errors.Is(errDo, context.DeadlineExceeded) {
 			return resp, errDo
 		}
-		err = errDo
+		err = cliproxyexecutor.TransportFailure(errDo)
 		return resp, err
 	}
 	diag.Status(httpResp.StatusCode)
@@ -386,7 +391,7 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 				err = errCtx
 				return resp, err
 			}
-			err = errRead
+			err = reporter.GeminiReadFailure(bodyBytes, errRead)
 			return resp, err
 		}
 		helps.AppendAPIResponseChunk(ctx, e.cfg, bodyBytes)
@@ -416,7 +421,7 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 			// Report the upstream failure rather than the cleanup failure.
 			logAntigravityReasoningReplayDegraded(replayScope, "invalidate", errClear)
 		}
-		err = newAntigravityStatusErr(httpResp.StatusCode, bodyBytes)
+		err = reporter.GeminiResponseFailure(bodyBytes, newAntigravityStatusErr(httpResp.StatusCode, bodyBytes, httpResp.Header))
 		return resp, err
 	}
 
@@ -425,68 +430,29 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 		clearAntigravityCreditsFailureState(auth)
 	}
 	replayAccumulator := newAntigravityReasoningReplayAccumulator(replayScope, requestPayload)
-	out := make(chan cliproxyexecutor.StreamChunk)
-	go func(resp *http.Response) {
-		defer close(out)
-		defer func() {
-			if errClose := resp.Body.Close(); errClose != nil {
-				log.Errorf("antigravity executor: close response body error: %v", errClose)
-			}
-		}()
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(nil, streamScannerBuffer)
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if raw := helps.JSONPayload(line); len(raw) > 0 {
-				diag.Upstream(raw)
-			}
-			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
-			if replayAccumulator != nil {
-				replayAccumulator.ObserveSSELine(line)
-			}
-
-			// Filter usage metadata for all models
-			// Only retain usage statistics in the terminal chunk
-			line = helps.FilterSSEUsageMetadata(line)
-
-			payload := helps.JSONPayload(line)
-			if payload == nil {
-				continue
-			}
-			reporter.ObserveResponseModel(payload)
-
-			out <- cliproxyexecutor.StreamChunk{Payload: payload}
+	aggregate, readResult, errRead := helps.ReadObservedGeminiAggregate(ctx, httpResp, reporter, func(raw []byte) {
+		diag.Upstream(raw)
+		line := append(append([]byte("data: "), raw...), '\n')
+		helps.AppendAPIResponseChunk(ctx, e.cfg, line)
+		if replayAccumulator != nil {
+			replayAccumulator.ObserveSSELine(line)
 		}
-		diag.ReadFinished(scanner.Err())
-		if errScan := scanner.Err(); errScan != nil {
-			helps.RecordAPIResponseError(ctx, e.cfg, errScan)
-			reporter.PublishFailure(ctx, errScan)
-			out <- cliproxyexecutor.StreamChunk{Err: errScan}
-		} else {
-			if replayAccumulator != nil {
-				replayAccumulator.Commit(ctx)
-			}
-		}
-	}(httpResp)
-
-	var buffer bytes.Buffer
-	for chunk := range out {
-		if chunk.Err != nil {
-			return resp, chunk.Err
-		}
-		if len(chunk.Payload) > 0 {
-			_, _ = buffer.Write(chunk.Payload)
-			_, _ = buffer.Write([]byte("\n"))
-		}
+	})
+	diag.ReadCompleted(readResult.EOF, helps.GeminiDiagnosticError(errRead))
+	if errRead != nil {
+		return resp, errRead
 	}
-	resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(buffer.Bytes())}
+	resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(aggregate), Headers: httpResp.Header.Clone()}
 
 	resp.Payload = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, resp.Payload)
 	reporter.ObserveResponseModel(resp.Payload)
 	var param any
 	converted := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), translated, resp.Payload, &param)
 	if helps.ApplyPatchTranslationError(param) != nil || len(converted) == 0 {
-		return cliproxyexecutor.Response{}, statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage}
+		return cliproxyexecutor.Response{}, reporter.GeminiTranslationFailure(statusErr{code: http.StatusBadGateway, msg: helps.ApplyPatchUpstreamErrorMessage})
+	}
+	if replayAccumulator != nil && !readResult.Residual {
+		replayAccumulator.Commit(ctx)
 	}
 	reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
 	if responseFormat == sdktranslator.FormatOpenAIResponse {

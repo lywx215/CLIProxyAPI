@@ -354,11 +354,23 @@ func antigravityHasExplicitCreditsBalanceExhaustedReason(body []byte) bool {
 	return false
 }
 
-func newAntigravityStatusErr(statusCode int, body []byte) statusErr {
-	err := statusErr{code: statusCode, msg: string(body)}
+func newAntigravityStatusErr(statusCode int, body []byte, headers ...http.Header) statusErr {
+	err := statusErr{code: statusCode, msg: string(body[:min(len(body), 64<<10)])}
 	if statusCode == http.StatusTooManyRequests {
 		if retryAfter, parseErr := helps.ParseRetryDelay(body); parseErr == nil && retryAfter != nil {
 			err.retryAfter = retryAfter
+		}
+	}
+	for _, header := range headers {
+		raw := strings.TrimSpace(header.Get("Retry-After"))
+		delay := time.Duration(-1)
+		if seconds, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && seconds >= 0 && seconds <= 86400*365 {
+			delay = time.Duration(seconds) * time.Second
+		} else if date, parseErr := http.ParseTime(raw); parseErr == nil {
+			delay = max(0, time.Until(date))
+		}
+		if delay >= 0 && (err.retryAfter == nil || delay > *err.retryAfter) {
+			err.retryAfter = &delay
 		}
 	}
 	return err

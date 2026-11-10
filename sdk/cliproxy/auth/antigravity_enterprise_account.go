@@ -22,12 +22,13 @@ const aeAuthorizationRevisionKey = "antigravity_enterprise_authorization_revisio
 var ErrAntigravityEnterpriseAccountChanged = errors.New("antigravity-enterprise account changed; reload the credential")
 
 type antigravityEnterpriseCoordinator struct {
-	mu        sync.Mutex
-	flights   map[string]*enterpriseAccountRefresh
-	pools     map[string]*AntigravityEnterprisePoolState
-	cooldowns map[string]AntigravityEnterpriseBindingCooldown
-	version   uint64
-	now       func() time.Time
+	mu         sync.Mutex
+	flights    map[string]*enterpriseAccountRefresh
+	pools      map[string]*AntigravityEnterprisePoolState
+	cooldowns  map[string]AntigravityEnterpriseBindingCooldown
+	rateLimits map[string]*AntigravityEnterpriseRateLimitState
+	version    uint64
+	now        func() time.Time
 }
 
 func IsAntigravityEnterpriseAccountAuth(a *Auth) bool {
@@ -287,12 +288,14 @@ func (m *Manager) reconcileAntigravityEnterpriseLocked(parent *Auth) []*Auth {
 			}
 		}
 		child.antigravityEnterpriseQuota = &antigravityEnterpriseGate{manager: m, authID: child.ID, epoch: child.RegistrationEpoch, pool: AntigravityEnterpriseLicense(child).PoolKey(), fingerprint: aeBindingFingerprint(child)}
+		m.clearStaleAntigravityEnterpriseRateLimitLocked(child.ID, aeBindingFingerprint(child))
 		m.auths[child.ID] = child
 		m.notifyAuthChangeLocked(child.ID)
 		out = append(out, child.Clone())
 	}
 	for id, old := range m.auths {
 		if IsAntigravityEnterpriseBindingAuth(old) && BoundOwnerID(old) == parent.ID && !keep[id] {
+			m.clearStaleAntigravityEnterpriseRateLimitLocked(id, "")
 			next := old.Clone()
 			next.Disabled, next.Status = true, StatusDisabled
 			next.Generation++
@@ -388,6 +391,7 @@ func (m *Manager) UpdateAntigravityEnterpriseAccount(ctx context.Context, base *
 	m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	m.hook.OnAuthUpdated(ctx, result.Clone())
 	m.enterpriseAccountPublished(ctx, result)
+	m.persistCooldownStates(context.Background())
 	return result, nil
 }
 

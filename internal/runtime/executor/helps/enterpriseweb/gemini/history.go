@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash"
 	"sort"
 	"strconv"
@@ -34,6 +35,7 @@ type historyTurn struct {
 type historyAttachment struct {
 	turn, part, ordinal int
 	inline              json.RawMessage
+	field               string
 	uri, mime           string
 	model               bool
 }
@@ -47,6 +49,7 @@ type historyPlan struct {
 // slices refer to the single budgeted request body; history is never a prompt.
 func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error) {
 	limits := inputLimits(ctx)
+	webInput := usesWebInputLimits(ctx)
 	maxHistorySegments, maxHistoryContents, maxAttachments := limits.MaxSegments, limits.MaxContents, limits.MaxAttachments
 	contents, err := rawArray(raw, maxHistorySegments)
 	if err != nil || len(contents) == 0 {
@@ -116,6 +119,9 @@ func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error)
 			}
 			inline, hasInline, err := alias(part, "inlineData", "inline_data")
 			if err != nil {
+				if webInput {
+					return nil, inlineField(inlineFailure(contract.AttachmentFieldConflict, "", "A part must not contain both inlineData aliases"), fmt.Sprintf("contents[%d].parts[%d].inlineData", i, j))
+				}
 				return nil, err
 			}
 			file, hasFile, err := alias(part, "fileData", "file_data")
@@ -133,6 +139,9 @@ func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error)
 			value := &turn.parts[partBase+j]
 			if role == "user" {
 				if len(part) != 1 {
+					if hasInline && webInput {
+						return nil, inlineField(inlineFailure(contract.AttachmentFieldConflict, "", "An inlineData part must not contain other fields"), fmt.Sprintf("contents[%d].parts[%d].inlineData", i, j))
+					}
 					return nil, unsupported("mixed or annotated user content parts")
 				}
 			} else {
@@ -188,7 +197,11 @@ func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error)
 				value.Text = &decoded
 			case hasInline && !hasText && !hasFile:
 				ordinal++
+				field := fmt.Sprintf("contents[%d].parts[%d].inlineData", i, j)
 				if role == "model" {
+					if webInput {
+						return nil, inlineField(inlineFailure(contract.AttachmentUnsupportedModel, "", "Model history inlineData is unsupported"), field)
+					}
 					blob, err := modelHistoryBlob(ctx, inline)
 					if err != nil {
 						return nil, err
@@ -201,11 +214,14 @@ func planHistory(ctx context.Context, raw json.RawMessage) (*historyPlan, error)
 					}
 				} else {
 					userAttachments++
-					if _, _, err := inlineFields(ctx, inline); err != nil {
-						return nil, err
+					if webInput && userAttachments > maxAttachments {
+						return nil, contextLimit(field, contract.LimitAttachments, int64(userAttachments), int64(maxAttachments), true)
+					}
+					if _, err := inlineFields(ctx, inline); err != nil {
+						return nil, inlineField(err, field)
 					}
 				}
-				plan.pending = append(plan.pending, historyAttachment{turn: turnIndex, part: partBase + j, ordinal: ordinal, inline: inline, model: role == "model"})
+				plan.pending = append(plan.pending, historyAttachment{turn: turnIndex, part: partBase + j, ordinal: ordinal, inline: inline, field: field, model: role == "model"})
 			case hasFile && !hasText && !hasInline && role == "user":
 				ordinal++
 				userAttachments++
@@ -400,6 +416,9 @@ func (p *historyPlan) resolve(ctx context.Context, resolver contract.FileResolve
 			a.Data, err = decodeModelHistoryBlob(ctx, pending.inline, maxAttachmentBytes-int64(total))
 		case pending.inline != nil:
 			a, err = parseInline(ctx, pending.inline, pending.ordinal, maxAttachmentBytes-int64(total))
+			if err != nil {
+				err = inlineField(err, pending.field)
+			}
 		default:
 			if resolver == nil {
 				return unsupported("fileData without a Business file resolver")

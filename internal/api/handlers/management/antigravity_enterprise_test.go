@@ -32,6 +32,8 @@ type aeManagementExecutor struct {
 	onCatalog     func(*coreauth.Auth)
 	onQuota       func(*coreauth.Auth, bool)
 	quotaError    error
+	executeError  error
+	onExecute     func(*coreauth.Auth) error
 }
 
 func (e *aeManagementExecutor) Identifier() string { return ae.Provider }
@@ -50,11 +52,19 @@ func (e *aeManagementExecutor) Quota(_ context.Context, auth *coreauth.Auth, for
 	}
 	return e.quota, e.quotaError
 }
-func (e *aeManagementExecutor) Execute(_ context.Context, _ *coreauth.Auth, request coreexec.Request, o coreexec.Options) (coreexec.Response, error) {
+func (e *aeManagementExecutor) Execute(_ context.Context, auth *coreauth.Auth, request coreexec.Request, o coreexec.Options) (coreexec.Response, error) {
 	e.calls++
 	e.lastModel, e.expectedModel = request.Model, o.Metadata["antigravity_enterprise_expected_model"]
 	if o.Metadata[coreexec.PinnedAuthMetadataKey] == "" {
 		return coreexec.Response{}, errors.New("probe lost pinned identity")
+	}
+	if e.executeError != nil {
+		return coreexec.Response{}, e.executeError
+	}
+	if e.onExecute != nil {
+		if err := e.onExecute(auth); err != nil {
+			return coreexec.Response{}, err
+		}
 	}
 	return coreexec.Response{Payload: []byte(`{"choices":[{"message":{"content":"OK"},"finish_reason":"` + e.finish + `"}]}`)}, nil
 }
@@ -153,6 +163,78 @@ func TestAntigravityEnterpriseManagementReadIsGroupedAndNeverGenerates(t *testin
 		t.Fatal("read-only management invoked a model")
 	}
 }
+
+func TestAntigravityEnterpriseQuotaKeepsRestrictionSeparateFromReportedBalance(t *testing.T) {
+	h, router, parent, children, executor := newAEManagementFixture(t)
+	child := children[0]
+	positive := 0.9999995
+	executor.quota.Groups[0].Buckets[0].Fraction = &positive
+	h.authManager.RestrictAntigravityEnterpriseQuota(child, &ae.Error{
+		HTTP: http.StatusTooManyRequests, Code: "weekly_quota", RetryAt: time.Now().Add(time.Hour),
+	})
+	target := "/quota?name=" + parent.ID + "&auth_index=" + child.Index + "&binding_id=" + ae.String(child.Metadata, "antigravity_enterprise_binding_id")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+	var result struct {
+		Quota     ae.Quota                `json:"quota"`
+		Cooldowns []coreauth.CooldownView `json:"cooldowns"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil {
+		t.Fatalf("quota read failed: %d %s", response.Code, response.Body)
+	}
+	bucket, err := result.Quota.Weekly()
+	if err != nil || bucket.Fraction == nil || *bucket.Fraction != positive {
+		t.Fatalf("raw observation changed: %+v, %v", bucket, err)
+	}
+	if len(result.Cooldowns) != 1 || result.Cooldowns[0].Reason != "weekly_quota" || result.Cooldowns[0].Phase != "cooling" {
+		t.Fatalf("weekly restriction missing: %+v", result.Cooldowns)
+	}
+	if executor.calls != 0 {
+		t.Fatal("quota read invoked generation")
+	}
+}
+
+func TestAntigravityEnterpriseModelTestDistinguishesRateLimitAndCooldown(t *testing.T) {
+	h, router, parent, children, executor := newAEManagementFixture(t)
+	child := children[0]
+	positive := 0.9999995
+	executor.quota.Groups[0].Buckets[0].Fraction = &positive
+	if !h.authManager.ObserveAntigravityEnterpriseQuota(child, executor.quota) {
+		t.Fatal("fixture quota observation rejected")
+	}
+	executor.executeError = &ae.Error{
+		HTTP: http.StatusTooManyRequests, Code: "upstream_error", Attempted: true,
+		RetryHint: true, RetryAt: time.Now().Add(time.Minute),
+	}
+	bindingID := ae.String(child.Metadata, "antigravity_enterprise_binding_id")
+	data, err := json.Marshal(gin.H{"name": parent.ID, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": 1, "model": "gemini-4-argon-low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []struct{ status, code string }{{"failed", "rate_limited"}, {"cooling", "model_cooldown"}} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(string(data))))
+		var result struct {
+			Status     string            `json:"status"`
+			Code       string            `json:"code"`
+			HTTPStatus int               `json:"http_status"`
+			ElapsedMS  *int64            `json:"elapsed_ms"`
+			Resources  map[string]string `json:"resources"`
+			RetryAfter int64             `json:"retry_after_seconds"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil {
+			t.Fatalf("model test failed: %d %s", response.Code, response.Body)
+		}
+		license := coreauth.AntigravityEnterpriseLicense(child)
+		if result.Status != expected.status || result.Code != expected.code || result.HTTPStatus != http.StatusTooManyRequests || result.ElapsedMS == nil || result.RetryAfter <= 0 || result.Resources["project_id"] != license.ProjectID || result.Resources["location"] != license.Location {
+			t.Fatalf("unexpected %s result: %s", expected.status, response.Body)
+		}
+	}
+	if executor.calls != 1 {
+		t.Fatalf("cooldown should avoid a second generation attempt, got %d", executor.calls)
+	}
+}
+
 func TestAntigravityEnterpriseBindingPatchIsRevisionChecked(t *testing.T) {
 	h, router, parent, children, _ := newAEManagementFixture(t)
 	child := children[0]
@@ -171,6 +253,64 @@ func TestAntigravityEnterpriseBindingPatchIsRevisionChecked(t *testing.T) {
 	updated, _, ok := h.authManager.AntigravityEnterpriseAccountSnapshot(parent.ID)
 	if !ok || ae.String(updated.Metadata, "refresh_token") != "synthetic-refresh" {
 		t.Fatal("binding update changed account OAuth")
+	}
+}
+
+func TestAntigravityEnterpriseBindingRateLimitManagementContract(t *testing.T) {
+	h, router, parent, children, executor := newAEManagementFixture(t)
+	child := children[0]
+	positive := 1.0
+	executor.quota.Groups[0].Buckets[0].Fraction = &positive
+	h.authManager.ObserveAntigravityEnterpriseQuota(child, executor.quota)
+	for _, item := range children {
+		registry.GetGlobalRegistry().RegisterClient(item.ID, ae.Provider, []*registry.ModelInfo{{ID: "gemini-4-argon-low"}, {ID: "gemini-3.8-flash-low"}})
+		h.authManager.RefreshSchedulerEntry(item.ID)
+	}
+	deadline := time.Now().Add(time.Hour)
+	executor.onExecute = func(auth *coreauth.Auth) error {
+		if auth.ID != child.ID {
+			return nil
+		}
+		failure := &ae.Error{HTTP: 429, Code: "upstream_error", Attempted: true, RetryHint: true, RetryAt: deadline}
+		if retryAt := h.authManager.ObserveAntigravityEnterpriseRateLimit(auth, strconv.Itoa(executor.calls), failure); !retryAt.IsZero() {
+			failure.Code, failure.Scope, failure.RetryAt = "binding_rate_limit", "binding", retryAt
+		}
+		return failure
+	}
+	for _, test := range []struct{ model, status, code string }{
+		{"gemini-4-argon-low", "failed", "rate_limited"},
+		{"gemini-3.8-flash-low", "failed", "binding_rate_limit"},
+		{"gemini-4-argon-low", "cooling", "binding_rate_limit"},
+	} {
+		body, _ := json.Marshal(gin.H{"name": parent.ID, "auth_index": child.Index, "binding_id": ae.String(child.Metadata, "antigravity_enterprise_binding_id"), "expected_revision": 1, "model": test.model})
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(string(body))))
+		var result struct {
+			Status, Code string
+			HTTPStatus   int `json:"http_status"`
+			RetryAfter   int `json:"retry_after_seconds"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Status != test.status || result.Code != test.code || result.HTTPStatus != 429 || result.RetryAfter <= 0 {
+			t.Fatalf("incorrect binding test response: %s", response.Body)
+		}
+	}
+	if executor.calls != 2 {
+		t.Fatalf("binding preflight issued another generation: %d", executor.calls)
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/quota?name="+parent.ID+"&auth_index="+child.Index+"&binding_id="+ae.String(child.Metadata, "antigravity_enterprise_binding_id"), nil))
+	var quota struct {
+		Cooldowns []coreauth.CooldownView `json:"cooldowns"`
+	}
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &quota) != nil || len(quota.Cooldowns) == 0 || quota.Cooldowns[0].Reason != "binding_rate_limit" || quota.Cooldowns[0].RestrictionScope != "binding" || !quota.Cooldowns[0].RetryAt.Equal(deadline) {
+		t.Fatalf("quota refresh lost binding restriction: %s", response.Body)
+	}
+	sibling := children[1]
+	body, _ := json.Marshal(gin.H{"name": parent.ID, "auth_index": sibling.Index, "binding_id": ae.String(sibling.Metadata, "antigravity_enterprise_binding_id"), "expected_revision": 1, "model": "gemini-4-argon-low"})
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("POST", "/test", strings.NewReader(string(body))))
+	if !strings.Contains(response.Body.String(), `"status":"ok"`) || executor.calls != 3 {
+		t.Fatalf("sibling was blocked: %s", response.Body)
 	}
 }
 func TestAntigravityEnterprisePinnedModelTestContract(t *testing.T) {

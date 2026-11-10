@@ -226,6 +226,7 @@ func (h *GeminiAPIHandler) handleStreamGenerateContent(c *gin.Context, modelName
 
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, web.RequestContext(c.Request.Context()))
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, alt)
+	flusher = c.Writer.(http.Flusher)
 
 	setSSEHeaders := func() {
 		c.Header("Content-Type", "text/event-stream")

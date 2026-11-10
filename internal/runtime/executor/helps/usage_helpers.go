@@ -27,6 +27,7 @@ import (
 )
 
 type UsageReporter struct {
+	geminiObservation   *GeminiObservation
 	requestID           string
 	traceID             string
 	provider            string
@@ -137,6 +138,9 @@ func NewUsageReporter(ctx context.Context, provider, model string, auth *cliprox
 		reporter.authIndex = auth.EnsureIndex()
 		reporter.accessTokenHash = authAccessTokenSHA256(auth)
 	}
+	if provider == "antigravity" || provider == "antigravity-enterprise" {
+		reporter.geminiObservation = NewGeminiObservation(provider, reporter.alias)
+	}
 	return reporter
 }
 
@@ -201,7 +205,7 @@ func (r *UsageReporter) accessTokenFingerprint() string {
 // ObserveResponseModel stores the model reported by an upstream response or event and
 // ignores payloads without one; the substitution warning is emitted at publish time.
 func (r *UsageReporter) ObserveResponseModel(payload []byte) {
-	if r == nil || r.responseModelFinal.Load() {
+	if r == nil || (r.geminiObservation == nil && r.responseModelFinal.Load()) {
 		return
 	}
 	provider := ""
@@ -378,6 +382,9 @@ func (r *UsageReporter) ObserveResponse(resp *http.Response) {
 	resp.Body = &usageTTFTReadCloser{
 		ReadCloser: resp.Body,
 		mark: func() {
+			if o := r.geminiObservation; o != nil {
+				o.FirstByte(o.now())
+			}
 			r.MarkFirstResponseByte()
 		},
 	}
@@ -391,6 +398,9 @@ func (r *UsageReporter) ObserveResponsePacketOnly(resp *http.Response) {
 	resp.Body = &usageTTFTReadCloser{
 		ReadCloser: resp.Body,
 		mark: func() {
+			if o := r.geminiObservation; o != nil {
+				o.FirstByte(o.now())
+			}
 			r.RecordFirstPacket()
 		},
 	}
@@ -507,10 +517,12 @@ func (r *UsageReporter) buildAdditionalModelRecord(model string, detail usage.De
 }
 
 func (r *UsageReporter) PublishFailure(ctx context.Context, errs ...error) {
+	r.observeGeminiFailure(errs...)
 	r.publishWithOutcome(ctx, usage.Detail{}, true, failFromErrors(errs...))
 }
 
 func (r *UsageReporter) PublishFailureWithDetail(ctx context.Context, detail usage.Detail, errs ...error) {
+	r.observeGeminiFailure(errs...)
 	r.publishWithOutcome(ctx, detail, true, failFromErrors(errs...))
 }
 
@@ -519,6 +531,9 @@ func (r *UsageReporter) TrackFailure(ctx context.Context, errPtr *error) {
 		return
 	}
 	if *errPtr != nil {
+		if r.geminiObservation != nil && !r.geminiObservation.Attempted() {
+			return
+		}
 		r.PublishFailure(ctx, *errPtr)
 	}
 }
@@ -610,7 +625,13 @@ func (r *UsageReporter) buildRecordForModel(model string, detail usage.Detail, f
 	if model == r.model {
 		responseModel = r.ResponseModel()
 	}
+	var observation *usage.Observation
+	if r.geminiObservation != nil && model == r.model {
+		observation, detail = r.geminiObservation.Snapshot()
+		failed = failed || observation.Failed()
+	}
 	return usage.Record{
+		Observation:         observation,
 		RequestID:           r.requestID,
 		TraceID:             r.traceID,
 		Provider:            r.provider,
@@ -718,6 +739,9 @@ type usageTTFTRoundTripper struct {
 
 func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	cliproxyexecutor.MarkUpstreamAttempt(req.Context())
+	if o := t.reporter.geminiObservation; o != nil {
+		o.Start(o.now(), usage.NextModelAttempt(req.Context()))
+	}
 	t.reporter.StartResponseTTFT()
 	resp, errRoundTrip := t.base.RoundTrip(req.WithContext(diagnostics.WithCallKind(req.Context(), "model")))
 	if errRoundTrip != nil {

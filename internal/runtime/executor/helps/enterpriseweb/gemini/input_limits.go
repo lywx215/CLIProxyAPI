@@ -14,6 +14,8 @@ func WithInputLimits(ctx context.Context, limits appconfig.GeminiEnterpriseWebIn
 	return context.WithValue(ctx, inputLimitsKey{}, limits.WithDefaults())
 }
 
+func usesWebInputLimits(ctx context.Context) bool { return ctx.Value(inputLimitsKey{}) != nil }
+
 // WithHistoryReservation lets the host reserve validated serialization headroom
 // before allocation without reserving the configured text maximum for every file.
 func WithHistoryReservation(ctx context.Context, reserve func(int64) error) context.Context {

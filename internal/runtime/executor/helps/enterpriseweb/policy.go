@@ -76,6 +76,17 @@ func WithPolicyValidator(ctx context.Context, validate PolicyValidator) context.
 
 // ValidateModelPolicy checks the immutable selection and the current dispatch policy.
 func ValidateModelPolicy(ctx context.Context, authID string, c Credential, model string, exclusions ...[]string) error {
+	if err := c.ValidateModelPolicy(model, exclusions...); err != nil {
+		return err
+	}
+	if validate, ok := ctx.Value(policyValidatorKey{}).(PolicyValidator); ok && validate != nil {
+		return validate(authID, c, model)
+	}
+	return nil
+}
+
+// ValidateModelPolicy checks a credential snapshot without consulting live state.
+func (c Credential) ValidateModelPolicy(model string, exclusions ...[]string) error {
 	if err := c.CheckModelPolicy(model); err != nil {
 		return err
 	}
@@ -83,9 +94,6 @@ func ValidateModelPolicy(ctx context.Context, authID string, c Credential, model
 		if !c.AllowsModelWithExclusions(model, excluded) {
 			return Fail(400, "Web model is excluded by the current configuration")
 		}
-	}
-	if validate, ok := ctx.Value(policyValidatorKey{}).(PolicyValidator); ok && validate != nil {
-		return validate(authID, c, model)
 	}
 	return nil
 }

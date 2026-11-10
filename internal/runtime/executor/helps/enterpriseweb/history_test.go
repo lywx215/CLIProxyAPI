@@ -67,7 +67,7 @@ func TestWebPreflightRejectionsCountOnceAndExcludeSubmittedRequests(t *testing.T
 
 func TestWebPreflightReadFailureReleasesAdmission(t *testing.T) {
 	r := enabledRuntime()
-	reader := io.MultiReader(strings.NewReader(`{"contents":[{"parts":[{"inlineData":`), iotest.ErrReader(io.ErrUnexpectedEOF))
+	reader := io.MultiReader(strings.NewReader(`{"contents":[{"parts":[{"inlineData":{"data":"Y`), iotest.ErrReader(io.ErrUnexpectedEOF))
 	_, _, _, err := ReadBody(context.Background(), reader, -1, r)
 	if err == nil || r.Status()["active_requests"] != 0 || r.Status()["inflight_bytes"] != int64(0) {
 		t.Fatal("body failure was not released", err, r.Status())

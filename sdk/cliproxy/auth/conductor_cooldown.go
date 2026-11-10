@@ -516,7 +516,10 @@ func (m *Manager) ResetQuota(ctx context.Context, authID string) (*Auth, []strin
 	}
 	if IsAntigravityEnterpriseBindingAuth(auth) {
 		m.antigravityEnterprise.mu.Lock()
+		cooldownStateChanged = m.antigravityEnterprise.rateLimits[authID] != nil
 		delete(m.antigravityEnterprise.cooldowns, authID)
+		delete(m.antigravityEnterprise.rateLimits, authID)
+		m.antigravityEnterprise.version++
 		m.antigravityEnterprise.mu.Unlock()
 	}
 
@@ -560,7 +563,7 @@ func (m *Manager) ResetQuota(ctx context.Context, authID string) (*Auth, []strin
 	snapshot = auth.Clone()
 	if trackCooldownState {
 		cooldownRecordsAfter := m.cooldownStateRecordsForAuthLocked(auth, now)
-		cooldownStateChanged = !cooldownStateRecordsEqual(cooldownRecordsBefore, cooldownRecordsAfter)
+		cooldownStateChanged = cooldownStateChanged || !cooldownStateRecordsEqual(cooldownRecordsBefore, cooldownRecordsAfter)
 	}
 	errPersist := m.persistLocked(ctx, auth)
 	m.mu.Unlock()
@@ -1650,6 +1653,9 @@ func statusCodeFromError(err error) int {
 }
 
 func isRequestScopedError(err error) bool {
+	if facts := cliproxyexecutor.FactsFromError(err); facts != nil && facts.Scope == "request" {
+		return true
+	}
 	if err == nil {
 		return false
 	}

@@ -8,7 +8,7 @@ independent of Google's model context, file, account and policy limits.
 upstream:
   gemini-enterprise-web:
     input-limits:
-      max-contents: 50
+      max-contents: 200
       max-segments: 4129
       max-text-bytes: 4194304
       max-user-parts: 256
@@ -24,13 +24,14 @@ upstream:
       max-generation-config-bytes: 1048576
 ```
 
-Omitted or zero fields select the defaults above. Negative values and values
-outside the validated safety bounds are rejected. `max-segments` must be at
-least `max-contents`.
+Omitted or zero fields select the defaults above. A lower explicit
+`max-segments` also caps the default for `max-contents`. Negative values and
+values outside the validated safety bounds are rejected. `max-segments` must be
+at least the effective `max-contents`.
 
 | Key | Meaning | Allowed maximum |
 | --- | --- | --- |
-| `max-contents` | Logical contents; adjacent fragments with the same role count as one content, rather than a full question/answer round | 10,000 |
+| `max-contents` | Logical contents, with adjacent fragments of the same role counted together. The default of 200 covers about 100 alternating question-and-answer rounds. | 10,000 |
 | `max-segments` | Raw `contents` entries | 100,000 |
 | `max-text-bytes` | Cumulative history/system text, signatures and historical tool records; 4 MiB by default | 64 MiB |
 | `max-user-parts` | Parts per logical user content | 65,536 |

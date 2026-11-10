@@ -63,6 +63,37 @@ func TestWebLimitLogRejectsUntrustedDiagnostics(t *testing.T) {
 	}
 }
 
+func TestWebAttachment400LogsOnlySafeSubreasonAndPath(t *testing.T) {
+	buffer := captureWebLogs(t)
+	log.SetLevel(log.DebugLevel)
+	rt := enabledRuntime()
+	ctx, lease, err := rt.Acquire(logging.WithRequestID(t.Context(), "12345678"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+	body := []byte(`{"contents":[{"parts":[{"inlineData":{"mimeType":"application/private-mime","data":"PRIVATE-ATTACHMENT"}}]}]}`)
+	_, err = webgemini.ParseSerializedBytes(ctx, body, config.Binding{})
+	var failure *contract.Failure
+	if !errors.As(err, &failure) {
+		t.Fatal(err)
+	}
+	rt.RecordPreflight(ctx, InputFailureFrom(failure))
+	observePreflight(ctx, "invalid_history", &Failure{
+		Code: 400, Param: "contents[0].parts[0].inlineData.PRIVATE-FIELD",
+		Message: "PRIVATE-ERROR", AttachmentReason: "PRIVATE-REASON",
+	})
+	line := buffer.String()
+	for _, want := range []string{`[12345678]`, `status=400`, `reason="invalid_history"`, `attachment_reason="unsupported_mime"`, `field="contents[0].parts[0].inlineData.mimeType"`} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("missing %s in %s", want, line)
+		}
+	}
+	if strings.Contains(line, "PRIVATE-") || strings.Contains(line, "private-mime") || strings.Count(line, "attachment_reason=") != 1 {
+		t.Fatal("untrusted attachment diagnostic leaked", line)
+	}
+}
+
 func TestWebDeclaredBodyLimitLogsBeforeReading(t *testing.T) {
 	buffer := captureWebLogs(t)
 	_, _, lease, err := ReadBody(logging.WithRequestID(context.Background(), "87654321"), strings.NewReader("PRIVATE-BODY"), MaxBodyBytes+1, enabledRuntime())

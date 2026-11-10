@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/contract"
@@ -204,61 +205,133 @@ func supportedMIME(value string) (string, error) {
 	if err != nil || len(params) != 0 {
 		return "", invalid("attachment MIME type must be a media type without parameters")
 	}
-	supported := strings.HasPrefix(mediaType, "text/")
-	switch mediaType {
-	case "image/png", "image/jpeg", "image/webp", "image/heic", "image/heif", "application/pdf", "application/json", "application/xml":
-		supported = true
-	}
-	if !supported {
+	if !supportsAttachmentMIME(mediaType) {
 		return "", unsupported("attachment MIME type " + mediaType)
 	}
 	return mediaType, nil
 }
 
-func inlineFields(ctx context.Context, raw json.RawMessage) (map[string]json.RawMessage, string, error) {
-	var a contract.Attachment
+func supportsAttachmentMIME(mediaType string) bool {
+	switch mediaType {
+	case "image/png", "image/jpeg", "image/webp", "image/heic", "image/heif", "application/pdf", "application/json", "application/xml":
+		return true
+	}
+	return strings.HasPrefix(mediaType, "text/")
+}
+
+type inlineInput struct {
+	data              json.RawMessage
+	mimeType, charset string
+}
+
+func inlineFailure(reason contract.AttachmentReason, field, message string) error {
+	return &contract.Failure{Code: 400, Status: "INVALID_ARGUMENT", AttachmentReason: reason, Param: field, Message: message}
+}
+
+func inlineField(err error, field string) error {
+	var failure *contract.Failure
+	if !errors.As(err, &failure) {
+		return err
+	}
+	copy := *failure
+	switch {
+	case failure.AttachmentReason.Valid():
+		copy.Param = field
+		if failure.Param != "" {
+			copy.Param += "." + failure.Param
+		}
+	case failure.Code == 413:
+		copy.Param = field
+	default:
+		return err
+	}
+	return &copy
+}
+
+func inlineFields(ctx context.Context, raw json.RawMessage) (inlineInput, error) {
+	var input inlineInput
 	blob, err := objectContext(ctx, raw)
 	if err != nil {
-		return nil, "", err
+		var duplicate duplicateJSONFieldError
+		var failure *contract.Failure
+		switch {
+		case errors.As(err, &duplicate):
+			var field string
+			switch duplicate.field {
+			case "mimeType", "mime_type":
+				field = "mimeType"
+			case "data":
+				field = "data"
+			}
+			return input, inlineFailure(contract.AttachmentFieldConflict, field, "inlineData must not contain duplicate fields")
+		case errors.As(err, &failure) && failure.Code == 400:
+			return input, inlineFailure(contract.AttachmentInvalidObject, "", "inlineData must be an object")
+		default:
+			return input, err
+		}
 	}
 	for key := range blob {
 		if key != "data" && key != "mimeType" && key != "mime_type" {
-			return nil, "", unsupported("inlineData." + key)
+			return input, inlineFailure(contract.AttachmentUnexpectedField, "", "inlineData contains an unsupported field")
 		}
 	}
 	mimeRaw, _, err := alias(blob, "mimeType", "mime_type")
 	if err != nil {
-		return nil, "", err
+		return input, inlineFailure(contract.AttachmentFieldConflict, "mimeType", "inlineData must not contain both MIME type aliases")
 	}
 	if len(mimeRaw) > 1024 {
-		return nil, "", invalid("inlineData.mimeType is too long")
+		return input, inlineFailure(contract.AttachmentInvalidMIME, "mimeType", "inlineData.mimeType is too long")
 	}
-	mimeType, err := requiredString(mimeRaw, "inlineData.mimeType")
+	value, err := requiredString(mimeRaw, "inlineData.mimeType")
 	if err != nil {
-		return nil, "", err
+		return input, inlineFailure(contract.AttachmentInvalidMIME, "mimeType", "inlineData.mimeType must be a nonempty media type string")
 	}
-	a.MIMEType, err = supportedMIME(mimeType)
-	if err != nil {
-		return nil, "", err
+	mediaType, params, err := mime.ParseMediaType(value)
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return input, inlineFailure(contract.AttachmentInvalidMIME, "mimeType", "inlineData.mimeType must be a valid media type")
 	}
-	value := bytes.TrimSpace(blob["data"])
-	if len(value) < 3 || value[0] != '"' {
-		return nil, "", invalid("inlineData.data must be a nonempty base64 string")
+	if usesWebInputLimits(ctx) {
+		if mediaType == "image/jpg" {
+			mediaType = "image/jpeg"
+		}
+		if mediaType == "text/plain" && len(params) == 1 {
+			// ParseMediaType can merge repeated and RFC 2231 parameters.
+			// Only normalize a single, explicit charset parameter.
+			_, parameter, _ := strings.Cut(value, ";")
+			name, _, _ := strings.Cut(parameter, "=")
+			charset := strings.ToLower(params["charset"])
+			if strings.EqualFold(strings.TrimSpace(name), "charset") &&
+				!strings.Contains(strings.TrimSuffix(strings.TrimSpace(parameter), ";"), ";") &&
+				(charset == "utf-8" || charset == "us-ascii") {
+				input.charset = charset
+			}
+		}
 	}
-	return blob, a.MIMEType, nil
+	if !supportsAttachmentMIME(mediaType) || (len(params) != 0 && input.charset == "") {
+		return input, inlineFailure(contract.AttachmentUnsupportedMIME, "mimeType", "inlineData.mimeType or its parameters are unsupported")
+	}
+	input.mimeType = mediaType
+	input.data = blob["data"]
+	if len(input.data) == 0 || bytes.Equal(input.data, []byte("null")) || bytes.Equal(input.data, []byte{'"', '"'}) {
+		return input, inlineFailure(contract.AttachmentMissingData, "data", "inlineData.data is missing or empty")
+	}
+	if input.data[0] != '"' {
+		return input, inlineFailure(contract.AttachmentInvalidData, "data", "inlineData.data must be a Base64 string")
+	}
+	return input, nil
 }
 
 func parseInline(ctx context.Context, raw json.RawMessage, index int, remaining int64) (contract.Attachment, error) {
 	maxAttachmentBytes := inputLimits(ctx).MaxAttachmentBytes
 	var a contract.Attachment
-	blob, mimeType, err := inlineFields(ctx, raw)
+	input, err := inlineFields(ctx, raw)
 	if err != nil {
 		return a, err
 	}
-	a.MIMEType = mimeType
-	encodedSize, err := jsonStringSize(blob["data"])
+	a.MIMEType = input.mimeType
+	encodedSize, err := jsonStringSize(input.data)
 	if err != nil {
-		return a, err
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be valid Base64")
 	}
 	if encodedSize/4*3-2 > remaining {
 		return a, contract.LimitFailure("inlineData", "Business attachments exceed their configured byte limit", contract.InputLimit{Name: contract.LimitAttachmentBytes, Observed: maxAttachmentBytes - remaining + encodedSize/4*3 - 2, Maximum: maxAttachmentBytes, AtLeast: true})
@@ -268,18 +341,18 @@ func parseInline(ctx context.Context, raw json.RawMessage, index int, remaining 
 		return a, err
 	}
 	defer releaseString()
-	encoded, err := requiredString(blob["data"], "inlineData.data")
+	encoded, err := requiredString(input.data, "inlineData.data")
 	if err != nil {
-		return a, err
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be valid Base64")
 	}
 	// Protobuf JSON accepts both alphabets, with or without padding. Reject
 	// whitespace and invalid trailing bits rather than silently repairing them.
 	if strings.ContainsAny(encoded, " \t\r\n") {
-		return a, invalid("inlineData.data must be valid base64")
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be valid Base64")
 	}
 	urlAlphabet := strings.ContainsAny(encoded, "-_")
 	if urlAlphabet && strings.ContainsAny(encoded, "+/") {
-		return a, invalid("inlineData.data must be valid base64")
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be valid Base64")
 	}
 	encoding := base64.StdEncoding.Strict()
 	if urlAlphabet {
@@ -294,7 +367,7 @@ func parseInline(ctx context.Context, raw json.RawMessage, index int, remaining 
 		decodedBytes -= int64(padding)
 	}
 	if padding > 2 || decodedBytes < 1 {
-		return a, invalid("inlineData.data must be nonempty valid base64")
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be nonempty valid Base64")
 	}
 	if decodedBytes > remaining {
 		return a, contract.LimitFailure("inlineData", "Business attachments exceed their configured byte limit", contract.InputLimit{Name: contract.LimitAttachmentBytes, Observed: maxAttachmentBytes - remaining + decodedBytes, Maximum: maxAttachmentBytes, AtLeast: true})
@@ -304,7 +377,19 @@ func parseInline(ctx context.Context, raw json.RawMessage, index int, remaining 
 	}
 	a.Data, err = encoding.DecodeString(encoded)
 	if err != nil || len(a.Data) == 0 {
-		return a, invalid("inlineData.data must be nonempty valid base64")
+		return a, inlineFailure(contract.AttachmentInvalidBase64, "data", "inlineData.data must be nonempty valid Base64")
+	}
+	switch input.charset {
+	case "utf-8":
+		if !utf8.Valid(a.Data) {
+			return a, inlineFailure(contract.AttachmentCharsetMismatch, "data", "inlineData.data does not match the declared UTF-8 charset")
+		}
+	case "us-ascii":
+		for _, b := range a.Data {
+			if b >= utf8.RuneSelf {
+				return a, inlineFailure(contract.AttachmentCharsetMismatch, "data", "inlineData.data does not match the declared US-ASCII charset")
+			}
+		}
 	}
 	ext := ".bin"
 	switch a.MIMEType {

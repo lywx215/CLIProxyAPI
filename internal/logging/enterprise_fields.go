@@ -25,7 +25,7 @@ func enterpriseDiagnosticLogFields(data log.Fields) []string {
 }
 
 var enterpriseWebDiagnosticFieldOrder = []string{
-	"stage", "status", "field", "limit_name", "observed", "maximum", "observed_at_least",
+	"stage", "status", "field", "attachment_reason", "limit_name", "observed", "maximum", "observed_at_least",
 	"contents", "logical_contents", "attachments", "attachment_bytes", "filtered_thoughts", "filtered_signatures",
 }
 

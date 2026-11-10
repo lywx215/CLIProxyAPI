@@ -264,6 +264,7 @@ func NewManager(store Store, selector Selector, hook Hook) *Manager {
 	}
 	// atomic.Value requires non-nil initial value.
 	manager.webRuntime = web.NewRuntime()
+	manager.webRuntime.SetCookieResolver(manager.resolveEnterpriseWebCookie)
 	manager.webRuntime.SetCookieRotationCommitter(manager.commitEnterpriseWebCookieRotation)
 	manager.webModels.Store(map[string]bool{})
 	manager.runtimeConfig.Store(&internalconfig.Config{})

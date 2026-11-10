@@ -667,7 +667,14 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 		}
 	}
 	parentCtx = diagnostics.CarryContext(parentCtx, requestCtx)
+	parentCtx = coreusage.WithModelAttemptSequence(parentCtx)
+	parentCtx = coreusage.WithObservedHTTPDelivery(parentCtx)
 	newCtx, cancel := context.WithCancel(coreauth.WithGeminiAdmissionRequest(budget.WithRequest(parentCtx)))
+	var deliveryWriter *observedDeliveryWriter
+	if c != nil {
+		deliveryWriter = &observedDeliveryWriter{ResponseWriter: c.Writer, ctx: newCtx, cancel: cancel}
+		c.Writer = deliveryWriter
+	}
 
 	endpoint := ""
 	if c != nil && c.Request != nil {
@@ -714,6 +721,18 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 	newCtx = context.WithValue(newCtx, "gin", c)
 	newCtx = context.WithValue(newCtx, "handler", handler)
 	return newCtx, func(params ...interface{}) {
+		defer coreusage.WaitObservedSettlement(cancelCtx)
+		var deliveryErr error
+		// The argument describes execution, not whether its error frame was written.
+		if len(params) == 1 && requestCtx != nil && requestCtx.Err() != nil {
+			if e, ok := params[0].(error); ok && errors.Is(e, context.Canceled) {
+				deliveryErr = e
+			}
+		}
+		if deliveryWriter != nil && deliveryWriter.writeError() != nil {
+			deliveryErr = deliveryWriter.writeError()
+		}
+		coreusage.FinishObservedDelivery(cancelCtx, deliveryErr)
 		if c != nil {
 			logging.SetResponseStatus(cancelCtx, c.Writer.Status())
 		}

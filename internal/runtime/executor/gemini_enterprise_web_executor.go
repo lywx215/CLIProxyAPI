@@ -36,10 +36,16 @@ func (*GeminiEnterpriseWebExecutor) Identifier() string { return web.Provider }
 func (e *GeminiEnterpriseWebExecutor) client(ctx context.Context, a *auth.Auth) *http.Client {
 	return helps.NewProxyAwareHTTPClientBase(ctx, e.cfg, a, 0)
 }
-func (e *GeminiEnterpriseWebExecutor) authenticate(ctx context.Context, a *auth.Auth, c *web.Credential, client *http.Client, force bool) (string, error) {
+func (e *GeminiEnterpriseWebExecutor) cookieRoute(ctx context.Context, a *auth.Auth) (string, bool) {
 	requestProxy := exec.RequestProxyURL(ctx)
-	route := a.ProxyURL + ":" + e.cfg.ProxyURL + ":" + requestProxy
-	return e.runtime.Authenticate(ctx, c, client, a.ID, route, force, requestProxy == "")
+	return a.ProxyURL + ":" + e.cfg.ProxyURL + ":" + requestProxy, requestProxy == ""
+}
+
+func webCookieSelection(a *auth.Auth) web.CookieSelection {
+	return web.CookieSelection{
+		ID: a.ID, RegistrationEpoch: a.RegistrationEpoch, CredentialVersion: a.CredentialVersion,
+		Disabled: a.Disabled || a.Status == auth.StatusDisabled,
+	}
 }
 
 // CheckCookie authenticates a scheduled credential without starting a Web session.
@@ -48,13 +54,14 @@ func (e *GeminiEnterpriseWebExecutor) CheckCookie(ctx context.Context, a *auth.A
 	if err != nil || ctx.Err() != nil {
 		return false
 	}
-	release := e.runtime.ClaimCookieCheck(a.ID, c)
+	release := e.runtime.ClaimCookieCheck()
 	if release == nil {
 		return false
 	}
 	defer release()
-	_ = e.runtime.CheckCookie(ctx, &c, e.client(ctx, a), a.ID, a.ProxyURL+":"+e.cfg.ProxyURL+":")
-	return ctx.Err() == nil
+	err = e.runtime.CheckCookie(ctx, &c, e.client(ctx, a), webCookieSelection(a), a.ProxyURL+":"+e.cfg.ProxyURL+":")
+	var failure *web.Failure
+	return ctx.Err() == nil && e.runtime.Enabled() && !(errors.As(err, &failure) && failure.Code == http.StatusConflict)
 }
 
 func (e *GeminiEnterpriseWebExecutor) Refresh(ctx context.Context, a *auth.Auth) (*auth.Auth, error) {
@@ -62,17 +69,8 @@ func (e *GeminiEnterpriseWebExecutor) Refresh(ctx context.Context, a *auth.Auth)
 	if err != nil {
 		return nil, err
 	}
-	releaseCredential, err := e.runtime.ClaimCredential("credential:" + a.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer releaseCredential()
-	releaseCookie, err := e.runtime.ClaimCredential("cookie:" + c.CookieKey())
-	if err != nil {
-		return nil, err
-	}
-	defer releaseCookie()
-	token, err := e.authenticate(ctx, a, &c, e.client(ctx, a), true)
+	route, rotate := e.cookieRoute(ctx, a)
+	token, err := e.runtime.RefreshCookie(ctx, &c, e.client(ctx, a), webCookieSelection(a), route, rotate)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +157,7 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 	if model == "" {
 		return nil, done, web.Fail(400, "An explicit media model ID is required")
 	}
-	if errPolicy := web.ValidateModelPolicy(ctx, a.ID, credential, model, e.cfg.OAuthExcludedModels[web.Provider]); errPolicy != nil {
+	if errPolicy := credential.ValidateModelPolicy(model, e.cfg.OAuthExcludedModels[web.Provider]); errPolicy != nil {
 		return nil, done, errPolicy
 	}
 	lease := web.ExistingLease(ctx)
@@ -184,17 +182,6 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 		done()
 		return nil, func() {}, errHistory
 	}
-	releaseCredential, errClaim := e.runtime.ClaimCredential("credential:" + a.ID)
-	if errClaim != nil {
-		done()
-		return nil, func() {}, errClaim
-	}
-	releaseCookie, errCookie := e.runtime.ClaimCredential("cookie:" + credential.CookieKey())
-	if errCookie != nil {
-		releaseCredential()
-		done()
-		return nil, func() {}, errCookie
-	}
 	releaseLease := done
 	budget := resources.New(lease.Budget())
 	parseCtx, resourceLease := budget.Begin(ctx)
@@ -211,7 +198,7 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 		budget.SetLimit(lease.Budget())
 		return nil
 	})
-	done = func() { resourceLease.Close(); releaseCookie(); releaseCredential(); releaseLease() }
+	done = func() { resourceLease.Close(); releaseLease() }
 	failed := true
 	defer func() {
 		if failed {
@@ -246,15 +233,12 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 	}
 	client := e.client(ctx, a)
 	web.ObserveStage(ctx, "authentication", model, input.ContextSummary)
-	previousRevision := credential.Revision
-	token, errToken := e.authenticate(ctx, a, &credential, client, false)
+	route, rotate := e.cookieRoute(ctx, a)
+	token, releasePreparation, errToken := e.runtime.PrepareCookie(ctx, &credential, client, webCookieSelection(a), route, model, rotate)
 	if errToken != nil {
 		return nil, done, web.AuthenticationPreflightFailure(errToken)
 	}
-	evidence.credential = credential
-	if credential.Revision != previousRevision {
-		evidence.epoch++
-	}
+	defer releasePreparation()
 	if !web.AuthorizedModel(token, model) {
 		return nil, done, web.Fail(400, "The selected model ID is unavailable in this Plus configuration")
 	}
@@ -321,7 +305,8 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 	// Optional tokenization can take time on the first request. Keep the final
 	// credential/policy barriers after it, immediately before generation submission.
 	evidence.counter = helps.NewEnterpriseWebTokenCounter(parseCtx, body)
-	if err = web.ValidateModelProbe(ctx, a.ID, credential, model, e.runtime.EvidenceEpoch(a.ID)); err != nil {
+	evidence.credential, evidence.epoch = credential, e.runtime.EvidenceEpoch(a.ID)
+	if err = web.ValidateModelProbe(ctx, a.ID, credential, model, evidence.epoch); err != nil {
 		return nil, done, err
 	}
 	if err = web.ValidateModelPolicy(ctx, a.ID, credential, model, e.cfg.OAuthExcludedModels[web.Provider]); err != nil {
@@ -338,7 +323,7 @@ func (e *GeminiEnterpriseWebExecutor) open(ctx context.Context, a *auth.Auth, re
 	return response, done, nil
 }
 func (e *GeminiEnterpriseWebExecutor) Execute(ctx context.Context, a *auth.Auth, req exec.Request, opts exec.Options) (out exec.Response, err error) {
-	evidence := webModelEvidence{epoch: e.runtime.EvidenceEpoch(a.ID)}
+	var evidence webModelEvidence
 	reporter := newWebUsageReporter(ctx, e, a, req, opts)
 	res, done, err := e.open(ctx, a, req, opts, reporter, &evidence)
 	if err != nil {
@@ -379,7 +364,7 @@ func (e *GeminiEnterpriseWebExecutor) Execute(ctx context.Context, a *auth.Auth,
 	return exec.Response{Payload: helps.EnterpriseWebUsagePayload(webOutput(parts, true, final), detail)}, nil
 }
 func (e *GeminiEnterpriseWebExecutor) ExecuteStream(ctx context.Context, a *auth.Auth, req exec.Request, opts exec.Options) (*exec.StreamResult, error) {
-	evidence := webModelEvidence{epoch: e.runtime.EvidenceEpoch(a.ID)}
+	var evidence webModelEvidence
 	reporter := newWebUsageReporter(ctx, e, a, req, opts)
 	reporter.SetStream(true)
 	res, done, err := e.open(ctx, a, req, opts, reporter, &evidence)

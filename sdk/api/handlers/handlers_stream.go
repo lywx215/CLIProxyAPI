@@ -548,6 +548,9 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	}
 
 	bootstrapEligible := func(err error) bool {
+		if coreexecutor.ReplayForbidden(err) {
+			return false
+		}
 		var scoped coreexecutor.RequestScopedError
 		if errors.As(err, &scoped) && scoped.IsRequestScoped() {
 			return false

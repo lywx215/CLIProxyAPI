@@ -731,6 +731,10 @@ func (h *OpenAIResponsesAPIHandler) handleStreamingResponse(c *gin.Context, rawJ
 	defer finishDelivery(context.Canceled)
 	cliCtx, cancelExecution := h.GetContextWithCancel(h, c, deliveryCtx)
 	cliCancel := func(err error) {
+		if usage.ObservedDeliverySupported(cliCtx) {
+			cancelExecution(err)
+			return
+		}
 		finishDelivery(err)
 		cancelExecution(err)
 	}

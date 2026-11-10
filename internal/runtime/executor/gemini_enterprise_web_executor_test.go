@@ -404,13 +404,28 @@ func testEnterpriseWebCancellationReleasesResources(t *testing.T, serialized boo
 
 type phaseOnePlainExecutor struct {
 	*GeminiEnterpriseWebExecutor
-	calls atomic.Int32
+	calls   atomic.Int32
+	capture func(exec.Request, exec.Options)
 }
 
 func (*phaseOnePlainExecutor) Identifier() string { return "gemini-enterprise" }
-func (e *phaseOnePlainExecutor) Execute(context.Context, *auth.Auth, exec.Request, exec.Options) (exec.Response, error) {
+func (e *phaseOnePlainExecutor) Execute(_ context.Context, _ *auth.Auth, req exec.Request, opts exec.Options) (exec.Response, error) {
 	e.calls.Add(1)
-	return exec.Response{Payload: []byte(`{"text":"plain"}`)}, nil
+	if e.capture != nil {
+		e.capture(req, opts)
+	}
+	return exec.Response{Payload: []byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"plain"}]},"finishReason":"STOP"}]}`)}, nil
+}
+
+func (e *phaseOnePlainExecutor) ExecuteStream(ctx context.Context, a *auth.Auth, req exec.Request, opts exec.Options) (*exec.StreamResult, error) {
+	response, err := e.Execute(ctx, a, req, opts)
+	if err != nil {
+		return nil, err
+	}
+	chunks := make(chan exec.StreamChunk, 1)
+	chunks <- exec.StreamChunk{Payload: response.Payload}
+	close(chunks)
+	return &exec.StreamResult{Chunks: chunks}, nil
 }
 
 func phaseOneManager(t *testing.T) (*auth.Manager, *phaseOnePlainExecutor, *GeminiEnterpriseWebExecutor, context.Context, *phaseOneFixture) {
@@ -735,6 +750,114 @@ func testEnterpriseWebNativeHTTPAndBoundedLogs(t *testing.T, serialized bool) {
 				if len(raw) > 65536 {
 					t.Fatal("unbounded media request log")
 				}
+			}
+		})
+	}
+}
+
+func TestEnterpriseNativeEmptyAttachmentRouting(t *testing.T) {
+	const emptyPart = `{"inlineData":{"mimeType":"image/png","data":""}}`
+	const textPart = `{"text":"read the input"}`
+	const inlinePart = `{"inlineData":{"mimeType":"text/plain","data":"aW5wdXQ="}}`
+	const emptyFilePart = `{"file_data":{"mime_type":"image/png","file_uri":""}}`
+	const fileReference = `{"file_data":{"mime_type":"text/plain","file_uri":"files/biz-fixture"}}`
+	for _, action := range []string{"generateContent", "streamGenerateContent?alt=sse"} {
+		t.Run(action, func(t *testing.T) {
+			for _, tc := range []struct {
+				name, parts                     string
+				web                             bool
+				status                          int
+				errorCode, webMessage, webParam string
+			}{
+				{name: "empty-with-text", parts: emptyPart + "," + textPart, status: http.StatusOK},
+				{name: "real-attachment", parts: textPart + "," + inlinePart, web: true, status: http.StatusOK},
+				{
+					name: "real-attachment-with-empty-inline-data", parts: textPart + "," + inlinePart + "," + emptyPart,
+					web: true, status: http.StatusBadRequest, webMessage: "inlineData.data is missing or empty",
+					webParam: "contents[0].parts[2].inlineData.data",
+				},
+				{name: "empty-only", parts: emptyPart, status: http.StatusBadRequest, errorCode: "empty_inline_data"},
+				{
+					name:   "empty-file-with-text",
+					parts:  `{"fileData":{}},{"fileData":{"mimeType":"image/png"}},{"file_data":null},` + emptyFilePart + "," + textPart,
+					status: http.StatusOK,
+				},
+				{
+					name:       "file-reference-with-empty-placeholder",
+					parts:      textPart + "," + fileReference + "," + emptyFilePart,
+					web:        true,
+					status:     http.StatusBadRequest,
+					webMessage: "fileData.fileUri must be a nonempty string",
+				},
+				{name: "empty-file-only", parts: emptyFilePart, status: http.StatusBadRequest, errorCode: "empty_file_data"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					m, plain, e, ctx, upstream := phaseOneManager(t)
+					cfg := *e.cfg
+					cfg.GeminiEnterpriseWeb.Enabled = tc.web
+					m.SetConfig(&cfg)
+					var execution, original []byte
+					plain.capture = func(req exec.Request, opts exec.Options) {
+						execution, original = req.Payload, opts.OriginalRequest
+					}
+					router := gin.New()
+					router.Use(middleware.EnterpriseWebBodyAdmission(m))
+					h := geminihandlers.NewGeminiAPIHandler(handlers.NewBaseAPIHandlers(&cfg.SDKConfig, m))
+					router.POST("/v1beta/models/*action", h.GeminiHandler)
+					done := make(chan struct{})
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						defer close(done)
+						probeCtx := context.WithValue(r.Context(), "cliproxy.roundtripper", ctx.Value("cliproxy.roundtripper"))
+						router.ServeHTTP(w, r.WithContext(probeCtx))
+					}))
+					defer server.Close()
+					payload := `{"contents":[{"role":"user","parts":[` + tc.parts + `]}]}`
+					response, err := server.Client().Post(server.URL+"/v1beta/models/gemini-3.8-flash:"+action, "application/json", strings.NewReader(payload))
+					if err != nil {
+						t.Fatal(err)
+					}
+					raw, err := io.ReadAll(response.Body)
+					_ = response.Body.Close()
+					<-done
+					if err != nil || response.StatusCode != tc.status {
+						t.Fatalf("HTTP %d, body %s, read error %v", response.StatusCode, raw, err)
+					}
+					switch {
+					case tc.errorCode != "":
+						if gjson.GetBytes(raw, "error.code").String() != tc.errorCode ||
+							gjson.GetBytes(raw, "error.param").String() != "contents[0].parts" ||
+							!strings.Contains(gjson.GetBytes(raw, "error.message").String(), "without input") ||
+							plain.calls.Load() != 0 || len(upstream.calls) != 0 {
+							t.Fatalf("expected a local empty input error, body %s, upstream %v", raw, upstream.calls)
+						}
+					case tc.webMessage != "":
+						if !strings.Contains(gjson.GetBytes(raw, "error.message").String(), tc.webMessage) ||
+							(tc.webParam != "" && gjson.GetBytes(raw, "error.param").String() != tc.webParam) ||
+							plain.calls.Load() != 0 || len(upstream.calls) != 0 {
+							t.Fatalf("expected local Web attachment validation, body %s, upstream %v", raw, upstream.calls)
+						}
+					case tc.web:
+						if plain.calls.Load() != 0 || upstream.calls["uploadFile"] != 1 || upstream.calls["widgetStreamAssist"] != 1 {
+							t.Fatalf("expected exactly one Web upload and generation, got %v", upstream.calls)
+						}
+					default:
+						want := `{"contents":[{"role":"user","parts":[` + textPart + `]}]}`
+						if plain.calls.Load() != 1 || len(upstream.calls) != 0 || string(execution) != want || string(original) != want {
+							t.Fatalf("expected clean payload on Enterprise, execution=%s original=%s web=%v", execution, original, upstream.calls)
+						}
+					}
+					if tc.status == http.StatusOK {
+						if strings.Count(string(raw), `"finishReason":"STOP"`) != 1 {
+							t.Fatalf("expected a single native terminal result: %s", raw)
+						}
+						if strings.HasPrefix(action, "stream") && (!strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") || !bytes.Contains(raw, []byte("data:"))) {
+							t.Fatalf("expected native SSE response: %s", raw)
+						}
+					}
+					if m.WebRuntime().Status()["active_requests"] != 0 || m.WebRuntime().Status()["inflight_bytes"] != int64(0) {
+						t.Fatal("request leaked Web admission", m.WebRuntime().Status())
+					}
+				})
 			}
 		})
 	}

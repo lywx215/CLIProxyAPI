@@ -343,6 +343,8 @@ func (q Quota) Admit(now time.Time) error {
 }
 
 type Error struct {
+	Cause     error  `json:"-"`
+	Body      string `json:"-"`
 	Attempted bool
 	RetryHint bool
 	HTTP      int
@@ -352,6 +354,11 @@ type Error struct {
 	Started   bool
 	RPCStatus string
 }
+
+func (e *Error) Unwrap() error        { return e.Cause }
+func (e *Error) ResponseBody() []byte { return []byte(e.Body) }
+func (e *Error) FailureScope() string { return e.Scope }
+func (e *Error) FailureCode() string  { return e.Code }
 
 func (e *Error) IsGenerationAttempted() bool { return e.Attempted }
 

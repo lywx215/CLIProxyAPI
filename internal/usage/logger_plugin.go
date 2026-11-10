@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -92,14 +93,17 @@ type modelStats struct {
 
 // RequestDetail stores the timestamp, latency, and token usage for a single request.
 type RequestDetail struct {
-	Provider    string     `json:"provider,omitempty"`
-	Timestamp   time.Time  `json:"timestamp"`
-	LatencyMs   int64      `json:"latency_ms"`
-	Source      string     `json:"source"`
-	AuthIndex   string     `json:"auth_index"`
-	Tokens      TokenStats `json:"tokens"`
-	Failed      bool       `json:"failed"`
-	CreditsUsed bool       `json:"credits_used"`
+	ExecutionID string                 `json:"execution_id,omitempty"`
+	TraceID     string                 `json:"trace_id,omitempty"`
+	Observation *coreusage.Observation `json:"observation,omitempty"`
+	Provider    string                 `json:"provider,omitempty"`
+	Timestamp   time.Time              `json:"timestamp"`
+	LatencyMs   int64                  `json:"latency_ms"`
+	Source      string                 `json:"source"`
+	AuthIndex   string                 `json:"auth_index"`
+	Tokens      TokenStats             `json:"tokens"`
+	Failed      bool                   `json:"failed"`
+	CreditsUsed bool                   `json:"credits_used"`
 }
 
 // TokenStats captures the token usage breakdown for a request.
@@ -177,7 +181,7 @@ func (s *RequestStatistics) Record(ctx context.Context, record coreusage.Record)
 		statsKey = resolveAPIIdentifier(ctx, record)
 	}
 	failed := record.Failed
-	if !failed {
+	if !failed && record.Observation == nil {
 		failed = !resolveSuccess(ctx)
 	}
 	success := !failed
@@ -207,6 +211,9 @@ func (s *RequestStatistics) Record(ctx context.Context, record coreusage.Record)
 		s.apis[statsKey] = stats
 	}
 	s.updateAPIStats(stats, modelName, RequestDetail{
+		ExecutionID: record.RequestID,
+		TraceID:     record.TraceID,
+		Observation: record.Observation.Clone(),
 		Provider:    strings.TrimSpace(record.Provider),
 		Timestamp:   timestamp,
 		LatencyMs:   normaliseLatency(record.Latency),
@@ -263,6 +270,7 @@ func (s *RequestStatistics) Snapshot() StatisticsSnapshot {
 			copy(requestDetails, modelStatsValue.Details)
 			for i := range requestDetails {
 				requestDetails[i].Tokens = cloneTokenStats(requestDetails[i].Tokens)
+				requestDetails[i].Observation = requestDetails[i].Observation.Clone()
 			}
 			apiSnapshot.Models[modelName] = ModelSnapshot{
 				TotalRequests: modelStatsValue.TotalRequests,
@@ -299,8 +307,10 @@ func (s *RequestStatistics) Snapshot() StatisticsSnapshot {
 }
 
 type MergeResult struct {
-	Added   int64 `json:"added"`
-	Skipped int64 `json:"skipped"`
+	ObservationsMerged   int64 `json:"observations_merged"`
+	ObservationConflicts int64 `json:"observation_conflicts"`
+	Added                int64 `json:"added"`
+	Skipped              int64 `json:"skipped"`
 }
 
 // MergeSnapshot merges an exported statistics snapshot into the current store.
@@ -314,17 +324,32 @@ func (s *RequestStatistics) MergeSnapshot(snapshot StatisticsSnapshot) MergeResu
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	seen := make(map[string]struct{})
+	type location struct {
+		model *modelStats
+		index int
+	}
+	byID := map[string]location{}
+	byFingerprint := map[string][]location{}
+	identity := func(api, model, id string) string { return api + "\x00" + model + "\x00" + id }
+	remember := func(api, model string, stats *modelStats, index int) {
+		d := stats.Details[index]
+		loc := location{stats, index}
+		if d.ExecutionID != "" {
+			byID[identity(api, model, d.ExecutionID)] = loc
+		}
+		key := dedupKey(api, model, d)
+		byFingerprint[key] = append(byFingerprint[key], loc)
+	}
 	for apiName, stats := range s.apis {
 		if stats == nil {
 			continue
 		}
-		for modelName, modelStatsValue := range stats.Models {
-			if modelStatsValue == nil {
+		for modelName, m := range stats.Models {
+			if m == nil {
 				continue
 			}
-			for _, detail := range modelStatsValue.Details {
-				seen[dedupKey(apiName, modelName, detail)] = struct{}{}
+			for i := range m.Details {
+				remember(apiName, modelName, m, i)
 			}
 		}
 	}
@@ -354,13 +379,61 @@ func (s *RequestStatistics) MergeSnapshot(snapshot StatisticsSnapshot) MergeResu
 				if detail.Timestamp.IsZero() {
 					detail.Timestamp = time.Now()
 				}
+				detail.Observation = detail.Observation.Clone()
+				if detail.Observation != nil && (!detail.Observation.Valid() || detail.Observation.Failed() != detail.Failed) {
+					detail.Observation = nil
+					result.ObservationConflicts++
+				}
 				key := dedupKey(apiName, modelName, detail)
-				if _, exists := seen[key]; exists {
+				var match *location
+				conflict := false
+				if detail.ExecutionID != "" {
+					if loc, found := byID[identity(apiName, modelName, detail.ExecutionID)]; found {
+						match = &loc
+						conflict = dedupKey(apiName, modelName, loc.model.Details[loc.index]) != key
+					}
+				}
+				if match == nil {
+					var candidates []location
+					for _, loc := range byFingerprint[key] {
+						old := loc.model.Details[loc.index]
+						if detail.ExecutionID == "" || old.ExecutionID == "" {
+							candidates = append(candidates, loc)
+						}
+					}
+					if len(candidates) == 1 {
+						match = &candidates[0]
+					} else if len(candidates) > 1 {
+						result.Skipped++
+						continue
+					}
+				}
+				if match != nil {
 					result.Skipped++
+					old := &match.model.Details[match.index]
+					if conflict {
+						result.ObservationConflicts++
+						continue
+					}
+					if old.ExecutionID == "" && detail.ExecutionID != "" {
+						old.ExecutionID = detail.ExecutionID
+						old.TraceID = detail.TraceID
+						byID[identity(apiName, modelName, detail.ExecutionID)] = *match
+					}
+					if detail.Observation != nil {
+						if old.Observation == nil {
+							old.Observation = detail.Observation.Clone()
+							result.ObservationsMerged++
+						} else if !reflect.DeepEqual(old.Observation, detail.Observation) {
+							result.ObservationConflicts++
+						}
+					}
 					continue
 				}
-				seen[key] = struct{}{}
 				s.recordImported(apiName, modelName, stats, detail)
+				m := stats.Models[modelName]
+				remember(apiName, modelName, m, len(m.Details)-1)
+
 				result.Added++
 			}
 		}

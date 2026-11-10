@@ -219,11 +219,12 @@ func (c *Credential) ClearCatalog() {
 }
 
 type Failure struct {
-	Code          int
-	Message       string
-	clientMessage string
-	Reason, Param string
-	Limit         *contract.InputLimit
+	Code             int
+	Message          string
+	clientMessage    string
+	Reason, Param    string
+	Limit            *contract.InputLimit
+	AttachmentReason contract.AttachmentReason
 }
 
 func (e *Failure) Error() string         { return e.Message }
@@ -250,7 +251,11 @@ func InputFailure(code int, reason, param, message string) error {
 }
 
 func InputFailureFrom(failure *contract.Failure) error {
-	return &Failure{Code: failure.Code, Message: failure.Message, clientMessage: failure.Message, Reason: failure.Reason, Param: failure.Param, Limit: failure.Limit}
+	return &Failure{
+		Code: failure.Code, Message: failure.Message, clientMessage: failure.Message,
+		Reason: failure.Reason, Param: failure.Param, Limit: failure.Limit,
+		AttachmentReason: failure.AttachmentReason,
+	}
 }
 
 func PublicErrorParam(err error, status int) string {
@@ -264,7 +269,7 @@ func CredentialError(code int) error {
 	return Fail(code, fmt.Sprintf("Media authentication failed (HTTP %d); update the session cookie if necessary", code))
 }
 
-// CookieKey enforces one request per cookie even if it was imported more than once.
+// CookieKey coordinates authentication and rotation across copies of a session.
 func (c Credential) CookieKey() string {
 	values, _ := parseCookies(c.Cookies)
 	identity := values["SID"]

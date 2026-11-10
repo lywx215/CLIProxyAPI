@@ -53,6 +53,7 @@ type Record struct {
 	ResponseServiceTier string
 	// ResponseModel stores the model name reported by the upstream response, empty when unknown.
 	ResponseModel string
+	Observation   *Observation
 	// Generate reports whether the client requested actual generation.
 	// nil or true means generation is enabled; only an explicit false disables generation.
 	// Use GenerateFlag to set the value and GenerateEnabled to read it with the default.
@@ -407,6 +408,7 @@ func (m *Manager) Publish(ctx context.Context, record Record) {
 	if m == nil {
 		return
 	}
+	record.Observation = record.Observation.Clone()
 	if strings.TrimSpace(record.RequestID) == "" {
 		if reqID := ExecutionRequestIDFromContext(ctx); reqID != "" {
 			record.RequestID = reqID
@@ -462,7 +464,9 @@ func (m *Manager) dispatch(item queueItem) {
 		if plugin == nil {
 			continue
 		}
-		safeInvoke(plugin, item.ctx, item.record)
+		record := item.record
+		record.Observation = record.Observation.Clone()
+		safeInvoke(plugin, item.ctx, record)
 	}
 }
 

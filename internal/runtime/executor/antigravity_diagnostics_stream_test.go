@@ -32,8 +32,8 @@ func TestAntigravityStreamDiagnosticsSettleBeforeDeliveryCompletion(t *testing.T
 		wantConverted       bool
 	}{
 		{"eof", `{"response":{"candidates":[{"content":{"parts":[{"text":"fixture output"}]},"finishReason":"STOP"}]}}`, "success", io.EOF, false, true},
-		{"missing-terminal", `{"response":{"candidates":[{"content":{"parts":[{"text":"fixture output"}]}}]}}`, "incomplete", io.EOF, false, true},
-		{"malformed", `{"response":`, "incomplete", io.EOF, false, false},
+		{"missing-terminal", `{"response":{"candidates":[{"content":{"parts":[{"text":"fixture output"}]}}]}}`, "incomplete", io.EOF, true, true},
+		{"malformed", `{"response":`, "incomplete", io.EOF, true, false},
 		{"error-frame", `{"error":{"code":500,"message":"fixture failure"}}`, "error", io.EOF, true, false},
 		{"read-error", `{"response":{"candidates":[{"content":{"parts":[{"text":"fixture output"}]}}]}}`, "error", errors.New("fixture read failure"), true, true},
 	} {
@@ -111,7 +111,7 @@ func TestAntigravityStreamDiagnosticsSettleBeforeDeliveryCompletion(t *testing.T
 				span.Finish(diagnostics.ServerData{EndReason: "finished", DeliveryState: "unknown"})
 				synctest.Wait()
 				if body.closed.Load() {
-					t.Error("delivery accounting no longer waits for consumer acknowledgment")
+					t.Error("cleanup did not wait for the consumer acknowledgment")
 				}
 				mu.Lock()
 				attempts, converted, servers := 0, 0, 0

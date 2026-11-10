@@ -254,7 +254,7 @@ func TestAntigravityStreamObfuscatesSensitiveSystemInstruction(t *testing.T) {
 		}
 		captured <- body
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {}\n\n"))
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"totalTokenCount\":0}}\n\n"))
 	}))
 	defer server.Close()
 

@@ -71,7 +71,7 @@ func TestAdmissionDisableReopenAndLowerLimits(t *testing.T) {
 	}
 }
 
-func TestAdmissionRaceAndCookieIsolation(t *testing.T) {
+func TestGlobalAdmissionRace(t *testing.T) {
 	r := enabledRuntime()
 	var wg sync.WaitGroup
 	start := make(chan struct{})
@@ -102,28 +102,9 @@ func TestAdmissionRaceAndCookieIsolation(t *testing.T) {
 	}
 	close(finish)
 	wg.Wait()
-	release, err := r.ClaimCredential("a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = r.ClaimCredential("a"); code(err) != 429 {
-		t.Fatalf("duplicate cookie: %v", err)
-	}
-	other, err := r.ClaimCredential("b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	other()
-	release()
-	release()
-	again, err := r.ClaimCredential("a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	again()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err = r.Acquire(ctx, 1); err != context.Canceled {
+	if _, _, err := r.Acquire(ctx, 1); err != context.Canceled {
 		t.Fatal(err)
 	}
 }
@@ -181,6 +162,91 @@ func TestIncrementalAdmissionAndPrefixSpool(t *testing.T) {
 	reader := strings.NewReader(media)
 	if _, _, _, err = ReadBody(context.Background(), reader, -1, r); code(err) != 503 || reader.Len() < 90000 {
 		t.Fatal("disabled channel buffered the attachment")
+	}
+}
+
+func TestReadBodyPreservesWebAttachmentsAndDropsPlainPlaceholders(t *testing.T) {
+	for _, tc := range []struct {
+		name, parts, wantParts string
+		media                  bool
+	}{
+		{"empty and escaped keys",
+			`{"inline_data":{"mime_type":"image/png","da\u0074a": ""}},{"text":"ask"},{"inli\u006eeData":{"data":"","mimeType":"image/png"}}`,
+			`{"text":"ask"}`, false},
+		{"text and placeholder in one part",
+			`{"text":"ask","inlineData":{"mimeType":"image/png","data":""}}`,
+			`{"text":"ask"}`, false},
+		{"empty with real media",
+			`{"inlineData":{"data":""}},{"inlineData":{"mimeType":"text/plain","data":"eA=="}},{"inline_data":{"data":""}}`,
+			`{"inlineData":{"data":""}},{"inlineData":{"mimeType":"text/plain","data":"eA=="}},{"inline_data":{"data":""}}`, true},
+		{"file reference",
+			`{"inlineData":{"data":""}},{"fileData":{"fileUri":"files/fixture","mimeType":"image/png"}}`,
+			`{"inlineData":{"data":""}},{"fileData":{"fileUri":"files/fixture","mimeType":"image/png"}}`, true},
+		{"null data",
+			`{"inlineData":{"mimeType":"image/png","data":null}}`,
+			`{"inlineData":{"mimeType":"image/png","data":null}}`, true},
+		{"missing data",
+			`{"inlineData":{"mimeType":"image/png"}}`,
+			`{"inlineData":{"mimeType":"image/png"}}`, true},
+		{"nonempty whitespace",
+			`{"inlineData":{"mimeType":"image/png","data":" "}}`,
+			`{"inlineData":{"mimeType":"image/png","data":" "}}`, true},
+		{"duplicate with real data",
+			`{"inlineData":{"mimeType":"image/png","data":"","data":"eA=="}}`,
+			`{"inlineData":{"mimeType":"image/png","data":"","data":"eA=="}}`, true},
+		{"empty file placeholders",
+			`{"fileData":{}},{"file_data":null},{"text":"ask"},{"fileData":{"mimeType":"image/png"}},{"file\u005fdata":{"file_\u0075ri":""}},{"file_data":{"file_uri":null}}`,
+			`{"text":"ask"}`, false},
+		{"empty file in text part",
+			`{"text":"ask","file_data":null}`,
+			`{"text":"ask"}`, false},
+		{"empty file and inline attachment in same part",
+			`{"fileData":{},"inlineData":{"mimeType":"text/plain","data":"eA=="}}`,
+			`{"fileData":{},"inlineData":{"mimeType":"text/plain","data":"eA=="}}`, true},
+		{"empty file placeholders around a reference",
+			`{"fileData":null},{"file_data":{"file_uri":"files/biz-fixture","mime_type":"image/png"}},{"fileData":{"mimeType":"image/png"}}`,
+			`{"fileData":null},{"file_data":{"file_uri":"files/biz-fixture","mime_type":"image/png"}},{"fileData":{"mimeType":"image/png"}}`, true},
+		{"conflicting URI aliases",
+			`{"fileData":{"fileUri":"","file_uri":"files/biz-fixture","mimeType":"image/png"}}`,
+			`{"fileData":{"fileUri":"","file_uri":"files/biz-fixture","mimeType":"image/png"}}`, true},
+		{"non-string URI",
+			`{"fileData":{"fileUri":42}}`,
+			`{"fileData":{"fileUri":42}}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const prefix = `{"contents":[{"role":"user","parts":[`
+			const suffix = `]}],"systemInstruction":{"parts":[{"text":"keep original fields"}]}}`
+			payload, want := prefix+tc.parts+suffix, prefix+tc.wantParts+suffix
+			for _, fragment := range []int{1, 7, 4096} {
+				rt := NewRuntime()
+				if tc.media {
+					rt = enabledRuntime()
+				}
+				body, ctx, lease, err := ReadBody(t.Context(), fragmentReader{strings.NewReader(payload), fragment}, int64(len(payload)), rt)
+				if lease != nil {
+					lease.Release()
+				}
+				if err != nil || (lease != nil) != tc.media || HasMediaInContext(WithBody(ctx, body), body) != tc.media || string(body) != want {
+					t.Fatalf("fragment %d: body=%s, lease=%v, err=%v", fragment, body, lease != nil, err)
+				}
+			}
+		})
+	}
+}
+
+func TestReadBodyRejectsEmptyAttachmentTurn(t *testing.T) {
+	for _, tc := range []struct{ part, wantCode string }{
+		{`{"inlineData":{"mimeType":"image/png","data":""}}`, "empty_inline_data"},
+		{`{"fileData":null}`, "empty_file_data"},
+	} {
+		t.Run(tc.wantCode, func(t *testing.T) {
+			payload := `{"contents":[{"role":"user","parts":[{"text":"earlier question"}]},{"role":"model","parts":[{"text":"earlier answer"}]},{"role":"user","parts":[{"text":"  "},` + tc.part + `]}]}`
+			_, _, lease, err := ReadBody(t.Context(), strings.NewReader(payload), int64(len(payload)), NewRuntime())
+			message, reason := PublicErrorDetail(err, http.StatusBadRequest)
+			if lease != nil || code(err) != http.StatusBadRequest || reason != tc.wantCode || message == "" || PublicErrorParam(err, http.StatusBadRequest) != "contents[2].parts" {
+				t.Fatalf("empty current input was not rejected: %v", err)
+			}
+		})
 	}
 }
 

@@ -107,13 +107,40 @@ type Generator interface {
 // Failure is safe to expose; no underlying transport error or response body is
 // included. Submitted operations are not retried automatically.
 type Failure struct {
-	Code            int
-	Status, Message string
-	Reason, Param   string
-	Limit           *InputLimit
+	Code             int
+	Status, Message  string
+	Reason, Param    string
+	Limit            *InputLimit
+	AttachmentReason AttachmentReason
 }
 
 func (e *Failure) Error() string { return e.Message }
 func Fail(code int, status, message string) error {
 	return &Failure{Code: code, Status: status, Message: message}
+}
+
+type AttachmentReason string
+
+const (
+	AttachmentFieldConflict    AttachmentReason = "field_conflict"
+	AttachmentInvalidObject    AttachmentReason = "invalid_attachment_object"
+	AttachmentUnexpectedField  AttachmentReason = "unexpected_attachment_field"
+	AttachmentInvalidMIME      AttachmentReason = "invalid_mime"
+	AttachmentUnsupportedMIME  AttachmentReason = "unsupported_mime"
+	AttachmentMissingData      AttachmentReason = "missing_attachment_data"
+	AttachmentInvalidData      AttachmentReason = "invalid_attachment_data"
+	AttachmentInvalidBase64    AttachmentReason = "invalid_base64"
+	AttachmentCharsetMismatch  AttachmentReason = "attachment_charset_mismatch"
+	AttachmentUnsupportedModel AttachmentReason = "unsupported_model_attachment"
+)
+
+func (r AttachmentReason) Valid() bool {
+	switch r {
+	case AttachmentFieldConflict, AttachmentInvalidObject, AttachmentUnexpectedField, AttachmentInvalidMIME,
+		AttachmentUnsupportedMIME, AttachmentMissingData, AttachmentInvalidData, AttachmentInvalidBase64,
+		AttachmentCharsetMismatch, AttachmentUnsupportedModel:
+		return true
+	default:
+		return false
+	}
 }

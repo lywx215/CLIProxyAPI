@@ -75,10 +75,12 @@ func (h *Handler) ImportUsageStatistics(c *gin.Context) {
 	result := h.usageStats.MergeSnapshot(payload.Usage)
 	snapshot := h.usageStats.Snapshot()
 	c.JSON(http.StatusOK, gin.H{
-		"added":           result.Added,
-		"skipped":         result.Skipped,
-		"total_requests":  snapshot.TotalRequests,
-		"failed_requests": snapshot.FailureCount,
+		"added":                 result.Added,
+		"observations_merged":   result.ObservationsMerged,
+		"observation_conflicts": result.ObservationConflicts,
+		"skipped":               result.Skipped,
+		"total_requests":        snapshot.TotalRequests,
+		"failed_requests":       snapshot.FailureCount,
 	})
 }
 

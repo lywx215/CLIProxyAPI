@@ -23,7 +23,10 @@ type GeminiEnterpriseWebInputLimits struct {
 
 func (l GeminiEnterpriseWebInputLimits) WithDefaults() GeminiEnterpriseWebInputLimits {
 	if l.MaxContents == 0 {
-		l.MaxContents = 50
+		l.MaxContents = 200
+		if l.MaxSegments > 0 {
+			l.MaxContents = min(l.MaxContents, l.MaxSegments)
+		}
 	}
 	if l.MaxSegments == 0 {
 		l.MaxSegments = 4129

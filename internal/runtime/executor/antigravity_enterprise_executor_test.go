@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,72 @@ import (
 
 const aeAnswer = `{"candidates":[{"content":{"role":"model","parts":[{"text":"OK"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"thoughtsTokenCount":2,"totalTokenCount":8},"modelVersion":"served-model"}`
 const aeQuotaPositive = `{"groups":[{"buckets":[{"bucketId":"gemini-enterprise-weekly","window":"weekly","remainingFraction":1}]}],"overageInfo":{}}`
+
+func TestAntigravityEnterpriseBindingRateLimitAllGenerationPaths(t *testing.T) {
+	for _, path := range []string{"nonstream", "stream-http", "stream-event"} {
+		t.Run(path, func(t *testing.T) {
+			m := coreauth.NewManager(nil, nil, nil)
+			parent := aeExecutorAuth("global")
+			parent.Metadata["google_user_id"] = "rate-executor"
+			parent.Metadata["client_id"] = "client"
+			account := ae.Account{Version: 1, ID: ae.AccountID("rate-executor", "client"), Revision: 1}
+			for _, region := range []string{"global", "us"} {
+				license := ae.License{ProjectID: "test-project", Location: region, UserTier: "gcp-ge-plus-tier"}
+				account.Bindings = append(account.Bindings, ae.Binding{ID: ae.BindingID(account.ID, license), Revision: 1, License: license})
+			}
+			parent.Metadata = ae.PutAccount(parent.Metadata, account)
+			parent, err := m.Register(t.Context(), parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			children := m.AntigravityEnterpriseBindings(parent.ID)
+			if len(children) != 2 {
+				t.Fatalf("wrong fixture bindings: %d", len(children))
+			}
+			calls := 0
+			errorBody := `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"3600s"}]}}`
+			ctx := aeMockContext(t, aeQuotaPositive, func(req *http.Request) (*http.Response, error) {
+				calls++
+				if strings.Contains(req.URL.Host, ".us.") {
+					return aeResponse(200, "application/json", aeAnswer), nil
+				}
+				if path == "stream-event" {
+					return aeResponse(200, "text/event-stream", "data: "+errorBody+"\n\ndata: "+errorBody+"\n\n"), nil
+				}
+				return aeResponse(429, "application/json", errorBody), nil
+			})
+			e := NewAntigravityEnterpriseExecutor(&config.Config{}).WithManager(m)
+			request := coreexec.Request{Model: "gemini-3.8-flash-low", Payload: aePayload(translator.FormatGemini)}
+			opts := coreexec.Options{SourceFormat: translator.FormatGemini}
+			for attempt, code := range []string{"upstream_error", "binding_rate_limit", "binding_rate_limit"} {
+				var resultErr error
+				if path == "nonstream" {
+					_, resultErr = e.Execute(ctx, children[0], request, opts)
+				} else {
+					stream, startErr := e.ExecuteStream(ctx, children[0], request, opts)
+					resultErr = startErr
+					if startErr == nil {
+						for chunk := range stream.Chunks {
+							if chunk.Err != nil {
+								resultErr = chunk.Err
+							}
+						}
+					}
+				}
+				var failure *ae.Error
+				if !errors.As(resultErr, &failure) || failure.HTTP != 429 || failure.Code != code || failure.Attempted != (attempt < 2) {
+					t.Fatalf("attempt %d got %v", attempt, resultErr)
+				}
+				if calls != min(attempt+1, 2) {
+					t.Fatalf("unexpected upstream attempts: %d", calls)
+				}
+			}
+			if _, err := e.Execute(ctx, children[1], request, opts); err != nil || calls != 3 {
+				t.Fatalf("sibling binding was blocked: %v", err)
+			}
+		})
+	}
+}
 
 type aeTransport func(*http.Request) (*http.Response, error)
 

@@ -2,7 +2,6 @@ package enterpriseweb
 
 import (
 	"context"
-	"hash/fnv"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,15 +19,16 @@ type Runtime struct {
 	settings             config.GeminiEnterpriseWebConfig
 	active               int
 	used                 int64
-	credentials          map[string]bool
+	cookieGates          map[string]*cookieGate
 	tokens               map[string]tokenState
 	cookieChecks         map[string]cookieCheckState
 	checkingCookie       bool
 	models               map[string]map[string]bool
 	credentialEpochs     map[string]uint64
 	modelEpochs          map[string]uint64
+	cookieVersions       map[string]cookieVersionRange
+	resolveCookie        func(CookieSelection, Credential) (Credential, error)
 	commitCookieRotation func(context.Context, string, uint64, Credential, Credential) (Credential, error)
-	authLocks            [64]sync.Mutex
 	rejectedConcurrency  uint64
 	rejectedMemory       uint64
 	preflightRejections  map[string]uint64
@@ -53,7 +53,18 @@ type Lease struct {
 }
 
 func NewRuntime() *Runtime {
-	return &Runtime{settings: (config.GeminiEnterpriseWebConfig{}).WithDefaults(), credentials: map[string]bool{}, tokens: map[string]tokenState{}, cookieChecks: map[string]cookieCheckState{}, models: map[string]map[string]bool{}, credentialEpochs: map[string]uint64{}, modelEpochs: map[string]uint64{}, now: time.Now}
+	return &Runtime{
+		settings:    (config.GeminiEnterpriseWebConfig{}).WithDefaults(),
+		cookieGates: make(map[string]*cookieGate), tokens: make(map[string]tokenState),
+		cookieChecks: make(map[string]cookieCheckState), models: make(map[string]map[string]bool),
+		credentialEpochs: make(map[string]uint64), modelEpochs: make(map[string]uint64),
+		cookieVersions: make(map[string]cookieVersionRange), now: time.Now,
+	}
+}
+
+// SetCookieResolver connects the currently published credential snapshots before use.
+func (r *Runtime) SetCookieResolver(resolve func(CookieSelection, Credential) (Credential, error)) {
+	r.resolveCookie = resolve
 }
 
 // SetCookieRotationCommitter connects the credential store before the runtime is used.
@@ -134,18 +145,6 @@ func (l *Lease) Budget() int64 {
 }
 func (l *Lease) HistoryMode() string { return l.config.HistoryMode }
 func (l *Lease) MarkSessionStarted() { l.sessionStarted.Store(true) }
-func (r *Runtime) ClaimCredential(id string) (func(), error) {
-	r.mu.Lock()
-	if r.credentials[id] {
-		r.rejectedConcurrency++
-		r.mu.Unlock()
-		return nil, Fail(429, "Selected media credential is busy")
-	}
-	r.credentials[id] = true
-	r.mu.Unlock()
-	var once sync.Once
-	return func() { once.Do(func() { r.mu.Lock(); delete(r.credentials, id); r.mu.Unlock() }) }, nil
-}
 func (r *Runtime) Status() map[string]any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -160,11 +159,6 @@ func (r *Runtime) AuthStatus(key string) map[string]any {
 	defer r.mu.Unlock()
 	v := r.tokens[key]
 	return map[string]any{"auth_verified": v.Token != "" && r.now().Before(v.Expires), "verified_at": v.Verified}
-}
-func (r *Runtime) authLock(key string) *sync.Mutex {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(key))
-	return &r.authLocks[h.Sum64()%64]
 }
 
 // RequestContext preserves admission and cancellation through the native HTTP handler.
@@ -184,17 +178,26 @@ func (r *Runtime) ForgetCredential(id string) {
 
 // ReplaceVerifiedCookies invalidates authentication caches while retaining the
 // scheduled rotation deadline across an already verified automatic Cookie update.
-func (r *Runtime) ReplaceVerifiedCookies(id string, previous, next Credential) {
+func (r *Runtime) ReplaceVerifiedCookies(id string, previous, next Credential, previousVersion, nextVersion uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	check, ok := r.cookieChecks[cookieCheckKey(id, previous)]
+	versions := r.cookieVersions[id]
 	r.forgetCredentialLocked(id)
+	if previousVersion != 0 && nextVersion == previousVersion+1 {
+		if versions.latest != previousVersion || versions.first == 0 {
+			versions.first = previousVersion
+		}
+		versions.latest = nextVersion
+		r.cookieVersions[id] = versions
+	}
 	if ok && check.status != "relogin_required" {
 		r.cookieChecks[cookieCheckKey(id, next)] = check
 	}
 }
 
 func (r *Runtime) forgetCredentialLocked(id string) {
+	delete(r.cookieVersions, id)
 	r.credentialEpochs[id]++
 	r.modelEpochs[id]++
 	for key := range r.cookieChecks {
@@ -263,6 +266,7 @@ func (r *Runtime) ForgetModelEvidence(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.modelEpochs[id]++
+	delete(r.cookieVersions, id)
 	for key := range r.models {
 		if strings.HasPrefix(key, id+":") {
 			delete(r.models, key)

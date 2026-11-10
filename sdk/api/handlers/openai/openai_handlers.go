@@ -504,6 +504,7 @@ func (h *OpenAIAPIHandler) handleStreamingResponse(c *gin.Context, rawJSON []byt
 
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, rawJSON, h.GetAlt(c))
+	flusher = c.Writer.(http.Flusher)
 
 	setSSEHeaders := func() {
 		c.Header("Content-Type", "text/event-stream")
@@ -628,6 +629,7 @@ func (h *OpenAIAPIHandler) handleCompletionsStreamingResponse(c *gin.Context, ra
 	modelName := gjson.GetBytes(chatCompletionsJSON, "model").String()
 	cliCtx, cliCancel := h.GetContextWithCancel(h, c, context.Background())
 	dataChan, upstreamHeaders, errChan := h.ExecuteStreamWithAuthManager(cliCtx, h.HandlerType(), modelName, chatCompletionsJSON, "")
+	flusher = c.Writer.(http.Flusher)
 
 	setSSEHeaders := func() {
 		c.Header("Content-Type", "text/event-stream")

@@ -287,6 +287,7 @@ type Exchange struct {
 	up, down             responseObservation
 	stream, clientStream bool
 	ended, converted     bool
+	eofSeen              bool
 	readErr              bool
 	status               int
 	timing               Timing
@@ -355,8 +356,14 @@ func (x *Exchange) Delivered(b []byte) {
 	})
 }
 func (x *Exchange) ReadFinished(err error) {
+	x.ReadCompleted(err == nil, err)
+}
+
+// ReadCompleted separates semantic completion from a verified transport EOF.
+func (x *Exchange) ReadCompleted(eof bool, err error) {
 	if x != nil {
 		x.ended = true
+		x.eofSeen = eof
 		x.readErr = err != nil
 	}
 }
@@ -561,7 +568,7 @@ func (x *Exchange) finish(err error) {
 		if x.up.limited {
 			parsed, terminal = nil, nil
 		}
-		semantic(x.ctx, "upstream.attempt_finished", attemptData{Result: result, Origin: origin, Stage: stage, Error: class, Usage: x.up.usage, Output: x.up.observedOutput(), Terminal: terminal, EOF: ptr(x.ended && !x.readErr), Parsed: parsed, Total: ptr(elapsed(x.started)), CredentialScope: "unknown", Timing: x.timing})
+		semantic(x.ctx, "upstream.attempt_finished", attemptData{Result: result, Origin: origin, Stage: stage, Error: class, Usage: x.up.usage, Output: x.up.observedOutput(), Terminal: terminal, EOF: ptr(x.eofSeen), Parsed: parsed, Total: ptr(elapsed(x.started)), CredentialScope: "unknown", Timing: x.timing})
 		if x.converted {
 			mode := "nonstream"
 			if x.clientStream {

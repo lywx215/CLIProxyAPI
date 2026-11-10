@@ -124,6 +124,7 @@ func preferredExecutionAttemptError(fallback, upstream error) error {
 // Execute performs a non-streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut cliproxyexecutor.Response, resultErr error) {
+	ctx = coreusage.WithModelAttemptSequence(ctx)
 	ctx = withEnterpriseModelAttempts(ctx)
 	ctx = budget.WithRequest(ctx)
 	ctx = withGeminiAdmissionRequest(ctx)
@@ -218,6 +219,7 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = coreusage.WithModelAttemptSequence(ctx)
 	ctx = cliproxyexecutor.WithRequestProxyURL(ctx, opts.ProxyURL)
 	normalized := m.normalizeProviders(providers)
 	var webDone func()
@@ -289,6 +291,7 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 // ExecuteStream performs a streaming execution using the configured selector and executor.
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut *cliproxyexecutor.StreamResult, resultErr error) {
+	ctx = coreusage.WithModelAttemptSequence(ctx)
 	ctx = withEnterpriseModelAttempts(ctx)
 	ctx = budget.WithRequest(ctx)
 	ctx = withGeminiAdmissionRequest(ctx)

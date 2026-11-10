@@ -2,11 +2,54 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 )
+
+func TestEnterpriseWebQueuedSelectionRebasesOnlyVerifiedRotations(t *testing.T) {
+	ctx := context.Background()
+	m := NewManager(nil, nil, nil)
+	initial := web.Credential{Revision: 1}
+	if err := initial.SetURL("https://vertexaisearch.cloud.google.com/ca/home/cid/synthetic"); err != nil {
+		t.Fatal(err)
+	}
+	if err := initial.SetCookies("SID=synthetic; SAPISID=synthetic-signing"); err != nil {
+		t.Fatal(err)
+	}
+	a, err := m.Register(ctx, &Auth{ID: "web-rebase", Provider: web.Provider, Status: StatusActive, Metadata: map[string]any{"enterprise_web": initial.MetadataValue()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := web.CookieSelection{ID: a.ID, RegistrationEpoch: a.RegistrationEpoch, CredentialVersion: a.CredentialVersion}
+	current := initial
+	for _, value := range []string{"first", "second"} {
+		next := current
+		if err := next.SetCookies("SID=synthetic; SAPISID=synthetic-signing; SIDCC=" + value); err != nil {
+			t.Fatal(err)
+		}
+		current, err = m.commitEnterpriseWebCookieRotation(ctx, a.ID, m.webRuntime.CredentialEpoch(a.ID), current, next)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	rebased, err := m.resolveEnterpriseWebCookie(selection, initial)
+	if err != nil || rebased.Revision != current.Revision || rebased.Fingerprint() != current.Fingerprint() {
+		t.Fatal("queued selection did not see the committed rotation", err)
+	}
+	if _, err := m.UpdateEnterpriseWebCredential(ctx, a.ID, current.Revision, func(_ *Auth, c *web.Credential) error {
+		return c.SetCookies(initial.Cookies)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.resolveEnterpriseWebCookie(selection, initial)
+	var failure *web.Failure
+	if !errors.As(err, &failure) || failure.Code != 409 {
+		t.Fatalf("manual replacement with the original fingerprint should invalidate the selection, got %v", err)
+	}
+}
 
 func TestEnterpriseWebCredentialPublicationInvalidatesOldEvidence(t *testing.T) {
 	for _, registerAgain := range []bool{false, true} {

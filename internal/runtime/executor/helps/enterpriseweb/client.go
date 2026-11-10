@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb/contract"
@@ -38,33 +39,145 @@ func clientCopy(base *http.Client) *http.Client {
 
 // Token caches verified Plus bootstrap metadata in memory; it is never an OAuth JWT.
 func (r *Runtime) Token(ctx context.Context, c Credential, base *http.Client, id, key string, force bool) (string, error) {
-	return r.authenticate(ctx, &c, base, id, key, cookieAuthOptions{force: force})
+	token, _, err := r.authenticate(ctx, &c, base, CookieSelection{ID: id}, "", cookieAuthOptions{force: force, cacheKey: key})
+	return token, err
 }
 
 // Authenticate updates the caller's snapshot only after a verified cookie rotation commits.
 func (r *Runtime) Authenticate(ctx context.Context, credential *Credential, base *http.Client, id, route string, force, rotate bool) (string, error) {
-	key := id + ":" + credential.Fingerprint() + ":" + route
-	return r.authenticate(ctx, credential, base, id, key, cookieAuthOptions{force: force, rotate: rotate})
+	token, _, err := r.authenticate(ctx, credential, base, CookieSelection{ID: id}, route, cookieAuthOptions{force: force, rotate: rotate})
+	return token, err
+}
+
+// RefreshCookie verifies a selected credential for an explicit refresh.
+func (r *Runtime) RefreshCookie(ctx context.Context, credential *Credential, base *http.Client, selection CookieSelection, route string, rotate bool) (string, error) {
+	token, _, err := r.authenticate(ctx, credential, base, selection, route, cookieAuthOptions{force: true, rotate: rotate})
+	return token, err
+}
+
+// PrepareCookie holds a shared Cookie snapshot until generation is submitted.
+func (r *Runtime) PrepareCookie(ctx context.Context, credential *Credential, base *http.Client, selection CookieSelection, route, model string, rotate bool) (string, func(), error) {
+	return r.authenticate(ctx, credential, base, selection, route, cookieAuthOptions{rotate: rotate, preparing: true, model: model})
 }
 
 // CheckCookie renews the Google Accounts cookies before verifying the Enterprise session.
-func (r *Runtime) CheckCookie(ctx context.Context, credential *Credential, base *http.Client, id, route string) error {
-	key := id + ":" + credential.Fingerprint() + ":" + route
-	_, err := r.authenticate(ctx, credential, base, id, key, cookieAuthOptions{force: true, rotate: true, scheduled: true})
+func (r *Runtime) CheckCookie(ctx context.Context, credential *Credential, base *http.Client, selection CookieSelection, route string) error {
+	_, _, err := r.authenticate(ctx, credential, base, selection, route, cookieAuthOptions{force: true, rotate: true, scheduled: true})
 	return err
 }
 
-type cookieAuthOptions struct{ force, rotate, scheduled bool }
+type cookieAuthOptions struct {
+	force, rotate, scheduled, preparing bool
+	cacheKey, model                     string
+}
 
-func (r *Runtime) authenticate(ctx context.Context, credential *Credential, base *http.Client, id, key string, opts cookieAuthOptions) (_ string, resultErr error) {
-	c := *credential
-	epoch := r.CredentialEpoch(id)
-	lock := r.authLock(id)
-	lock.Lock()
-	defer lock.Unlock()
+func (r *Runtime) authenticate(ctx context.Context, credential *Credential, base *http.Client, selection CookieSelection, route string, opts cookieAuthOptions) (_ string, releasePreparation func(), _ error) {
+	gate, releaseGate := r.retainCookieGate(credential.CookieKey())
+	defer func() {
+		if releasePreparation == nil {
+			releaseGate()
+		}
+	}()
+	var attempt *cookieAttempt
+	if opts.preparing && !isModelProbe(ctx) {
+		var leaveAttempt func()
+		attempt, leaveAttempt = r.joinCookieAttempt(gate, cookieTokenKey(selection.ID, *credential, route))
+		defer leaveAttempt()
+	}
+	if err := gate.auth.Acquire(ctx, 1); err != nil {
+		return "", nil, err
+	}
+	defer gate.auth.Release(1)
+	resolve := func() error {
+		if opts.scheduled && (!r.Enabled() || selection.Disabled) {
+			return Fail(http.StatusServiceUnavailable, "Media input channel is disabled")
+		}
+		if r.resolveCookie != nil && selection.RegistrationEpoch != 0 {
+			current, err := r.resolveCookie(selection, *credential)
+			if err != nil {
+				return err
+			}
+			*credential = current
+		}
+		if opts.preparing {
+			if err := ValidateModelProbe(ctx, selection.ID, *credential, opts.model, r.EvidenceEpoch(selection.ID)); err != nil {
+				return err
+			}
+			return ValidateModelPolicy(ctx, selection.ID, *credential, opts.model)
+		}
+		return nil
+	}
+	if err := resolve(); err != nil {
+		return "", nil, err
+	}
+	key := opts.cacheKey
+	if key == "" {
+		key = cookieTokenKey(selection.ID, *credential, route)
+	}
+	token := ""
+	if !opts.force {
+		r.mu.Lock()
+		if cached := r.tokens[key]; r.now().Before(cached.Expires) {
+			token = cached.Token
+		}
+		var sharedErr error
+		if token == "" && attempt != nil && attempt.failedKey == key {
+			sharedErr = attempt.err
+		}
+		r.mu.Unlock()
+		if sharedErr != nil {
+			return "", nil, sharedErr
+		}
+	}
+	if token == "" {
+		var err error
+		token, err = func() (string, error) {
+			// The auth permit prevents new readers from entering while a writer waits.
+			if opts.rotate && r.commitCookieRotation != nil && !isModelProbe(ctx) {
+				if err := gate.preparations.Acquire(ctx, allCookiePreparations); err != nil {
+					return "", err
+				}
+				defer gate.preparations.Release(allCookiePreparations)
+				if err := resolve(); err != nil {
+					return "", err
+				}
+				key = cookieTokenKey(selection.ID, *credential, route)
+			}
+			verified, err := r.verifyCookie(ctx, credential, base, selection.ID, key, opts)
+			if err != nil && attempt != nil && ctx.Err() == nil {
+				r.mu.Lock()
+				attempt.failedKey, attempt.err = key, err
+				r.mu.Unlock()
+			}
+			return verified, err
+		}()
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	if opts.preparing {
+		// Hold auth until the prepared snapshot has been reserved for submission.
+		if err := gate.preparations.Acquire(ctx, 1); err != nil {
+			return "", nil, err
+		}
+		releasePreparation = sync.OnceFunc(func() {
+			gate.preparations.Release(1)
+			releaseGate()
+		})
+	}
+	return token, releasePreparation, nil
+}
+
+func cookieTokenKey(id string, credential Credential, route string) string {
+	return id + ":" + credential.Fingerprint() + ":" + route
+}
+
+func (r *Runtime) verifyCookie(ctx context.Context, credential *Credential, base *http.Client, id, key string, opts cookieAuthOptions) (_ string, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	c := *credential
+	epoch := r.CredentialEpoch(id)
 	rotate := opts.rotate && !isModelProbe(ctx)
 	var degraded cookieCheckReason
 	if !isModelProbe(ctx) && (opts.force || rotate) {
@@ -75,12 +188,7 @@ func (r *Runtime) authenticate(ctx context.Context, credential *Credential, base
 		}()
 	}
 	r.mu.Lock()
-	old, now := r.tokens[key], r.now()
-	r.mu.Unlock()
-	if !opts.force && old.Token != "" && now.Before(old.Expires) {
-		return old.Token, nil
-	}
-	r.mu.Lock()
+	now := r.now()
 	delete(r.tokens, key)
 	r.mu.Unlock()
 	authCtx, cancel := context.WithTimeout(ctx, 60*time.Second)

@@ -83,21 +83,18 @@ func isLoginRedirect(res *http.Response) bool {
 	return err == nil && target.Scheme == "https" && target.Host == "accounts.google.com" && target.User == nil
 }
 
-// ClaimCookieCheck yields to active media work and limits scheduled checks across accounts.
-func (r *Runtime) ClaimCookieCheck(id string, c Credential) func() {
-	credentialKey, cookieKey := "credential:"+id, "cookie:"+c.CookieKey()
+// ClaimCookieCheck limits scheduled checks across accounts. Cookie writers wait
+// for preparations through the same gate as foreground authentication.
+func (r *Runtime) ClaimCookieCheck() func() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.settings.Enabled || r.checkingCookie || r.credentials[credentialKey] || r.credentials[cookieKey] {
+	if !r.settings.Enabled || r.checkingCookie {
 		return nil
 	}
 	r.checkingCookie = true
-	r.credentials[credentialKey], r.credentials[cookieKey] = true, true
 	return func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		delete(r.credentials, credentialKey)
-		delete(r.credentials, cookieKey)
 		r.checkingCookie = false
 	}
 }

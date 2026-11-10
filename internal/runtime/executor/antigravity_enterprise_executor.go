@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	ae "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/antigravityenterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/diagnostics"
@@ -431,35 +432,34 @@ func (e *AntigravityEnterpriseExecutor) Execute(ctx context.Context, auth *corea
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, current)
 	defer reporter.TrackFailure(ctx, &err)
 	reporter.SetUpstreamModel(model.Canonical)
+	reporter.ObserveGeminiRequest(body)
 	reporter.SetTranslatedReasoningEffort(body, translator.FormatGemini.String())
 	upstream, err := reporter.TrackHTTPClient(e.client(ctx, current)).Do(request)
 	if err != nil {
-		return response, &ae.Error{HTTP: 502, Code: "upstream_transport", Started: true, Attempted: true}
+		return response, coreexec.TransportFailure(&ae.Error{HTTP: 502, Code: "upstream_transport", Attempted: true, Cause: err})
 	}
 	defer func() { _ = upstream.Body.Close() }()
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, upstream.StatusCode, upstream.Header.Clone())
 	data, err := io.ReadAll(upstream.Body)
 	if err != nil {
-		return response, &ae.Error{HTTP: 502, Code: "upstream_read", Started: true, Attempted: true}
+		return response, reporter.GeminiReadFailure(data, &ae.Error{HTTP: 502, Code: "upstream_read", Attempted: true, Cause: err})
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, data)
 	if upstream.StatusCode < 200 || upstream.StatusCode >= 300 || gjson.GetBytes(data, "error").Exists() {
-		started := len(gjson.GetBytes(data, "candidates").Array()) > 0 || gjson.GetBytes(data, "usageMetadata.totalTokenCount").Int() > 0
-		failure := ae.DecodeError(upstream.StatusCode, upstream.Header, data, started)
+		failure := ae.DecodeError(upstream.StatusCode, upstream.Header, data, false)
 		failure.Attempted = true
-		e.observeError(ctx, current, failure)
-		return response, failure
-	}
-	if !gjson.ValidBytes(data) || !gjson.GetBytes(data, "candidates").IsArray() {
-		return response, &ae.Error{HTTP: 502, Code: "invalid_generation_response", Started: true, Attempted: true}
+		e.observeError(ctx, current, failure, uuid.NewString())
+		return response, reporter.GeminiResponseFailure(data, failure)
 	}
 	reporter.ObserveResponseModel(data)
+	if err = reporter.ObserveGeminiNonStream(data, upstream.Trailer); err != nil {
+		return response, err
+	}
 	var state any
 	responseFormat := coreexec.ResponseFormatOrSource(opts)
 	converted := translator.TranslateNonStream(ctx, translator.FormatGemini, responseFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), body, data, &state)
 	if helps.ApplyPatchTranslationError(state) != nil || len(converted) == 0 {
-		reporter.PublishFailureWithDetail(ctx, helps.ParseGeminiUsage(data), &ae.Error{HTTP: 502, Code: "response_translation_failed", Started: true, Attempted: true})
-		return response, &ae.Error{HTTP: 502, Code: "response_translation_failed", Started: true, Attempted: true}
+		return response, reporter.GeminiTranslationFailure(&ae.Error{HTTP: 502, Code: "response_translation_failed", Attempted: true})
 	}
 	if responseFormat == translator.FormatOpenAIResponse {
 		converted = helps.EnsureResponsesUsageDetails(converted)
@@ -479,10 +479,11 @@ func (e *AntigravityEnterpriseExecutor) ExecuteStream(ctx context.Context, auth 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, current)
 	defer reporter.TrackFailure(ctx, &err)
 	reporter.SetUpstreamModel(model.Canonical)
+	reporter.ObserveGeminiRequest(body)
 	reporter.SetTranslatedReasoningEffort(body, translator.FormatGemini.String())
 	upstream, err := reporter.TrackHTTPClient(e.client(ctx, current)).Do(request)
 	if err != nil {
-		return nil, &ae.Error{HTTP: 502, Code: "upstream_transport", Started: true, Attempted: true}
+		return nil, coreexec.TransportFailure(&ae.Error{HTTP: 502, Code: "upstream_transport", Attempted: true, Cause: err})
 	}
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, upstream.StatusCode, upstream.Header.Clone())
 	if upstream.StatusCode < 200 || upstream.StatusCode >= 300 {
@@ -490,111 +491,54 @@ func (e *AntigravityEnterpriseExecutor) ExecuteStream(ctx context.Context, auth 
 		data, _ := io.ReadAll(io.LimitReader(upstream.Body, 4<<20))
 		failure := ae.DecodeError(upstream.StatusCode, upstream.Header, data, false)
 		failure.Attempted = true
-		e.observeError(ctx, current, failure)
-		return nil, failure
+		e.observeError(ctx, current, failure, uuid.NewString())
+		return nil, reporter.GeminiResponseFailure(data, failure)
 	}
-	out := make(chan coreexec.StreamChunk)
-	go func() {
-		defer close(out)
-		defer func() { _ = upstream.Body.Close() }()
-		stopClose := context.AfterFunc(ctx, func() { _ = upstream.Body.Close() })
-		defer stopClose()
-		defer reporter.EnsurePublished(ctx)
-		var usage helps.StreamUsageBuffer
-		defer usage.Publish(ctx, reporter)
-		var state any
-		format := coreexec.ResponseFormatOrSource(opts)
-		claudeTokens := helps.NewClaudeInputTokenState(opts.SourceFormat, translator.FormatGemini, format, req.Payload)
-		helps.InitializeApplyPatchStream(ctx, translator.FormatGemini, format, req.Model, helps.ApplyPatchOriginalRequest(req, opts), body, &state)
-		started, received, terminal := false, false, false
-		emit := func(payload []byte) error {
-			lines := helps.TranslateStreamWithClaudeInputTokens(ctx, translator.FormatGemini, format, req.Model, helps.ApplyPatchOriginalRequest(req, opts), body, payload, &state, claudeTokens)
+	var state any
+	format := coreexec.ResponseFormatOrSource(opts)
+	attemptID := uuid.NewString()
+	var observeFailure sync.Once
+	claudeTokens := helps.NewClaudeInputTokenState(opts.SourceFormat, translator.FormatGemini, format, req.Payload)
+	helps.InitializeApplyPatchStream(ctx, translator.FormatGemini, format, req.Model, helps.ApplyPatchOriginalRequest(req, opts), body, &state)
+	result := helps.ForwardObservedGeminiStream(ctx, upstream, reporter, helps.ObservedGeminiStreamOptions{
+		Native:  format == translator.FormatGemini,
+		OnEvent: func(raw []byte) { helps.AppendAPIResponseChunk(ctx, e.cfg, raw) },
+		Translate: func(raw []byte) ([][]byte, error) {
+			lines := helps.TranslateStreamWithClaudeInputTokens(ctx, translator.FormatGemini, format, req.Model, helps.ApplyPatchOriginalRequest(req, opts), body, raw, &state, claudeTokens)
 			if helps.ApplyPatchTranslationError(state) != nil {
-				return &ae.Error{HTTP: 502, Code: "response_translation_failed", Started: started}
+				return lines, &ae.Error{HTTP: 502, Code: "response_translation_failed", Attempted: true}
 			}
-			for _, line := range lines {
-				select {
-				case out <- coreexec.StreamChunk{Payload: helps.RewriteSSEModelVersion(line, helps.PayloadRequestedModel(opts, req.Model), model.Upstream)}:
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+			for i := range lines {
+				lines[i] = helps.RewriteSSEModelVersion(lines[i], helps.PayloadRequestedModel(opts, req.Model), model.Upstream)
 			}
-			return nil
-		}
-		readErr := helps.ReadBusinessAICodeStream(upstream.Body, upstream.Header.Get("Content-Type"), func(data []byte) error {
-			if ctx.Err() != nil {
-				return ctx.Err()
+			return lines, nil
+		},
+		Finalize: func() ([][]byte, error) {
+			chunks := helps.FinalizeApplyPatchStream(state)
+			if helps.ApplyPatchTranslationError(state) != nil {
+				return chunks, &ae.Error{HTTP: 502, Code: "response_translation_failed", Attempted: true}
 			}
-			if !gjson.ValidBytes(data) {
-				return &ae.Error{HTTP: 502, Code: "invalid_generation_response", Started: started}
-			}
-			if gjson.GetBytes(data, "error").Exists() {
-				return ae.DecodeError(200, upstream.Header, data, started)
-			}
-			if !gjson.GetBytes(data, "candidates").Exists() && !gjson.GetBytes(data, "usageMetadata").Exists() {
-				return &ae.Error{HTTP: 502, Code: "invalid_generation_response", Started: started}
-			}
-			received = true
-			if len(gjson.GetBytes(data, "candidates").Array()) > 0 {
-				started = true
-			}
-			gjson.GetBytes(data, "candidates").ForEach(func(_, candidate gjson.Result) bool {
-				if reason := candidate.Get("finishReason").String(); reason != "" && reason != "FINISH_REASON_UNSPECIFIED" {
-					terminal = true
-				}
-				return true
-			})
-			if detail, ok := helps.ParseGeminiStreamUsage(data); ok {
-				usage.Observe(detail, true)
-				if gjson.GetBytes(data, "usageMetadata.totalTokenCount").Int() > 0 {
-					started = true
-				}
-			}
-			helps.AppendAPIResponseChunk(ctx, e.cfg, data)
-			reporter.ObserveResponseModel(data)
-			return emit(bytes.Clone(data))
-		})
-		if readErr == nil && !received {
-			readErr = &ae.Error{HTTP: 502, Code: "empty_generation_response", Started: true}
-		}
-		if readErr == nil && !terminal {
-			readErr = &ae.Error{HTTP: 502, Code: "incomplete_generation_response", Started: true}
-		}
-		if readErr == nil {
-			if trailer := upstream.Trailer.Get("Grpc-Status"); trailer != "" && trailer != "0" {
-				readErr = &ae.Error{HTTP: 502, Code: "upstream_trailer_error", Started: started}
-			}
-		}
-		if readErr == nil && ctx.Err() == nil {
-			readErr = emit([]byte("[DONE]"))
-		}
-		if ctx.Err() != nil {
-			usage.PublishFailure(ctx, reporter, ctx.Err())
-			return
-		}
-		if readErr != nil && ctx.Err() == nil {
-			var failure *ae.Error
-			if !errors.As(readErr, &failure) {
-				failure = &ae.Error{HTTP: 502, Code: "upstream_stream", Started: true}
-			}
+			return chunks, nil
+		},
+		DecodeError: func(raw []byte) error {
+			failure := ae.DecodeError(200, upstream.Header, raw, false)
 			failure.Attempted = true
-			e.observeError(ctx, current, failure)
-			if !usage.PublishFailure(ctx, reporter, failure) {
-				reporter.PublishFailure(ctx, failure)
-			}
-			select {
-			case out <- coreexec.StreamChunk{Err: failure}:
-			case <-ctx.Done():
-			}
-		}
-	}()
-	return &coreexec.StreamResult{Headers: upstream.Header.Clone(), Chunks: out}, nil
+			observeFailure.Do(func() { e.observeError(ctx, current, failure, attemptID) })
+			return failure
+		},
+	})
+	return result, nil
 }
 
 // observeError rechecks 429 metadata; HTTP status alone never means weekly exhaustion.
-func (e *AntigravityEnterpriseExecutor) observeError(ctx context.Context, auth *coreauth.Auth, failure *ae.Error) {
+func (e *AntigravityEnterpriseExecutor) observeError(ctx context.Context, auth *coreauth.Auth, failure *ae.Error, attemptID string) {
 	if failure.HTTP != 429 || ctx.Err() != nil {
 		return
+	}
+	if e.manager != nil {
+		if deadline := e.manager.ObserveAntigravityEnterpriseRateLimit(auth, attemptID, failure); !deadline.IsZero() {
+			failure.Code, failure.Scope, failure.RetryAt = "binding_rate_limit", "binding", deadline
+		}
 	}
 	license := coreauth.AntigravityEnterpriseLicense(auth)
 	quota, err := ae.FetchQuota(ctx, e.client(ctx, auth), ae.String(auth.Metadata, "access_token"), license)
@@ -606,6 +550,7 @@ func (e *AntigravityEnterpriseExecutor) observeError(ctx context.Context, auth *
 	}
 	if bucket, err := quota.Weekly(); err == nil && bucket.Exhausted() {
 		failure.Code, failure.Scope = "weekly_quota", "shared_pool"
+		failure.RetryAt = time.Time{}
 		if bucket.ResetTime != nil && bucket.ResetTime.After(time.Now()) {
 			failure.RetryAt = *bucket.ResetTime
 		}

@@ -23,7 +23,7 @@ func ObserveStage(ctx context.Context, stage, model string, summary contract.Con
 	}).Debug("Web request stage")
 }
 
-var diagnosticInputField = regexp.MustCompile(`^(?:body|generationConfig|tools|toolConfig|inlineData|contents(?:\[[0-9]{1,5}\])?(?:\.parts(?:\[[0-9]{1,5}\])?)?(?:\.(?:role|text|thought|thoughtSignature|inlineData|functionCall|functionResponse|executableCode|codeExecutionResult)(?:\.(?:name|id|args|response|language|code|outcome|output))?)?|systemInstruction(?:\.parts(?:\[[0-9]{1,5}\])?)?(?:\.(?:role|text))?)$`)
+var diagnosticInputField = regexp.MustCompile(`^(?:body|generationConfig|tools|toolConfig|inlineData|contents(?:\[[0-9]{1,5}\])?(?:\.parts(?:\[[0-9]{1,5}\])?)?(?:\.(?:role|text|thought|thoughtSignature|inlineData(?:\.(?:mimeType|data))?|fileData|functionCall|functionResponse|executableCode|codeExecutionResult)(?:\.(?:name|id|args|response|language|code|outcome|output))?)?|systemInstruction(?:\.parts(?:\[[0-9]{1,5}\])?)?(?:\.(?:role|text))?)$`)
 
 func observePreflight(ctx context.Context, reason string, err error) {
 	fields := log.Fields{"request_id": logging.GetRequestID(ctx), "provider": Provider, "stage": "preflight", "reason": preflightReason(reason)}
@@ -32,6 +32,9 @@ func observePreflight(ctx context.Context, reason string, err error) {
 		fields["status"] = failure.Code
 		if diagnosticInputField.MatchString(failure.Param) {
 			fields["field"] = failure.Param
+		}
+		if failure.Code == 400 && failure.AttachmentReason.Valid() {
+			fields["attachment_reason"] = string(failure.AttachmentReason)
 		}
 		if failure.Limit != nil && failure.Limit.Valid() {
 			fields["limit_name"] = string(failure.Limit.Name)

@@ -73,14 +73,39 @@ func (m *Manager) invalidateEnterpriseWebCredentialLocked(previous, next *Auth, 
 	if previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
 		m.webRuntime.ForgetCredential(next.ID)
 	} else if previous.Provider != next.Provider || previous.ProxyURL != next.ProxyURL || oldErr != nil || newErr != nil || old.Fingerprint() != updated.Fingerprint() {
-		if verifiedRotation && oldErr == nil && newErr == nil && previous.Provider == next.Provider && previous.ProxyURL == next.ProxyURL {
-			m.webRuntime.ReplaceVerifiedCookies(next.ID, old, updated)
+		if verifiedRotation && oldErr == nil && newErr == nil && previous.Provider == next.Provider && previous.ProxyURL == next.ProxyURL && old.Policy() == updated.Policy() && old.CookieKey() == updated.CookieKey() {
+			m.webRuntime.ReplaceVerifiedCookies(next.ID, old, updated, previous.CredentialVersion, next.CredentialVersion)
 		} else {
 			m.webRuntime.ForgetCredential(next.ID)
 		}
 	} else if old.Policy() != updated.Policy() {
 		m.webRuntime.ForgetModelEvidence(next.ID)
 	}
+}
+
+// resolveEnterpriseWebCookie runs after the Cookie gate is acquired. Only a
+// committed rotation of the same registration can update a queued selection.
+func (m *Manager) resolveEnterpriseWebCookie(selection web.CookieSelection, selected web.Credential) (web.Credential, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	changed := func() (web.Credential, error) {
+		return web.Credential{}, web.InputFailure(409, "credential_changed", "", "Web credential changed before generation; reload and retry")
+	}
+	a := m.auths[selection.ID]
+	if a == nil || a.Provider != web.Provider || (a.Disabled || a.Status == StatusDisabled) != selection.Disabled || a.RegistrationEpoch != selection.RegistrationEpoch {
+		return changed()
+	}
+	current, err := web.CredentialFrom(a.Metadata)
+	if err != nil || current.Policy() != selected.Policy() {
+		return changed()
+	}
+	if a.CredentialVersion == selection.CredentialVersion && current.Fingerprint() == selected.Fingerprint() {
+		return current, nil
+	}
+	if current.CookieKey() != selected.CookieKey() || !m.webRuntime.CanRebaseVerifiedCookies(a.ID, selection.CredentialVersion, a.CredentialVersion) {
+		return changed()
+	}
+	return current, nil
 }
 
 func (m *Manager) reconcileEnterpriseWebLoadLocked(previous map[string]*Auth) {

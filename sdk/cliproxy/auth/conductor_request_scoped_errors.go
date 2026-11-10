@@ -32,6 +32,9 @@ func (e requestStopError) IsRequestStop() bool {
 }
 
 func isRequestStopError(err error) bool {
+	if coreexecutor.ReplayForbidden(err) {
+		return true
+	}
 	if err == nil {
 		return false
 	}
