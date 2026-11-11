@@ -120,8 +120,8 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 		return nil, err
 	}
 	policy := coreauth.EnterpriseModelPolicyForRequest(auth)
-	commitModel := ""
-	if req.Method != http.MethodGet && req.Method != http.MethodHead && !strings.HasSuffix(req.URL.Path, ":streamAssist") && (policy.Status == "blocked" || policy.Restricted()) {
+	var models []string
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && !strings.HasSuffix(req.URL.Path, ":streamAssist") && (policy.Status == "blocked" || policy.RestrictsRawOperations()) {
 		if policy.Status == "blocked" {
 			return nil, &coreauth.EnterpriseModelPolicyError{Code: "subscription_unverified", Message: "The Enterprise collection is paused until the current user's assigned subscription is verified", HTTPStatus: 503}
 		}
@@ -145,10 +145,8 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 		if !gjson.ValidBytes(body) {
 			return nil, enterprise.Invalid("the generation payload must be valid JSON")
 		}
-		models := []string{}
 		if model := gjson.GetBytes(body, "generationSpec.modelId").String(); model != "" {
 			models = append(models, model)
-			commitModel = model
 		}
 		if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
 			if e.cfg != nil && e.cfg.DisableImageGeneration == config.DisableImageGenerationAll {
@@ -170,8 +168,8 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 	}
 	client := newHTTPClient(ctx, e.cfg, auth, 0)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	if commitModel != "" {
-		if errCommit := coreauth.CommitEnterpriseModelSubmission(ctx, auth, commitModel); errCommit != nil {
+	for _, model := range models {
+		if errCommit := coreauth.CommitEnterpriseModelSubmission(ctx, auth, model); errCommit != nil {
 			return nil, errCommit
 		}
 	}

@@ -106,11 +106,11 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 		trial       bool
 		want        int
 	}{
-		{"paid", "ok", false, 3},
+		{"paid", "ok", false, 4},
 		{"trial", "ok", true, len(models)},
-		{"paid-again", "ok", false, 3},
+		{"paid-again", "ok", false, 4},
 		{"revoked", "unassigned", false, 0},
-		{"restored", "ok", false, 3},
+		{"restored", "ok", false, 4},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			trial, state = step.trial, step.state
@@ -123,12 +123,16 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 			}
 			view := s.coreManager.EnterpriseModelPolicyView(auth)
 			wantCatalog := len(models)
+			paid := !step.trial && step.state == "ok"
+			if paid {
+				wantCatalog++
+			}
 			if view.Mode != "catalog" || len(view.CatalogModels) != wantCatalog {
 				t.Fatalf("subscription refresh rewrote manual settings or lost raw catalog: %+v", view)
 			}
-			if !step.trial && step.state == "ok" {
+			if paid {
 				for _, entry := range published {
-					if !ge.IsArgonFamilyModel(entry.ID) && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
+					if !ge.IsArgonFamilyModel(entry.ID) && entry.ID != ge.CarbonModel && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
 						t.Fatalf("forbidden paid model published: %s", entry.ID)
 					}
 				}

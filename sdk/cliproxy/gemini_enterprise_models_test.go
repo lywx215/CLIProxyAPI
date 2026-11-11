@@ -181,6 +181,46 @@ func TestEnterpriseForceArgonRegistersWithoutCatalog(t *testing.T) {
 	}
 }
 
+func TestEnterpriseAllModelsUpdatesRegisteredRoutes(t *testing.T) {
+	svc, auth := enterpriseTestService(t, "enterprise-all-models")
+	d := svc.enterpriseState()
+	const flash = "gemini-3.8-flash"
+	svc.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"blocked-model"}}
+	svc.coreManager.SetConfig(svc.cfg)
+	paid := false
+	flight := svc.coreManager.BeginEnterpriseSubscriptionRefresh(auth)
+	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}) {
+		t.Fatal("verified fixture subscription was not published")
+	}
+	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		return []ge.Model{{ID: ge.ArgonModel}, {ID: flash}, {ID: "blocked-model"}}, nil
+	}
+	svc.registerModelsForAuth(t.Context(), auth)
+	d.wg.Wait()
+	assertRoutes := func(wantFlash bool) {
+		t.Helper()
+		models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+		found := make(map[string]bool, len(models))
+		for _, model := range models {
+			found[model.ID] = true
+		}
+		if !found[ge.ArgonModel] || found[flash] != wantFlash || found["blocked-model"] {
+			t.Fatalf("unexpected registered routes: %v", found)
+		}
+	}
+	assertRoutes(false)
+	for _, enabled := range []bool{true, false} {
+		current, _ := svc.coreManager.GetByID(auth.ID)
+		current.Metadata[ge.AllModelsEnabledKey] = enabled
+		updated, err := svc.coreManager.Update(t.Context(), current)
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc.registerModelsForAuth(t.Context(), updated)
+		assertRoutes(enabled)
+	}
+}
+
 func TestEnterpriseRebindingRevokesOldCatalogBeforeDiscovery(t *testing.T) {
 	svc, auth := enterpriseTestService(t, "enterprise-rebinding")
 	d := svc.enterpriseState()

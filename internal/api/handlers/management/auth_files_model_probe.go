@@ -45,6 +45,7 @@ type enterpriseModelTestRequest struct {
 	Expected         *ge.ResourceBinding `json:"expected"`
 	BindingID        string              `json:"binding_id"`
 	ExpectedRevision uint64              `json:"expected_revision"`
+	CarbonDirect     bool                `json:"carbon_direct"`
 }
 
 // TestGeminiEnterpriseModel performs one credential-pinned text generation.
@@ -111,7 +112,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		return
 	}
 	modelID := strings.TrimSpace(req.Model)
-	if modelID == ge.CarbonModel {
+	if modelID == ge.CarbonModel && !req.CarbonDirect {
 		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
 		return
 	}
@@ -126,10 +127,18 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	if model != nil && strings.TrimSpace(model.MetadataModelID) != "" {
 		actualModel = strings.TrimSpace(model.MetadataModelID)
 	}
+	if req.CarbonDirect && actualModel != ge.CarbonModel {
+		fail(http.StatusConflict, "model_changed", "The selected model no longer maps to Carbon; reload and check the model mapping")
+		return
+	}
 	policy := h.authManager.EnterpriseModelPolicyView(auth)
 	forceArgon := policy.ForcesArgon(actualModel)
 	if policy.Status == "blocked" && !forceArgon {
 		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until the current user's assigned subscription is verified")
+		return
+	}
+	if req.CarbonDirect && !policy.CarbonAdmission.Available {
+		fail(http.StatusConflict, "carbon_unavailable", "Carbon is unavailable for the selected application")
 		return
 	}
 	deniedMessage := "This collection's model policy does not allow the selected upstream model"
@@ -146,7 +155,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		fail(http.StatusBadRequest, "model_not_supported", "The selected model is not registered for this credential")
 		return
 	}
-	if actualModel == ge.CarbonModel {
+	if actualModel == ge.CarbonModel && !req.CarbonDirect {
 		req.Model = ge.CarbonModel
 		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
 		return
@@ -211,6 +220,9 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		CheckedAt: time.Now().UTC(), ElapsedMS: time.Since(started).Milliseconds(), HTTPStatus: http.StatusOK,
 		Code: "ok", Message: "Model completed a text generation successfully",
 		BindingID: req.BindingID, Revision: revision,
+	}
+	if req.CarbonDirect {
+		result.UpstreamModel = actualModel
 	}
 	if errExec != nil {
 		var conflict *coreauth.EnterpriseModelProbeError

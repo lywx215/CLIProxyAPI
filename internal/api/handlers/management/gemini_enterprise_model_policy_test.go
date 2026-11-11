@@ -144,7 +144,7 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 			reason := gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_reason").String()
 			switch state {
 			case "paid":
-				if enforced.Raw != `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 3 || !gjson.GetBytes(w.Body.Bytes(), "test_candidates.0.test_candidate").Bool() || gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
+				if enforced.Raw != `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 4 || !gjson.GetBytes(w.Body.Bytes(), "test_candidates.0.test_candidate").Bool() || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
 					t.Fatalf("paid state was not enforced: %s", w.Body.String())
 				}
 			case "trial":
@@ -256,5 +256,88 @@ func TestEnterpriseForceArgonCollectionPatchAndProbe(t *testing.T) {
 	patch(3, map[string]any{ge.ArgonForceEnabledKey: false}, http.StatusOK)
 	if err := coreauth.CommitEnterpriseModelSubmission(t.Context(), stale, ge.ArgonModel); err == nil {
 		t.Fatal("a request holding an older credential snapshot retained forced admission after closing the switch")
+	}
+}
+
+func TestEnterpriseAllModelsCollectionPatchAndProbe(t *testing.T) {
+	h, root, children := enterpriseAccountFixture(t)
+	child := children[0]
+	bindingID := coreauth.EnterpriseBindingID(child)
+	store := sdkauth.NewFileTokenStore()
+	store.SetBaseDir(filepath.Dir(root.Attributes["path"]))
+	if _, err := store.Save(t.Context(), root); err != nil {
+		t.Fatal(err)
+	}
+	h.authManager.SetStore(store)
+	const flash = "gemini-3.8-flash"
+	paid := false
+	publishManagementEnterpriseSubscription(t, h.authManager, child,
+		ge.SubscriptionObservation{Status: "ok", State: "ACTIVE", Edition: "enterprise_plus", FreeTrial: &paid},
+		ge.Model{ID: ge.ArgonModel}, ge.Model{ID: flash})
+	if view := h.authManager.EnterpriseModelPolicyView(child); view.AllModelsEnabled || view.Allows(flash) {
+		t.Fatalf("the switch must default to off for existing collections: %+v", view)
+	}
+	patch := func(revision uint64, enabled any, want int) gjson.Result {
+		t.Helper()
+		response := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, http.MethodPatch, map[string]any{
+			"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": revision,
+			"fields": map[string]any{ge.AllModelsEnabledKey: enabled},
+		})
+		if response.Code != want {
+			t.Fatalf("patch status=%d, want %d: %s", response.Code, want, response.Body.String())
+		}
+		return gjson.ParseBytes(response.Body.Bytes()).Get("gemini_enterprise")
+	}
+	patch(1, "true", http.StatusBadRequest)
+	account := patch(1, true, http.StatusOK)
+	collection := account.Get(fmt.Sprintf(`collections.#(binding_id==%q)`, bindingID))
+	if !account.Get("all_models_supported").Bool() || !collection.Get("settings.all_models_enabled").Bool() ||
+		!collection.Get("model_policy_state.all_models_enabled").Bool() || collection.Get("revision").Uint() != 2 ||
+		collection.Get("model_policy_state.subscription.state").String() != "ACTIVE" ||
+		collection.Get(fmt.Sprintf(`model_policy_state.effective_models.#(==%q)`, flash)).String() != flash {
+		t.Fatalf("unexpected full-catalog response: %s", collection.Raw)
+	}
+	for _, current := range h.authManager.EnterpriseCollections(root.ID) {
+		if h.authManager.EnterpriseModelPolicyView(current).AllModelsEnabled != (current.ID == child.ID) {
+			t.Fatal("the switch changed another collection")
+		}
+	}
+	patch(1, false, http.StatusConflict)
+	reloaded := coreauth.NewManager(store, nil, nil)
+	if err := reloaded.Load(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if saved, ok := reloaded.GetByID(child.ID); !ok || !reloaded.EnterpriseModelPolicyView(saved).AllModelsEnabled {
+		t.Fatal("credential reload lost the switch")
+	}
+
+	registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: flash}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
+	calls := 0
+	h.authManager.RegisterExecutor(&enterpriseProbeExecutor{execute: func(ctx context.Context, selected *coreauth.Auth, req coreexec.Request, _ coreexec.Options) (coreexec.Response, error) {
+		calls++
+		if selected.ID != child.ID || req.Model != flash {
+			t.Fatalf("probe selected %s/%s, expected %s/%s", selected.ID, req.Model, child.ID, flash)
+		}
+		coreexec.MarkUpstreamAttempt(ctx)
+		return coreexec.Response{Payload: []byte(`{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}`)}, nil
+	}})
+	probe := func(revision uint64) *httptest.ResponseRecorder {
+		t.Helper()
+		return enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, http.MethodPost, map[string]any{
+			"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": revision,
+			"model": flash, "expected": ge.Resources(ge.FromMetadata(child.Metadata)),
+		})
+	}
+	if result := probe(2); result.Code != http.StatusOK || gjson.GetBytes(result.Body.Bytes(), "status").String() != "ok" || calls != 1 {
+		t.Fatalf("full-catalog probe did not execute: %d %s", result.Code, result.Body.String())
+	}
+	stale, _ := h.authManager.GetByID(child.ID)
+	patch(2, false, http.StatusOK)
+	if err := coreauth.CommitEnterpriseModelSubmission(t.Context(), stale, flash); err == nil {
+		t.Fatal("a queued request retained full-catalog admission after disabling the switch")
+	}
+	if result := probe(3); gjson.GetBytes(result.Body.Bytes(), "code").String() != "model_not_allowed" || calls != 1 {
+		t.Fatalf("paid policy was not restored: %d %s", result.Code, result.Body.String())
 	}
 }

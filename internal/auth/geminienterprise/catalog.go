@@ -62,7 +62,7 @@ func CatalogFallbackSettings(metadata map[string]any) (CatalogFallback, error) {
 	return out, nil
 }
 
-func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservation) ([]Model, string) {
+func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservation, allModels bool) ([]Model, string) {
 	if (subscription.Status != "ok" && subscription.Status != "stale") || subscription.FreeTrial == nil || setting.Mode == "disabled" {
 		return nil, "none"
 	}
@@ -70,9 +70,9 @@ func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservati
 	if setting.Mode == "default" {
 		source = "default"
 		ids = []string{"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro"}
-		if !*subscription.FreeTrial {
-			ids = []string{ArgonModel}
-		} else if subscription.Edition == "business_standard" {
+		if allModels {
+			ids = append(ids, ArgonModel)
+		} else if !*subscription.FreeTrial || subscription.Edition == "business_standard" {
 			ids = []string{ArgonModel}
 		}
 	}

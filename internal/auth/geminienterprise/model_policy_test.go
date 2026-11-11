@@ -243,6 +243,44 @@ func TestPaidSubscriptionIntersectsUserListsWithoutChangingThem(t *testing.T) {
 	}
 }
 
+func TestAllModelsOverridesEditionAndApplicationModelPolicy(t *testing.T) {
+	trial, paid := true, false
+	for _, tc := range []struct {
+		name, mode, edition, newlyAllowed string
+		freeTrial                         *bool
+	}{
+		{"trial-plus", "auto", "enterprise_plus", ArgonModel, &trial},
+		{"trial-business", "auto", "business_standard", "gemini-3.8-flash", &trial},
+		{"paid", "auto", "enterprise_plus", "gemini-3.8-flash", &paid},
+		{"custom", "custom", "enterprise_plus", "gemini-3.8-flash", &trial},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metadata := map[string]any{
+				"model_policy": tc.mode, "allowed_models": []string{}, "excluded_models": []string{"veo-*"},
+			}
+			observation := SubscriptionObservation{Status: "ok", Edition: tc.edition, FreeTrial: tc.freeTrial, State: "ACTIVE"}
+			if ModelPolicyFor(metadata, observation).Allows(tc.newlyAllowed) {
+				t.Fatal("fixture model must be excluded before enabling the switch")
+			}
+			metadata[AllModelsEnabledKey] = true
+			policy := ModelPolicyFor(metadata, observation)
+			if policy.Mode != tc.mode || policy.EffectiveMode != "catalog" || !policy.AllModelsEnabled ||
+				!policy.Allows(ArgonModel) || !policy.Allows("gemini-3.8-flash") || policy.Allows(CarbonModel) ||
+				policy.Allows("veo-3.1") || !policy.RestrictsRawOperations() {
+				t.Fatalf("unexpected enabled policy: %+v", policy)
+			}
+			expired := ModelPolicyFor(metadata, SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"})
+			if expired.Allows(tc.newlyAllowed) || expired.Reason != "subscription_inactive" {
+				t.Fatalf("the switch changed subscription enforcement: %+v", expired)
+			}
+			metadata[AllModelsEnabledKey] = false
+			if ModelPolicyFor(metadata, observation).Allows(tc.newlyAllowed) {
+				t.Fatal("disabling the switch did not restore the saved policy")
+			}
+		})
+	}
+}
+
 func TestEnforcedModelPolicyJSONDistinguishesTrialAndBlocked(t *testing.T) {
 	trial, paid := true, false
 	for _, tc := range []struct {

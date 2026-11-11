@@ -186,10 +186,18 @@ func ValidateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 
 // CommitEnterpriseModelSubmission checks manual admission again just before sending.
 func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model string) error {
-	if ge.IsArgonFamilyModel(strings.TrimPrefix(canonicalModelKey(model), "models/")) {
+	modelKey := canonicalModelKey(model)
+	if modelKey == ge.CarbonModel {
+		return CommitEnterpriseCarbonSubmission(ctx, auth, model)
+	}
+	if auth == nil {
+		return nil
+	}
+	allModels, _ := ge.ReadAllModelsEnabled(auth.Metadata)
+	if allModels || ge.IsArgonFamilyModel(strings.TrimPrefix(modelKey, "models/")) {
 		return ValidateEnterpriseModelRequest(ctx, auth, model)
 	}
-	return CommitEnterpriseCarbonSubmission(ctx, auth, model)
+	return nil
 }
 
 func validateEnterpriseModelRequest(ctx context.Context, auth *Auth, model string, final bool) error {

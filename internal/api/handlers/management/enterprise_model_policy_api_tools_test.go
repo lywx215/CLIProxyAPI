@@ -98,7 +98,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		name, mode, body, suffix, project, endpoint, code, region string
 		headers                                                   map[string]string
 		disabled, account                                         bool
-		paid, unknown, imageDisabled, forceArgon                  bool
+		paid, unknown, imageDisabled, forceArgon, allModels       bool
 		wantStatus, wantCalls, upstreamStatus                     int
 	}{
 		{name: "allowed argon", body: validBody, wantStatus: 200, wantCalls: 1},
@@ -126,6 +126,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		{name: "manual media allowed", mode: "exclude_argon", body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
 		{name: "paid auto cannot widen", mode: "auto", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid catalog cannot widen", mode: "catalog", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
+		{name: "full catalog admits paid flash", paid: true, allModels: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, wantStatus: 200, wantCalls: 1},
+		{name: "full catalog rejects unlisted models", paid: true, allModels: true, body: `{"generationSpec":{"modelId":"gemini-unlisted"}}`, code: "model_not_in_catalog", wantStatus: 400},
+		{name: "full catalog preserves raw operation validation", paid: true, allModels: true, body: validBody, suffix: "/assistants/default_assistant:answer", code: "model_policy_operation_unsupported", wantStatus: 400},
 		{name: "paid argon-only cannot widen", mode: "argon_only", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid exclude-argon cannot widen", mode: "exclude_argon", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid custom cannot widen", mode: "custom", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
@@ -160,6 +163,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			if scenario.forceArgon {
 				metadata[ge.ArgonForceEnabledKey] = true
 				metadata["excluded_models"] = []string{ge.ArgonModel}
+			}
+			if scenario.allModels {
+				metadata[ge.AllModelsEnabledKey] = true
 			}
 			if scenario.account {
 				account, err := ge.AccountFromLegacy(metadata)

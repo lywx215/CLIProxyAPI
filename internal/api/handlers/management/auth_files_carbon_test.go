@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
@@ -31,6 +32,11 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 			child := children[0]
 			trial := scenario == "verified-trial"
 			publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}, ge.Model{ID: ge.ArgonModel})
+			if _, err := h.authManager.UpdateEnterpriseCarbonEnabled(t.Context(), child, 1, false, ""); err != nil {
+				t.Fatal(err)
+			}
+			child, _ = h.authManager.GetByID(child.ID)
+			const initialRevision = 2
 			calls, reads := 0, 0
 			readStatus := http.StatusOK
 			nonce := ""
@@ -97,7 +103,7 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 					return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(string(payload)))}, nil
 				})}, nil
 			}
-			request := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": 1, "expected": ge.Resources(ge.FromMetadata(child.Metadata)), "model": ge.CarbonModel}
+			request := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": initialRevision, "expected": ge.Resources(ge.FromMetadata(child.Metadata)), "model": ge.CarbonModel}
 			response := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, "POST", request)
 			expectedStatus := http.StatusOK
 			if scenario == "model-changed" {
@@ -120,10 +126,10 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 			if !admission.CanEnable || admission.Test == nil || admission.Test.Status != "verified" || admission.Test.UpstreamModel != ge.CarbonModel || reads != 1 {
 				t.Fatalf("saved verification incomplete: %+v reads=%d body=%s", admission, reads, response.Body.String())
 			}
-			if gjson.GetBytes(response.Body.Bytes(), "expected_revision").Uint() != 1 || gjson.GetBytes(response.Body.Bytes(), "revision").Uint() != 1 {
+			if gjson.GetBytes(response.Body.Bytes(), "expected_revision").Uint() != initialRevision || gjson.GetBytes(response.Body.Bytes(), "revision").Uint() != initialRevision {
 				t.Fatal("observation changed collection edit revision")
 			}
-			toggle := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": 1, "fields": map[string]any{"carbon_enabled": true}}
+			toggle := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": initialRevision, "fields": map[string]any{"carbon_enabled": true}}
 			changed := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, "PATCH", toggle)
 			if changed.Code != 200 {
 				t.Fatalf("manual enable failed: %s", changed.Body.String())
@@ -132,7 +138,7 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 			if !h.authManager.EnterpriseCarbonAdmissionView(current).Available {
 				t.Fatal("successful manual switch was not effective")
 			}
-			toggle["expected_revision"], toggle["fields"] = 2, map[string]any{"carbon_enabled": false}
+			toggle["expected_revision"], toggle["fields"] = initialRevision+1, map[string]any{"carbon_enabled": false}
 			delete(toggle, "carbon_test_id")
 			closed := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, "PATCH", toggle)
 			if closed.Code != 200 {
@@ -145,7 +151,7 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 			}
 			// A temporary session-read failure must not revoke an existing proof.
 			readStatus = http.StatusServiceUnavailable
-			request["expected_revision"] = 3
+			request["expected_revision"] = initialRevision + 2
 			retry := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, "POST", request)
 			current, _ = h.enterpriseTarget(root.FileName, child.Index, coreauth.EnterpriseBindingID(child))
 			state = h.authManager.EnterpriseCarbonAdmissionView(current)
@@ -161,6 +167,59 @@ func TestCarbonManagementFixedTestProofAndManualSwitch(t *testing.T) {
 				t.Fatalf("wrong model was not recorded diagnostically or blocked manual enablement: %s", mismatch.Body.String())
 			}
 		})
+	}
+}
+
+func TestCarbonDirectModelTestUsesRegisteredModelWithoutVerification(t *testing.T) {
+	h, root, children := enterpriseAccountFixture(t)
+	child := children[0]
+	paid := false
+	publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}, ge.Model{ID: ge.ArgonModel})
+	const alias = "carbon-public"
+	h.authManager.SetOAuthModelAlias(map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.CarbonModel, Alias: alias, Fork: true}}})
+	reg := registry.GetGlobalRegistry()
+	reg.RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{
+		{ID: ge.CarbonModel}, {ID: alias, MetadataModelID: ge.CarbonModel},
+		{ID: ge.ArgonModel},
+	})
+	t.Cleanup(func() { reg.UnregisterClient(child.ID) })
+	calls := 0
+	h.authManager.RegisterExecutor(&enterpriseProbeExecutor{execute: func(ctx context.Context, selected *coreauth.Auth, req coreexec.Request, opts coreexec.Options) (coreexec.Response, error) {
+		calls++
+		if selected.ID != child.ID || opts.Metadata[coreexec.PinnedAuthMetadataKey] != child.ID ||
+			coreauth.EnterpriseCarbonModelTestActive(ctx) || strings.Contains(string(req.Payload), "CARBON_") {
+			t.Fatal("direct Carbon test lost its fixed application or used dedicated verification")
+		}
+		if err := coreauth.ValidateEnterpriseModelRequest(ctx, selected, ge.CarbonModel); err != nil {
+			t.Fatalf("paid Carbon was denied at generation: %v", err)
+		}
+		coreexec.MarkUpstreamAttempt(ctx)
+		return coreexec.Response{Payload: []byte(`{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"OK"}]}}]}`)}, nil
+	}})
+	bindingID := coreauth.EnterpriseBindingID(child)
+	request := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": 1, "expected": ge.Resources(ge.FromMetadata(child.Metadata)), "carbon_direct": true}
+	probe := func(model string) *httptest.ResponseRecorder {
+		t.Helper()
+		request["model"] = model
+		return enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, http.MethodPost, request)
+	}
+	for _, model := range []string{ge.CarbonModel, alias} {
+		response := probe(model)
+		result := gjson.ParseBytes(response.Body.Bytes())
+		if response.Code != http.StatusOK || result.Get("status").String() != "ok" || result.Get("model").String() != model || result.Get("upstream_model").String() != ge.CarbonModel || result.Get("carbon_test_id").Exists() {
+			t.Fatalf("ordinary Carbon generation failed: %d %s", response.Code, result.Raw)
+		}
+	}
+	if response := probe(ge.ArgonModel); response.Code != http.StatusConflict || gjson.GetBytes(response.Body.Bytes(), "code").String() != "model_changed" {
+		t.Fatalf("Carbon test accepted a different mapped model: %s", response.Body.String())
+	}
+	toggle := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": 1, "fields": map[string]any{ge.CarbonEnabledKey: false}}
+	if response := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, http.MethodPatch, toggle); response.Code != http.StatusOK {
+		t.Fatalf("closing a default-enabled Carbon failed: %s", response.Body.String())
+	}
+	request["expected_revision"] = 2
+	if response := probe(ge.CarbonModel); response.Code != http.StatusConflict || gjson.GetBytes(response.Body.Bytes(), "code").String() != "carbon_unavailable" || calls != 2 {
+		t.Fatalf("manual close did not stop direct tests: %d %s (calls=%d)", response.Code, response.Body.String(), calls)
 	}
 }
 

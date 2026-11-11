@@ -102,7 +102,7 @@ func TestEnterpriseCarbonPublicHTTPAdmissionAndAliases(t *testing.T) {
 					path, body := enterprisePublicRequest(t, requested, protocol, stream, nil)
 					response := httptest.NewRecorder()
 					router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body))))
-					allowed := strings.HasPrefix(scenario, "manual_") || scenario == "enabled" || scenario == "trial" || scenario == "argon_only" || scenario == "exclude_argon" || variant == "alias" || variant == "prefix" || variant == "suffix" || scenario == "payload_paid_success" || scenario == "payload_trial_success"
+					allowed := strings.HasPrefix(scenario, "manual_") || scenario == "paid" || scenario == "enabled" || scenario == "trial" || scenario == "argon_only" || scenario == "exclude_argon" || variant == "alias" || variant == "prefix" || variant == "suffix" || scenario == "payload_paid_success" || scenario == "payload_trial_success"
 					if allowed {
 						if response.Code != http.StatusOK || transport.calls.Load() != 1 || gjson.GetBytes(transport.requestBody(), "generationSpec.modelId").String() != ge.CarbonModel || !strings.Contains(response.Body.String(), "print(7)") {
 							t.Fatalf("Carbon request did not reach its exact upstream model once: status=%d calls=%d body=%s", response.Code, transport.calls.Load(), response.Body.String())

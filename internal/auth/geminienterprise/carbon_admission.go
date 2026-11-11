@@ -62,7 +62,7 @@ type CarbonSettings struct {
 	Evidence *CarbonTestEvidence
 }
 
-// CarbonAdmission exposes manual intent and ordinary credential eligibility.
+// CarbonAdmission exposes the effective switch and credential eligibility.
 type CarbonAdmission struct {
 	Enabled              bool               `json:"enabled"`
 	Available            bool               `json:"available"`

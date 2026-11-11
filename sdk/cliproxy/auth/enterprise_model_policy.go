@@ -324,7 +324,7 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 	} else if state.LastError != nil {
 		if setting, err := ge.CatalogFallbackSettings(auth.Metadata); err == nil {
 			var source string
-			models, source = ge.FallbackCatalog(setting, subscription)
+			models, source = ge.FallbackCatalog(setting, subscription, policy.AllModelsEnabled)
 			if source != "none" {
 				known, state.Source, state.Status = true, source, "fallback"
 			}

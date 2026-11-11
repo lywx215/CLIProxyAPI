@@ -41,13 +41,17 @@ func carbonVerifiedFixture(t *testing.T, m *Manager, auth *Auth, enabled bool) *
 	return auth
 }
 
-func TestEnterpriseCarbonAdmissionIsIndependentAndClosedByDefault(t *testing.T) {
+func TestEnterpriseCarbonAdmissionDefaultsPaidAndHonorsManualSwitch(t *testing.T) {
 	m, auth, now := policyFixture(t)
 	publishSubscription(t, m, auth, "enterprise_plus", false)
 	original := m.EnterpriseModelPolicyView(auth)
-	if original.CarbonAdmission.Enabled || original.CarbonAdmission.Available || !original.CarbonAdmission.CanEnable || original.CarbonAdmission.VerificationRequired || !original.CarbonAdmission.CanTest || slices.Contains(original.EffectiveModels, ge.CarbonModel) {
+	if !original.CarbonAdmission.Enabled || !original.CarbonAdmission.Available || !original.CarbonAdmission.CanEnable || original.CarbonAdmission.VerificationRequired || !original.CarbonAdmission.CanTest || !slices.Contains(original.EffectiveModels, ge.CarbonModel) {
 		t.Fatalf("default Carbon admission: %+v", original.CarbonAdmission)
 	}
+	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.CarbonModel); err != nil {
+		t.Fatalf("paid Carbon required manual admission: %v", err)
+	}
+	auth = carbonVerifiedFixture(t, m, auth, false)
 	ctx := WithEnterpriseCarbonModelTest(t.Context(), auth.ID, ge.Resources(ge.FromMetadata(auth.Metadata)))
 	if err := ValidateEnterpriseModelRequest(ctx, auth, ge.CarbonModel); err != nil {
 		t.Fatal(err)
@@ -55,7 +59,6 @@ func TestEnterpriseCarbonAdmissionIsIndependentAndClosedByDefault(t *testing.T) 
 	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.CarbonModel); err == nil {
 		t.Fatal("a closed candidate was callable")
 	}
-	auth = carbonVerifiedFixture(t, m, auth, false)
 	if view := m.EnterpriseCarbonAdmissionView(auth); !view.CanEnable || view.Enabled || view.Available {
 		t.Fatalf("a proof enabled business routing: %+v", view)
 	}

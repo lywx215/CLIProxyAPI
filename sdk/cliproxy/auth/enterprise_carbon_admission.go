@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
@@ -25,9 +26,9 @@ func reconcileEnterpriseCarbonAdmissionWindow(previous, next *Auth) {
 	window := uint64(1)
 	if previous != nil && previous.Provider == ge.Provider {
 		window = max(previous.enterpriseCarbonWindow, window)
-		oldEnabled, _ := previous.Metadata[ge.CarbonEnabledKey].(bool)
-		newEnabled, _ := next.Metadata[ge.CarbonEnabledKey].(bool)
-		if oldEnabled != newEnabled || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
+		oldEnabled, oldExplicit := previous.Metadata[ge.CarbonEnabledKey].(bool)
+		newEnabled, newExplicit := next.Metadata[ge.CarbonEnabledKey].(bool)
+		if oldEnabled != newEnabled || oldExplicit != newExplicit || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
 			window++
 		}
 	}
@@ -91,22 +92,15 @@ func (m *Manager) enterpriseCarbonEligibility(auth *Auth, subscription ge.Subscr
 	if (subscription.Status != "ok" && subscription.Status != "stale") || subscription.FreeTrial == nil {
 		return carbonPolicyError("subscription_unverified", "Carbon requires the current user's verified and assigned Enterprise subscription", http.StatusServiceUnavailable)
 	}
-	mode, allowed, err := ge.ModelPolicySettings(auth.Metadata)
-	if err != nil {
+	policy := ge.ModelPolicyFor(auth.Metadata, subscription)
+	if policy.Reason == "invalid_model_policy" {
 		return carbonPolicyError("invalid_model_policy", "The saved Enterprise model policy is not valid", http.StatusBadRequest)
 	}
-	if mode == "custom" && allowed != nil {
-		found := false
-		for _, model := range allowed {
-			found = found || model == ge.CarbonModel
-		}
-		if !found {
-			return carbonPolicyError("model_not_allowed", "The application's custom whitelist does not allow Carbon", http.StatusBadRequest)
-		}
+	if policy.EffectiveMode == "custom" && policy.AllowedModels != nil && !slices.Contains(policy.AllowedModels, ge.CarbonModel) {
+		return carbonPolicyError("model_not_allowed", "The application's custom whitelist does not allow Carbon", http.StatusBadRequest)
 	}
 	// Argon templates do not imply Carbon permission or exclusion. Only explicit
 	// credential/provider patterns and a custom whitelist constrain this model.
-	policy := ge.ModelPolicyFor(auth.Metadata, subscription)
 	for _, pattern := range policy.ExcludedModels {
 		if ge.MatchModelPattern(pattern, ge.CarbonModel) {
 			return carbonPolicyError("model_excluded", "Carbon is explicitly excluded for this application", http.StatusBadRequest)
@@ -209,6 +203,9 @@ func (m *Manager) enterpriseCarbonAdmissionView(auth *Auth, subscription ge.Subs
 	if err != nil {
 		out.Reason = "invalid_carbon_settings"
 		return out
+	}
+	if _, configured := auth.Metadata[ge.CarbonEnabledKey]; !configured {
+		enabled = (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil && !*subscription.FreeTrial
 	}
 	out.Enabled = enabled
 	// Historical diagnostics never determine business admission. In particular,

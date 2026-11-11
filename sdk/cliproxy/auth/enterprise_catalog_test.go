@@ -39,10 +39,14 @@ func TestEnterpriseFallbackPolicyAdmissionAndMedia(t *testing.T) {
 						t.Fatal(err)
 					}
 					view := m.EnterpriseModelPolicyView(a)
-					if !view.CatalogKnown || view.CatalogState.Source != "custom" || len(view.CatalogModels) != 4 {
+					wantCatalog := 4
+					if !trial {
+						wantCatalog++
+					}
+					if !view.CatalogKnown || view.CatalogState.Source != "custom" || len(view.CatalogModels) != wantCatalog {
 						t.Fatalf("%+v", view)
 					}
-					for _, id := range []string{ge.ArgonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1", "gemini-4-future", "auto"} {
+					for _, id := range []string{ge.ArgonModel, ge.CarbonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1", "gemini-4-future", "auto"} {
 						err = ValidateEnterpriseModelRequest(t.Context(), a, id)
 						want := slices.Contains(view.EffectiveModels, id)
 						if (err == nil) != want || (!trial && id == "gemini-3.8-flash" && err == nil) {
@@ -71,7 +75,7 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "enterprise_plus", false)
-	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel}) {
+	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel, ge.CarbonModel}) {
 		t.Fatal(v)
 	}
 	m.InvalidateEnterpriseSubscription(a)

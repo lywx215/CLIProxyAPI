@@ -159,7 +159,8 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 		return false
 	}
 	forceArgon, _ := ge.ReadArgonForceEnabled(latest.Metadata)
-	if forceArgon != policy.ArgonForceEnabled {
+	allModels, _ := ge.ReadAllModelsEnabled(latest.Metadata)
+	if forceArgon != policy.ArgonForceEnabled || allModels != policy.AllModelsEnabled {
 		d.mu.Unlock()
 		s.cfgMu.RUnlock()
 		return false

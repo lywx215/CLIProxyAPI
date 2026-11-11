@@ -12,6 +12,7 @@ const (
 	ArgonModel           = "gemini-4-argon"
 	CarbonModel          = "gemini-4-carbon"
 	ArgonForceEnabledKey = "argon_force_enabled"
+	AllModelsEnabledKey  = "all_models_enabled"
 )
 
 // IsArgonFamilyModel preserves the Argon policy boundary independently of Carbon.
@@ -23,6 +24,7 @@ type ModelPolicy struct {
 	Mode                   string   `json:"mode"`
 	EffectiveMode          string   `json:"effective_mode"`
 	ArgonForceEnabled      bool     `json:"argon_force_enabled"`
+	AllModelsEnabled       bool     `json:"all_models_enabled"`
 	Status                 string   `json:"status"`
 	Reason                 string   `json:"reason,omitempty"`
 	AllowedModels          []string `json:"allowed_models"`
@@ -32,16 +34,25 @@ type ModelPolicy struct {
 	EnforcedReason         string   `json:"enforced_reason"`
 	// Carbon admission is derived from the manual switch and credential eligibility.
 	CarbonAllowed bool `json:"-"`
+	restrictRaw   bool
 }
 
 func ReadArgonForceEnabled(metadata map[string]any) (bool, error) {
-	raw, exists := metadata[ArgonForceEnabledKey]
+	return readModelPolicySwitch(metadata, ArgonForceEnabledKey)
+}
+
+func ReadAllModelsEnabled(metadata map[string]any) (bool, error) {
+	return readModelPolicySwitch(metadata, AllModelsEnabledKey)
+}
+
+func readModelPolicySwitch(metadata map[string]any, key string) (bool, error) {
+	raw, exists := metadata[key]
 	if !exists {
 		return false, nil
 	}
 	enabled, ok := raw.(bool)
 	if !ok {
-		return false, fmt.Errorf("%s must be a boolean", ArgonForceEnabledKey)
+		return false, fmt.Errorf("%s must be a boolean", key)
 	}
 	return enabled, nil
 }
@@ -96,7 +107,8 @@ func ModelPolicySettings(metadata map[string]any) (string, []string, error) {
 func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservation) ModelPolicy {
 	mode, allowed, err := ModelPolicySettings(metadata)
 	forceArgon, _ := ReadArgonForceEnabled(metadata)
-	policy := ModelPolicy{Mode: mode, EffectiveMode: mode, ArgonForceEnabled: forceArgon, Status: "ok", ExcludedModels: []string{}}
+	allModels, errAllModels := ReadAllModelsEnabled(metadata)
+	policy := ModelPolicy{Mode: mode, EffectiveMode: mode, ArgonForceEnabled: forceArgon, AllModelsEnabled: allModels, Status: "ok", ExcludedModels: []string{}}
 	if raw, exists := metadata["excluded_models"]; exists {
 		var excluded []string
 		data, _ := json.Marshal(raw)
@@ -104,11 +116,12 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 			policy.ExcludedModels = append(policy.ExcludedModels, excluded...)
 		}
 	}
-	if err != nil {
+	if err != nil || errAllModels != nil {
 		policy.Mode, policy.EffectiveMode, policy.Status, policy.Reason = "auto", "auto", "blocked", "invalid_model_policy"
 		policy.EnforcedAllowedModels, policy.EnforcedReason = []string{}, policy.Reason
 		return policy
 	}
+	explicitExclusions := len(policy.ExcludedModels)
 	confirmed := (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil
 	if mode == "auto" && confirmed {
 		policy.EffectiveMode = "catalog"
@@ -146,11 +159,23 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1"}
 		policy.EnforcedReason = "paid_subscription_restricted"
 	}
+	if allModels {
+		policy.restrictRaw = policy.Restricted()
+		policy.EffectiveMode = "catalog"
+		policy.AllowedModels = nil
+		policy.ExcludedModels = policy.ExcludedModels[:explicitExclusions]
+		policy.EnforcedAllowedModels, policy.EnforcedReason = nil, ""
+	}
 	return policy
 }
 
 func (p ModelPolicy) Restricted() bool {
 	return p.EnforcedAllowedModels != nil || p.AllowedModels != nil || len(p.ExcludedModels) > 0
+}
+
+// RestrictsRawOperations retains validation of operations outside the model switch's scope.
+func (p ModelPolicy) RestrictsRawOperations() bool {
+	return p.restrictRaw || p.Restricted()
 }
 
 func (p ModelPolicy) ForcesArgon(model string) bool {

@@ -24,7 +24,7 @@ func TestEnterpriseCatalogFallbackSettingsAndDefaults(t *testing.T) {
 		{"business_standard", &trial, "ok", 1, ArgonModel}, {"enterprise_plus", &paid, "ok", 1, ArgonModel}, {"business_standard", &paid, "stale", 1, ArgonModel},
 		{"enterprise_plus", nil, "unknown", 0, ""}, {"enterprise_plus", &trial, "expired", 0, ""},
 	} {
-		models, _ := FallbackCatalog(CatalogFallback{Mode: "default"}, SubscriptionObservation{Edition: tc.edition, FreeTrial: tc.trial, Status: tc.status})
+		models, _ := FallbackCatalog(CatalogFallback{Mode: "default"}, SubscriptionObservation{Edition: tc.edition, FreeTrial: tc.trial, Status: tc.status}, false)
 		if len(models) != tc.count || tc.count > 0 && models[0].ID != tc.first {
 			t.Fatalf("%+v: %v", tc, models)
 		}
@@ -40,14 +40,28 @@ func TestEnterpriseCatalogFallbackSettingsAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	models, source := FallbackCatalog(setting, SubscriptionObservation{Status: "ok", FreeTrial: &paid})
+	models, source := FallbackCatalog(setting, SubscriptionObservation{Status: "ok", FreeTrial: &paid}, false)
 	if source != "custom" || len(models) != 2 || models[0].MediaKind != "image" || models[1].MediaKind != "video" {
 		t.Fatal(models, source)
 	}
 	for _, mode := range []string{"custom", "disabled"} {
-		models, _ = FallbackCatalog(CatalogFallback{Mode: mode, Models: []string{}}, SubscriptionObservation{Status: "ok", FreeTrial: &trial})
+		models, _ = FallbackCatalog(CatalogFallback{Mode: mode, Models: []string{}}, SubscriptionObservation{Status: "ok", FreeTrial: &trial}, false)
 		if len(models) != 0 {
 			t.Fatalf("%s supplied models", mode)
+		}
+	}
+}
+
+func TestAllModelsFallbackUsesTheSameCatalogAcrossEditions(t *testing.T) {
+	trial, paid := true, false
+	for _, observation := range []SubscriptionObservation{
+		{Status: "ok", Edition: "business_standard", FreeTrial: &trial},
+		{Status: "stale", Edition: "enterprise_plus", FreeTrial: &trial},
+		{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid},
+	} {
+		models, source := FallbackCatalog(CatalogFallback{Mode: "default"}, observation, true)
+		if source != "default" || len(models) != 7 || models[0].ID != "gemini-3.8-flash" || models[6].ID != ArgonModel {
+			t.Fatalf("fallback depended on the subscription edition: %+v", models)
 		}
 	}
 }

@@ -413,7 +413,7 @@ func TestEnterprisePaidPolicyViewReasonsSignatureAndFinalAdmission(t *testing.T)
 	trialSignature := m.EnterpriseModelPolicySignature(auth)
 	publishSubscription(t, m, auth, "enterprise_standard", false)
 	view := m.EnterpriseModelPolicyView(auth)
-	if !slices.Equal(view.EffectiveModels, []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1"}) || view.AllowedModels != nil || view.EnforcedReason != "paid_subscription_restricted" {
+	if !slices.Equal(view.EffectiveModels, []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1", ge.CarbonModel}) || view.AllowedModels != nil || view.EnforcedReason != "paid_subscription_restricted" {
 		t.Fatalf("incorrect paid effective policy: %+v", view)
 	}
 	if trialSignature == m.EnterpriseModelPolicySignature(auth) {

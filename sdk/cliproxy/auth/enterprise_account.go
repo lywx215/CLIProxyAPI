@@ -145,6 +145,9 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		if _, err = ge.ReadArgonForceEnabled(parent.Metadata); err != nil {
 			return nil, err
 		}
+		if _, err = ge.ReadAllModelsEnabled(parent.Metadata); err != nil {
+			return nil, err
+		}
 		return []*Auth{parent}, nil
 	}
 	if parent.Attributes == nil {
@@ -225,7 +228,7 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 
 func enterpriseCollectionSetting(key string) bool {
 	switch key {
-	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests", ge.CarbonEnabledKey, ge.ArgonForceEnabledKey:
+	case "prefix", "proxy_url", "note", "weight", "credential_weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "oauth_model_alias", "model_aliases", "disable_cooling", "headers", "request_retry", "request_scoped_errors", "max_concurrent_requests", ge.CarbonEnabledKey, ge.ArgonForceEnabledKey, ge.AllModelsEnabledKey:
 		return true
 	}
 	return false

@@ -42,7 +42,8 @@ func TestCarbonManualAdmissionDoesNotRequireDiagnosticEvidence(t *testing.T) {
 					}
 				}
 				current, _ := m.GetByID(target.ID)
-				if view := m.EnterpriseCarbonAdmissionView(current); !view.CanEnable || view.Enabled || view.Available || view.VerificationRequired {
+				defaultEnabled := !trial
+				if view := m.EnterpriseCarbonAdmissionView(current); !view.CanEnable || view.Enabled != defaultEnabled || view.Available != defaultEnabled || view.VerificationRequired {
 					t.Fatalf("diagnostic state became an enablement prerequisite: %+v", view)
 				}
 				if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), current, 1, true, ""); err != nil {
