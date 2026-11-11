@@ -79,9 +79,13 @@ func TestCookieCCPollKeepsIndependentDeadlines(t *testing.T) {
 		case req.URL.String() == c.APIBase()+widgetCCAction:
 			calls = append(calls, "cc")
 			raw, err := io.ReadAll(req.Body)
-			query := gjson.GetBytes(raw, "advancedCompleteQueryRequest.query")
-			if err != nil || !query.Exists() || query.String() != "" || gjson.GetBytes(raw, "configId").String() != c.ConfigID || req.Method != http.MethodPost || req.Header.Get("X-Goog-Api-Key") != "synthetic-api-key" || req.Header.Get("X-Server-Token") != "" {
-				t.Error("poll did not use the scoped empty query and existing authentication")
+			payload := gjson.GetBytes(raw, "advancedCompleteQueryRequest")
+			query := payload.Get("query")
+			if err != nil || !query.Exists() || query.String() != "" || payload.Get("suggestionTypes").Raw != `["CONTENT"]` {
+				t.Error("poll did not request content suggestions for the empty query")
+			}
+			if gjson.GetBytes(raw, "configId").String() != c.ConfigID || req.Method != http.MethodPost || req.Header.Get("X-Goog-Api-Key") != "synthetic-api-key" || req.Header.Get("X-Server-Token") != "" {
+				t.Error("poll did not use the existing application scope and authentication")
 			}
 			return ccFixtureResponse(200, `{}`,
 				"SIDCC="+ccValue+"; Domain=.google.com; Path=/; Secure; Max-Age=3600",
@@ -154,6 +158,7 @@ func TestCookieCCPollBackoffAndSessionConfirmation(t *testing.T) {
 		{"widget 403, saved valid", "retrying", 403, 200, 200, "", cookieAccessDenied, 5 * time.Minute, 1},
 		{"candidate rejected", "retrying", 200, 200, 401, "", cookieCandidateRejected, 5 * time.Minute, 2},
 		{"saved rejected", "paused", 401, 401, 200, "", cookieSessionRejected, 0, 1},
+		{"invalid request", "retrying", 400, 200, 200, "", cookieTemporaryFailure, 5 * time.Minute, 0},
 		{"rate limited", "retrying", 429, 200, 200, "720", cookieRateLimited, 12 * time.Minute, 0},
 		{"upstream unavailable", "retrying", 503, 200, 200, "600", cookieTemporaryFailure, 10 * time.Minute, 0},
 		{"unsupported", "unsupported", 404, 200, 200, "", "endpoint_unsupported", 0, 0},

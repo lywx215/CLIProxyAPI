@@ -192,10 +192,14 @@ func (r *Runtime) checkCookieCC(ctx context.Context, credential *Credential, bas
 		return Fail(http.StatusServiceUnavailable, "Web Cookie store is unavailable")
 	}
 	started = r.now()
+	// Google requires a non-query suggestion type when the query is empty.
 	response, err := postJSONAt(authCtx, base, original, token, widgetCCAction, map[string]any{
-		"configId":                     original.ConfigID,
-		"additionalParams":             map[string]string{"token": "-", "origin": "ORIGIN_UNSPECIFIED"},
-		"advancedCompleteQueryRequest": map[string]string{"query": ""},
+		"configId":         original.ConfigID,
+		"additionalParams": map[string]string{"token": "-", "origin": "ORIGIN_UNSPECIFIED"},
+		"advancedCompleteQueryRequest": map[string]any{
+			"query":           "",
+			"suggestionTypes": []string{"CONTENT"},
+		},
 	}, started)
 	if err != nil {
 		switch failureStatus(err) {
@@ -203,7 +207,7 @@ func (r *Runtime) checkCookieCC(ctx context.Context, credential *Credential, bas
 			return verifySaved(cookieRotationUnauthorized)
 		case http.StatusForbidden:
 			return verifySaved(cookieAccessDenied)
-		case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
 			status, reason = cookieCCUnsupported, "endpoint_unsupported"
 			return nil
 		default:
