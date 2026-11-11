@@ -85,6 +85,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	summary["account_management_supported"] = true
 	summary["model_policy_supported"] = true
 	summary["catalog_fallback_supported"] = true
+	summary["argon_force_supported"] = true
 	summary["carbon_admission_supported"] = true
 	summary["carbon_authorization_revision"] = h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID)
 	summary["carbon_registration_epoch"] = root.RegistrationEpoch
@@ -181,7 +182,7 @@ func (h *Handler) addEnterpriseAccountSummary(entry gin.H, auth *coreauth.Auth) 
 
 func enterpriseCollectionSettings(settings map[string]any) map[string]any {
 	result := map[string]any{}
-	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", "carbon_enabled"} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", ge.CarbonEnabledKey, ge.ArgonForceEnabledKey} {
 		if value, exists := settings[key]; exists {
 			result[key] = value
 		}
@@ -533,6 +534,9 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 }
 
 func validateEnterpriseCollectionFields(fields map[string]any) error {
+	if _, err := ge.ReadArgonForceEnabled(fields); err != nil {
+		return err
+	}
 	if _, err := ge.CatalogFallbackSettings(fields); err != nil {
 		return err
 	}

@@ -115,8 +115,20 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
 		return
 	}
+	var model *registry.ModelInfo
+	for _, candidate := range registry.GetGlobalRegistry().GetModelsForClient(auth.ID) {
+		if candidate != nil && candidate.ID == modelID {
+			model = candidate
+			break
+		}
+	}
+	actualModel := strings.TrimPrefix(modelID, strings.TrimSpace(auth.Prefix)+"/")
+	if model != nil && strings.TrimSpace(model.MetadataModelID) != "" {
+		actualModel = strings.TrimSpace(model.MetadataModelID)
+	}
 	policy := h.authManager.EnterpriseModelPolicyView(auth)
-	if policy.Status == "blocked" {
+	forceArgon := policy.ForcesArgon(actualModel)
+	if policy.Status == "blocked" && !forceArgon {
 		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until the current user's assigned subscription is verified")
 		return
 	}
@@ -125,25 +137,14 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
 	}
 	for _, entry := range policy.CatalogModels {
-		if entry.ID == modelID && !entry.Allowed {
+		if !forceArgon && entry.ID == modelID && !entry.Allowed {
 			fail(http.StatusConflict, "model_not_allowed", deniedMessage)
 			return
-		}
-	}
-	var model *registry.ModelInfo
-	for _, candidate := range registry.GetGlobalRegistry().GetModelsForClient(auth.ID) {
-		if candidate != nil && candidate.ID == modelID {
-			model = candidate
-			break
 		}
 	}
 	if model == nil {
 		fail(http.StatusBadRequest, "model_not_supported", "The selected model is not registered for this credential")
 		return
-	}
-	actualModel := strings.TrimSpace(model.MetadataModelID)
-	if actualModel == "" {
-		actualModel = strings.TrimPrefix(modelID, strings.TrimSpace(auth.Prefix)+"/")
 	}
 	if actualModel == ge.CarbonModel {
 		req.Model = ge.CarbonModel
@@ -158,7 +159,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		excluded = strings.Split(value, ",")
 	}
 	for _, pattern := range excluded {
-		if enterpriseTestModelMatches(pattern, modelID) || enterpriseTestModelMatches(pattern, actualModel) {
+		if !forceArgon && (enterpriseTestModelMatches(pattern, modelID) || enterpriseTestModelMatches(pattern, actualModel)) {
 			fail(http.StatusConflict, "model_excluded", "The selected model is excluded for this credential")
 			return
 		}

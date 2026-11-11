@@ -105,6 +105,82 @@ func TestEnterpriseCatalogLifecycle(t *testing.T) {
 	}
 }
 
+func TestEnterpriseForceArgonRegistersWithoutCatalog(t *testing.T) {
+	for _, catalogError := range []bool{false, true} {
+		t.Run(fmt.Sprintf("catalog-error=%t", catalogError), func(t *testing.T) {
+			svc, auth := enterpriseTestService(t, "forced-argon-"+t.Name())
+			d := svc.enterpriseState()
+			svc.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"gemini-4-*"}}
+			svc.cfg.OAuthModelAlias = map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.ArgonModel, Alias: "team-argon"}}}
+			svc.coreManager.SetConfig(svc.cfg)
+			auth.Prefix = "team"
+			auth.Metadata[ge.ArgonForceEnabledKey] = true
+			auth.Metadata["model_policy"] = "custom"
+			auth.Metadata["allowed_models"] = []string{}
+			auth, err := svc.coreManager.Update(t.Context(), auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
+				return ge.SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"}
+			}
+			release := make(chan struct{})
+			defer func() {
+				if release != nil {
+					close(release)
+				}
+			}()
+			catalogReady := release
+			d.fetch = func(ctx context.Context, _ *coreauth.Auth, _ string) ([]ge.Model, error) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-catalogReady:
+				}
+				if catalogError {
+					return nil, errors.New("synthetic catalog failure")
+				}
+				return []ge.Model{}, nil
+			}
+			assertArgon := func() {
+				t.Helper()
+				models := GlobalModelRegistry().GetModelsForClient(auth.ID)
+				if len(models) != 2 {
+					t.Fatalf("expected the aliased and prefixed Argon routes, got %v", models)
+				}
+				for _, model := range models {
+					if (model.ID != "team-argon" && model.ID != "team/team-argon") || model.MetadataModelID != ge.ArgonModel {
+						t.Fatalf("incorrect Argon registration: %+v", model)
+					}
+				}
+				view := svc.coreManager.EnterpriseModelPolicyView(auth)
+				if len(view.EffectiveModels) != 1 || len(view.CatalogModels) != 1 || view.CatalogModels[0].CatalogSource != "manual" || view.CatalogModels[0].UpstreamListed {
+					t.Fatalf("manual Argon was not identified separately from the catalog: %+v", view)
+				}
+			}
+			svc.registerEnterpriseModels(t.Context(), auth)
+			assertArgon()
+			close(release)
+			release = nil
+			d.wg.Wait()
+			assertArgon()
+			if observation := svc.coreManager.EnterpriseSubscriptionSnapshot(auth); observation.State != "EXPIRED" {
+				t.Fatalf("manual admission rewrote the subscription: %+v", observation)
+			}
+			current, _ := svc.coreManager.GetByID(auth.ID)
+			current.Metadata[ge.ArgonForceEnabledKey] = false
+			current, err = svc.coreManager.Update(t.Context(), current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc.registerEnterpriseModels(t.Context(), current)
+			if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+				t.Fatal("closing the switch did not immediately remove the manual routes")
+			}
+		})
+	}
+}
+
 func TestEnterpriseRebindingRevokesOldCatalogBeforeDiscovery(t *testing.T) {
 	svc, auth := enterpriseTestService(t, "enterprise-rebinding")
 	d := svc.enterpriseState()

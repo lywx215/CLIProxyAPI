@@ -195,6 +195,38 @@ func TestSubscriptionVerificationIsMandatoryForEveryPolicy(t *testing.T) {
 	}
 }
 
+func TestModelPolicyForceArgonOverridesOnlyArgon(t *testing.T) {
+	trial := true
+	for _, tc := range []struct {
+		name        string
+		mode        string
+		observation SubscriptionObservation
+	}{
+		{"expired", "auto", SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"}},
+		{"lookup-failed", "catalog", SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}},
+		{"empty-whitelist", "custom", SubscriptionObservation{Status: "ok", FreeTrial: &trial}},
+		{"excluded", "exclude_argon", SubscriptionObservation{Status: "ok", FreeTrial: &trial}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metadata := map[string]any{"model_policy": tc.mode, "allowed_models": []string{}, "excluded_models": []string{"gemini-4-*"}}
+			original := ModelPolicyFor(metadata, tc.observation)
+			metadata[ArgonForceEnabledKey] = true
+			forced := ModelPolicyFor(metadata, tc.observation)
+			if original.Allows(ArgonModel) || !forced.Allows(ArgonModel) || !forced.Allows("models/"+ArgonModel) {
+				t.Fatalf("Argon was not exclusively admitted by the switch: %+v", forced)
+			}
+			if original.Status != forced.Status || original.Reason != forced.Reason || original.EffectiveMode != forced.EffectiveMode {
+				t.Fatalf("the original subscription and model policy changed: %+v", forced)
+			}
+			for _, model := range []string{"", "auto", ArgonModel + "-preview", CarbonModel, "gemini-3.8-flash", "veo-3.1"} {
+				if original.Allows(model) != forced.Allows(model) {
+					t.Fatalf("switch changed admission for %q", model)
+				}
+			}
+		})
+	}
+}
+
 func TestPaidSubscriptionIntersectsUserListsWithoutChangingThem(t *testing.T) {
 	paid := false
 	for _, allowed := range []any{nil, []string(nil), []string{}, []string{ArgonModel, "gemini-3.8-flash"}} {

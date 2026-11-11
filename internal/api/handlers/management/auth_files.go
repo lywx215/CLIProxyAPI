@@ -484,6 +484,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 			response["models"] = visible
 			response["model_policy_supported"] = true
 			response["catalog_fallback_supported"] = true
+			response["argon_force_supported"] = true
 			response["model_policy_state"] = view
 			response["catalog_models"] = view.CatalogModels
 			response["carbon_admission_supported"], response["carbon_admission"] = true, carbon

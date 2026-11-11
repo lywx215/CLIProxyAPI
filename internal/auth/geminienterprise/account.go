@@ -110,6 +110,9 @@ func ReadAccount(metadata map[string]any) (*Account, error) {
 		if _, err := ReadCarbonEnabled(collection.Settings); err != nil {
 			return nil, fmt.Errorf("gemini-enterprise: invalid collection settings: %w", err)
 		}
+		if _, err := ReadArgonForceEnabled(collection.Settings); err != nil {
+			return nil, fmt.Errorf("gemini-enterprise: invalid collection settings: %w", err)
+		}
 		seen[collection.ID] = true
 	}
 	return &account, nil
@@ -138,6 +141,9 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 	if _, err := ReadCarbonEnabled(metadata); err != nil {
 		return Account{}, fmt.Errorf("gemini-enterprise: invalid legacy settings: %w", err)
 	}
+	if _, err := ReadArgonForceEnabled(metadata); err != nil {
+		return Account{}, fmt.Errorf("gemini-enterprise: invalid legacy settings: %w", err)
+	}
 	id := AccountID(String(metadata, "email"), String(metadata, "client_id"))
 	if id == "" {
 		return Account{}, fmt.Errorf("gemini-enterprise: account email and OAuth client ID are required")
@@ -152,7 +158,7 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 	}
 	resources := canonicalCollectionResources(Resources(binding))
 	collection := Collection{ID: CollectionID(resources), Revision: 1, ResourceBinding: resources}
-	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", CarbonEnabledKey} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", CarbonEnabledKey, ArgonForceEnabledKey} {
 		if value, ok := metadata[key]; ok {
 			if collection.Settings == nil {
 				collection.Settings = make(map[string]any)
@@ -305,7 +311,7 @@ func MergeDiscoveredCollections(account Account, result DiscoveryResult) (Accoun
 						continue
 					}
 					for key, value := range source.Settings {
-						if key == CarbonEnabledKey && current.ResourceBinding != source.ResourceBinding {
+						if (key == CarbonEnabledKey || key == ArgonForceEnabledKey) && current.ResourceBinding != source.ResourceBinding {
 							continue
 						}
 						if current.Settings == nil {

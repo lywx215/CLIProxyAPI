@@ -2,10 +2,12 @@ package management
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	sdkauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreexec "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/tidwall/gjson"
 )
 
@@ -170,5 +174,87 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 		if response.Code != http.StatusBadRequest || gjson.GetBytes(response.Body.Bytes(), "code").String() != "read_only_collection_fields" {
 			t.Fatalf("read-only restriction accepted a patch: %s", response.Body.String())
 		}
+	}
+}
+
+func TestEnterpriseForceArgonCollectionPatchAndProbe(t *testing.T) {
+	h, root, children := enterpriseAccountFixture(t)
+	child := children[0]
+	bindingID := coreauth.EnterpriseBindingID(child)
+	store := sdkauth.NewFileTokenStore()
+	store.SetBaseDir(filepath.Dir(root.Attributes["path"]))
+	if _, err := store.Save(t.Context(), root); err != nil {
+		t.Fatal(err)
+	}
+	h.authManager.SetStore(store)
+	expired := ge.SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"}
+	publishManagementEnterpriseSubscription(t, h.authManager, child, expired, ge.Model{ID: "gemini-3.8-flash"})
+	patch := func(revision uint64, fields map[string]any, want int) gjson.Result {
+		t.Helper()
+		response := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, http.MethodPatch, map[string]any{
+			"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": revision, "fields": fields,
+		})
+		if response.Code != want {
+			t.Fatalf("patch status=%d, want %d: %s", response.Code, want, response.Body.String())
+		}
+		return gjson.ParseBytes(response.Body.Bytes()).Get("gemini_enterprise")
+	}
+	for _, invalid := range []any{"true", nil} {
+		patch(1, map[string]any{ge.ArgonForceEnabledKey: invalid}, http.StatusBadRequest)
+	}
+	account := patch(1, map[string]any{ge.ArgonForceEnabledKey: true}, http.StatusOK)
+	collection := account.Get(fmt.Sprintf(`collections.#(binding_id==%q)`, bindingID))
+	if !account.Get("argon_force_supported").Bool() || !collection.Get("settings.argon_force_enabled").Bool() ||
+		!collection.Get("model_policy_state.argon_force_enabled").Bool() || collection.Get("model_policy_state.subscription.state").String() != "EXPIRED" ||
+		collection.Get("model_policy_state.effective_models").Raw != `["gemini-4-argon"]` || collection.Get("revision").Uint() != 2 {
+		t.Fatalf("wrong forced Argon view: %s", collection.Raw)
+	}
+	patch(1, map[string]any{ge.ArgonForceEnabledKey: false}, http.StatusConflict)
+	const alias = "manual-argon-alias"
+	patch(2, map[string]any{"model_aliases": []map[string]any{{"name": ge.ArgonModel, "alias": alias}}}, http.StatusOK)
+	for _, current := range h.authManager.EnterpriseCollections(root.ID) {
+		if h.authManager.EnterpriseModelPolicyView(current).ArgonForceEnabled != (current.ID == child.ID) {
+			t.Fatal("collection edit lost the switch or leaked it to another region")
+		}
+	}
+	registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: alias, MetadataModelID: ge.ArgonModel}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
+	h.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"gemini-4-*"}}
+	h.authManager.SetConfig(h.cfg)
+	h.authManager.SetRetryConfig(0, 0, 0)
+	calls := 0
+	h.authManager.RegisterExecutor(&enterpriseProbeExecutor{execute: func(ctx context.Context, selected *coreauth.Auth, _ coreexec.Request, _ coreexec.Options) (coreexec.Response, error) {
+		calls++
+		if selected.ID != child.ID {
+			t.Fatalf("probe used another collection: %s", selected.ID)
+		}
+		coreexec.MarkUpstreamAttempt(ctx)
+		return coreexec.Response{Payload: []byte(`{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}`)}, nil
+	}})
+	probe := map[string]any{
+		"name": root.FileName, "auth_index": child.Index, "binding_id": bindingID, "expected_revision": 3,
+		"model": alias, "expected": ge.Resources(ge.FromMetadata(child.Metadata)),
+	}
+	result := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, http.MethodPost, probe)
+	if result.Code != http.StatusOK || gjson.GetBytes(result.Body.Bytes(), "status").String() != "ok" || calls != 1 {
+		t.Fatalf("forced Argon probe did not execute: %d %s", result.Code, result.Body.String())
+	}
+
+	currentRoot, _, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
+	currentRoot.Metadata["access_token"] = "synthetic-rotated-access"
+	if _, err := h.authManager.ReauthorizeEnterpriseAccount(t.Context(), currentRoot); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := coreauth.NewManager(store, nil, nil)
+	if err := reloaded.Load(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if saved, ok := reloaded.GetByID(child.ID); !ok || !reloaded.EnterpriseModelPolicyView(saved).ForcesArgon(ge.ArgonModel) {
+		t.Fatal("authorization refresh or credential reload lost the switch")
+	}
+	stale, _ := h.authManager.GetByID(child.ID)
+	patch(3, map[string]any{ge.ArgonForceEnabledKey: false}, http.StatusOK)
+	if err := coreauth.CommitEnterpriseModelSubmission(t.Context(), stale, ge.ArgonModel); err == nil {
+		t.Fatal("a request holding an older credential snapshot retained forced admission after closing the switch")
 	}
 }

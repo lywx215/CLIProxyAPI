@@ -98,7 +98,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		name, mode, body, suffix, project, endpoint, code, region string
 		headers                                                   map[string]string
 		disabled, account                                         bool
-		paid, unknown, imageDisabled                              bool
+		paid, unknown, imageDisabled, forceArgon                  bool
 		wantStatus, wantCalls, upstreamStatus                     int
 	}{
 		{name: "allowed argon", body: validBody, wantStatus: 200, wantCalls: 1},
@@ -134,6 +134,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		{name: "paid video allowed", mode: "catalog", paid: true, body: `{"query":{"text":"video"},"toolsSpec":{"videoGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
 		{name: "paid image feature disabled", mode: "catalog", paid: true, imageDisabled: true, body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 502},
 		{name: "unknown manual catalog", mode: "catalog", unknown: true, body: validBody, code: "subscription_unverified", wantStatus: 503},
+		{name: "expired forced Argon without catalog", forceArgon: true, body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "expired forced Argon does not permit flash", forceArgon: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "subscription_unverified", wantStatus: 503},
+		{name: "expired forced Argon still validates assistant", forceArgon: true, body: validBody, suffix: "/assistants/another_assistant:streamAssist", wantStatus: 502},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			cfg := &config.Config{}
@@ -154,6 +157,10 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			if scenario.mode == "custom" {
 				metadata["allowed_models"] = []string{ge.ArgonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1"}
 			}
+			if scenario.forceArgon {
+				metadata[ge.ArgonForceEnabledKey] = true
+				metadata["excluded_models"] = []string{ge.ArgonModel}
+			}
 			if scenario.account {
 				account, err := ge.AccountFromLegacy(metadata)
 				if err != nil {
@@ -171,7 +178,10 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 			manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{
 				{ID: ge.ArgonModel}, {ID: "gemini-3.8-flash"}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"},
 			})
-			if scenario.paid {
+			if scenario.forceArgon {
+				manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{})
+				publishManagementEnterpriseSubscription(t, manager, auth, ge.SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"})
+			} else if scenario.paid {
 				trial := false
 				publishManagementEnterpriseSubscription(t, manager, auth, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial, State: "ACTIVE", CheckedAt: time.Now()})
 			} else if !scenario.account && scenario.mode != "auto" && !scenario.unknown {

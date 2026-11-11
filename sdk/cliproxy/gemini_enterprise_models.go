@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -119,9 +120,18 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 	cfg := s.cfg
 	policy := s.coreManager.EnterpriseModelPolicyView(auth)
 	policySignature := policy.Signature()
+	excluded := cfg.OAuthExcludedModels[ge.Provider]
+	if value := auth.Attributes["excluded_models"]; value != "" {
+		excluded = strings.Split(value, ",")
+	}
 	models := make([]*ModelInfo, 0, len(policy.CatalogModels))
 	for _, model := range policy.CatalogModels {
 		if !model.Allowed {
+			continue
+		}
+		if !policy.ForcesArgon(model.ID) && slices.ContainsFunc(excluded, func(pattern string) bool {
+			return ge.MatchModelPattern(pattern, model.ID)
+		}) {
 			continue
 		}
 		info := &ModelInfo{ID: model.ID, Object: "model", OwnedBy: ge.Provider, Type: "gemini", Name: "models/" + model.ID, DisplayName: model.DisplayName, EnterpriseMedia: model.MediaKind, SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"}}
@@ -136,18 +146,20 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 		}
 		models = append(models, info)
 	}
-	excluded := cfg.OAuthExcludedModels[ge.Provider]
-	if value := auth.Attributes["excluded_models"]; value != "" {
-		excluded = strings.Split(value, ",")
-	}
-	models = applyExcludedModels(models, excluded)
 	models = applyOAuthModelAliasForAuth(cfg, ge.Provider, auth.AuthKind(), auth.Attributes, models)
 	models = applyOAuthSettingsForAuth(cfg, ge.Provider, auth.AuthKind(), models)
 	models = applyModelPrefixes(models, auth.Prefix, cfg.ForceModelPrefix)
 	d := s.enterpriseState()
 	d.mu.Lock()
 	current := d.catalogs[key]
-	if current.revision != catalog.revision {
+	latest, found := s.coreManager.GetByID(auth.ID)
+	if !found || current.revision != catalog.revision {
+		d.mu.Unlock()
+		s.cfgMu.RUnlock()
+		return false
+	}
+	forceArgon, _ := ge.ReadArgonForceEnabled(latest.Metadata)
+	if forceArgon != policy.ArgonForceEnabled {
 		d.mu.Unlock()
 		s.cfgMu.RUnlock()
 		return false
@@ -186,12 +198,13 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		return
 	}
 	reg := registry.GetGlobalRegistry()
-	expectedEpoch := reg.ClientRegistrationEpoch(auth.ID)
 	d := s.enterpriseState()
 	d.mu.Lock()
 	catalog := d.catalogs[key]
+	expectedEpoch := reg.ClientRegistrationEpoch(auth.ID)
 	d.mu.Unlock()
-	if catalog.known || catalog.revision > 0 || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
+	forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
+	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while
@@ -200,8 +213,11 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		s.cfgMu.RLock()
 		if s.cfg == nil || !s.cfg.Home.Enabled {
 			d.mu.Lock()
-			if !d.catalogs[key].known && len(reg.GetModelsForClient(auth.ID)) > 0 {
-				reg.ReplaceClientModels(auth.ID, ge.Provider, expectedEpoch, nil)
+			if latest, found := s.coreManager.GetByID(auth.ID); found {
+				forceArgon, _ := ge.ReadArgonForceEnabled(latest.Metadata)
+				if !forceArgon && !d.catalogs[key].known && len(reg.GetModelsForClient(auth.ID)) > 0 {
+					reg.ReplaceClientModels(auth.ID, ge.Provider, expectedEpoch, nil)
+				}
 			}
 			d.mu.Unlock()
 		}
@@ -400,7 +416,8 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 		due := !catalog.known || !d.now().Before(catalog.expires) || catalog.credential != enterpriseFailureKey(key, auth)
 		d.mu.Unlock()
 		epoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
-		if catalog.revision > 0 && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
+		forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
+		if (catalog.revision > 0 || forceArgon) && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
 			s.publishEnterpriseCatalog(ctx, auth, key, catalog, epoch)
 		}
 		if due {

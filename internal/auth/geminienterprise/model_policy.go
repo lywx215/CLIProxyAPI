@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	ArgonModel  = "gemini-4-argon"
-	CarbonModel = "gemini-4-carbon"
+	ArgonModel           = "gemini-4-argon"
+	CarbonModel          = "gemini-4-carbon"
+	ArgonForceEnabledKey = "argon_force_enabled"
 )
 
 // IsArgonFamilyModel preserves the Argon policy boundary independently of Carbon.
@@ -21,6 +22,7 @@ func IsArgonFamilyModel(model string) bool {
 type ModelPolicy struct {
 	Mode                   string   `json:"mode"`
 	EffectiveMode          string   `json:"effective_mode"`
+	ArgonForceEnabled      bool     `json:"argon_force_enabled"`
 	Status                 string   `json:"status"`
 	Reason                 string   `json:"reason,omitempty"`
 	AllowedModels          []string `json:"allowed_models"`
@@ -30,6 +32,18 @@ type ModelPolicy struct {
 	EnforcedReason         string   `json:"enforced_reason"`
 	// Carbon admission is derived from the manual switch and credential eligibility.
 	CarbonAllowed bool `json:"-"`
+}
+
+func ReadArgonForceEnabled(metadata map[string]any) (bool, error) {
+	raw, exists := metadata[ArgonForceEnabledKey]
+	if !exists {
+		return false, nil
+	}
+	enabled, ok := raw.(bool)
+	if !ok {
+		return false, fmt.Errorf("%s must be a boolean", ArgonForceEnabledKey)
+	}
+	return enabled, nil
 }
 
 func ValidModelPolicy(mode string) bool {
@@ -81,7 +95,8 @@ func ModelPolicySettings(metadata map[string]any) (string, []string, error) {
 
 func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservation) ModelPolicy {
 	mode, allowed, err := ModelPolicySettings(metadata)
-	policy := ModelPolicy{Mode: mode, EffectiveMode: mode, Status: "ok", ExcludedModels: []string{}}
+	forceArgon, _ := ReadArgonForceEnabled(metadata)
+	policy := ModelPolicy{Mode: mode, EffectiveMode: mode, ArgonForceEnabled: forceArgon, Status: "ok", ExcludedModels: []string{}}
 	if raw, exists := metadata["excluded_models"]; exists {
 		var excluded []string
 		data, _ := json.Marshal(raw)
@@ -138,7 +153,14 @@ func (p ModelPolicy) Restricted() bool {
 	return p.EnforcedAllowedModels != nil || p.AllowedModels != nil || len(p.ExcludedModels) > 0
 }
 
+func (p ModelPolicy) ForcesArgon(model string) bool {
+	return p.ArgonForceEnabled && IsArgonFamilyModel(strings.TrimPrefix(strings.TrimSpace(model), "models/"))
+}
+
 func (p ModelPolicy) Allows(model string) bool {
+	if p.ForcesArgon(model) {
+		return true
+	}
 	if p.Status == "blocked" {
 		return false
 	}

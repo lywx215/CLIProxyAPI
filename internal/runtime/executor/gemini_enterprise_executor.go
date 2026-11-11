@@ -171,7 +171,7 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 	client := newHTTPClient(ctx, e.cfg, auth, 0)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if commitModel != "" {
-		if errCommit := coreauth.CommitEnterpriseCarbonSubmission(ctx, auth, commitModel); errCommit != nil {
+		if errCommit := coreauth.CommitEnterpriseModelSubmission(ctx, auth, commitModel); errCommit != nil {
 			return nil, errCommit
 		}
 	}
@@ -272,7 +272,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	client := reporter.TrackHTTPClientRoundTripOnly(newHTTPClient(ctx, e.cfg, auth, 0))
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	request = helps.ObserveEnterpriseRequest(ctx, request, finalModel)
-	if errCommit := coreauth.CommitEnterpriseCarbonSubmission(ctx, auth, finalModel); errCommit != nil {
+	if errCommit := coreauth.CommitEnterpriseModelSubmission(ctx, auth, finalModel); errCommit != nil {
 		return nil, input, errCommit
 	}
 	response, err := client.Do(request)

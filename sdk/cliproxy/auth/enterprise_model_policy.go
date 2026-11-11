@@ -331,6 +331,12 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		}
 	}
 	view.CatalogState, view.CatalogKnown = state, known
+	argonSupplement := policy.ArgonForceEnabled && !slices.ContainsFunc(models, func(model ge.Model) bool {
+		return policy.ForcesArgon(model.ID)
+	})
+	if argonSupplement {
+		models = append(models, ge.Model{ID: ge.ArgonModel, DisplayName: ge.ArgonModel})
+	}
 	// Manual admission is independent of catalog and diagnostic test history.
 	// Never register the closed Carbon candidate.
 	carbonSupplement := false
@@ -345,6 +351,9 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
 		if model.ID == ge.CarbonModel {
 			allowed = admission.Available
+			model.MediaKind = ""
+		} else if policy.ForcesArgon(model.ID) {
+			allowed = true
 			model.MediaKind = ""
 		}
 		mediaDisabled := model.MediaKind == "image" && cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
@@ -370,7 +379,7 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 			}
 		}
 		source := state.Source
-		if carbonSupplement && model.ID == ge.CarbonModel {
+		if carbonSupplement && model.ID == ge.CarbonModel || argonSupplement && model.ID == ge.ArgonModel {
 			source = "manual"
 		}
 		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: source, UpstreamListed: source == "upstream" || source == "cached"})
@@ -419,16 +428,16 @@ func (e *EnterpriseModelPolicyError) StatusCode() int     { return e.HTTPStatus 
 func (*EnterpriseModelPolicyError) IsRequestScoped() bool { return true }
 
 func policyError(policy ge.ModelPolicy, model string) error {
+	if policy.Allows(canonicalModelKey(model)) {
+		return nil
+	}
 	if policy.Status == "blocked" {
 		return &EnterpriseModelPolicyError{"subscription_unverified", "The Enterprise collection is paused until the current user's assigned subscription is verified", 503}
 	}
-	if !policy.Allows(canonicalModelKey(model)) {
-		if policy.EnforcedReason == "paid_subscription_restricted" {
-			return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
-		}
-		return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
+	if policy.EnforcedReason == "paid_subscription_restricted" {
+		return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
 	}
-	return nil
+	return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
 }
 
 func (m *Manager) validateEnterprisePolicy(auth *Auth, model string, catalog bool) error {
@@ -440,6 +449,10 @@ func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *
 		return m.validateEnterpriseCarbonPolicy(ctx, auth)
 	}
 	view := m.enterpriseModelPolicyView(auth, false)
+	// A deferred model is checked again after payload rules resolve its final ID.
+	if view.ForcesArgon(canonicalModelKey(model)) || model == "" && !catalog && view.ArgonForceEnabled {
+		return nil
+	}
 	if model == "" && view.Status != "blocked" && (!catalog || !view.Restricted()) {
 		return nil
 	}

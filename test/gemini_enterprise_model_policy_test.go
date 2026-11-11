@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,7 @@ type enterprisePolicyWireTransport struct {
 	t          *testing.T
 	mu         sync.Mutex
 	requests   []enterprisePolicyWireRequest
+	status     int
 	unexpected atomic.Int32
 	downloads  atomic.Int32
 }
@@ -72,6 +74,13 @@ func (f *enterprisePolicyWireTransport) RoundTrip(req *http.Request) (*http.Resp
 		authorization: req.Header.Get("Authorization"),
 	})
 	f.mu.Unlock()
+	if f.status != 0 {
+		return &http.Response{
+			StatusCode: f.status,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"synthetic upstream failure"}}`)),
+		}, nil
+	}
 	if media != "" {
 		engine := strings.TrimPrefix(strings.SplitN(req.URL.Path, "/assistants/", 2)[0], "/v1alpha/")
 		mime := "image/png"
@@ -102,6 +111,7 @@ func (f *enterprisePolicyWireTransport) snapshot() []enterprisePolicyWireRequest
 type enterprisePolicyWireAuth struct {
 	id, project, edition, prefix, mode string
 	trial, unknown                     bool
+	forceArgon                         bool
 	aliases                            []config.OAuthModelAlias
 	allowedModels                      []string
 	subscription                       *ge.SubscriptionObservation
@@ -157,6 +167,9 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 		}
 		if spec.allowedModels != nil {
 			metadata["allowed_models"] = spec.allowedModels
+		}
+		if spec.forceArgon {
+			metadata[ge.ArgonForceEnabledKey] = true
 		}
 		auth := &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Prefix: spec.prefix, Metadata: metadata, Attributes: map[string]string{"priority": spec.priority}}
 		coreauth.SetOAuthModelAliasesAttribute(auth, spec.aliases)
@@ -382,6 +395,86 @@ func TestEnterprisePolicyPublicAliasPrefixSuffixRouting(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestEnterpriseForceArgonPublicRoutingAndFinalPayload(t *testing.T) {
+	const alias = "force-argon"
+	expired := &ge.SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"}
+	for _, finalModel := range []string{"", ge.ArgonModel, "gemini-3.8-flash"} {
+		t.Run("final="+finalModel, func(t *testing.T) {
+			cfg := &config.Config{OAuthExcludedModels: map[string][]string{ge.Provider: {"gemini-4-*"}}}
+			if finalModel != "" {
+				cfg.Payload.Override = []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "*", Protocol: ge.Provider}}, Params: map[string]any{"generationSpec.modelId": finalModel}}}
+			}
+			forced := enterprisePolicyWireAuth{id: "forced", project: "12345", prefix: "team", mode: "custom", allowedModels: []string{}, forceArgon: true, subscription: expired,
+				aliases: []config.OAuthModelAlias{{Name: ge.ArgonModel, Alias: alias, Fork: true}}}
+			unforced := forced
+			unforced.id, unforced.project, unforced.forceArgon, unforced.priority = "unforced", "67890", false, "100"
+			fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{forced, unforced})
+			auth, _ := fixture.manager.GetByID(fixture.authIDs[forced.id])
+			fixture.manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{})
+			for _, protocol := range []string{"openai", "gemini"} {
+				for _, stream := range []bool{false, true} {
+					const route = "team/" + alias + "(high)"
+					if finalModel == "gemini-3.8-flash" {
+						enterprisePolicyAssertPublicDenied(t, fixture, route, protocol, stream)
+					} else {
+						enterprisePolicyAssertPublicSuccess(t, fixture, route, ge.ArgonModel, forced.project, protocol, stream)
+					}
+				}
+			}
+			// Leave registry entries stale when closing to exercise live policy fencing.
+			auth, _ = fixture.manager.GetByID(auth.ID)
+			auth.Metadata[ge.ArgonForceEnabledKey] = false
+			if _, err := fixture.manager.Update(t.Context(), auth); err != nil {
+				t.Fatal(err)
+			}
+			enterprisePolicyAssertPublicDenied(t, fixture, "team/"+alias, "openai", false)
+		})
+	}
+}
+
+func TestEnterpriseForceArgonRetainsUpstreamFailureHandling(t *testing.T) {
+	const fixtureSecretEnv = "CLIPROXY_POLICY_FIXTURE_OAUTH_SECRET"
+	// Any existing 401 refresh path must fail locally without contacting OAuth.
+	t.Setenv(fixtureSecretEnv, "")
+	for _, status := range []int{401, 403, 429, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			type outcome struct {
+				status, attempts int
+				cooldowns        []string
+			}
+			call := func(forceArgon bool) outcome {
+				t.Helper()
+				spec := enterprisePolicyWireAuth{id: fmt.Sprint(forceArgon), project: "12345", mode: "catalog", forceArgon: forceArgon}
+				if forceArgon {
+					spec.subscription = &ge.SubscriptionObservation{Status: "inactive", State: "EXPIRED", Reason: "subscription_inactive"}
+				}
+				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{spec})
+				fixture.transport.status = status
+				auth, _ := fixture.manager.GetByID(fixture.authIDs[spec.id])
+				auth.Metadata["client_secret_env"] = fixtureSecretEnv
+				if _, err := fixture.manager.Update(t.Context(), auth); err != nil {
+					t.Fatal(err)
+				}
+				path, body := enterprisePublicRequest(t, ge.ArgonModel, "openai", false, nil)
+				response := enterprisePublicCall(fixture.router, path, body)
+				latest, _ := fixture.manager.GetByID(auth.ID)
+				if fixture.manager.EnterpriseModelPolicyView(latest).ArgonForceEnabled != forceArgon {
+					t.Fatal("an upstream failure changed the saved switch")
+				}
+				got := outcome{status: response.Code, attempts: len(fixture.transport.snapshot())}
+				for _, record := range coreauth.CooldownSnapshotForAuth(latest, time.Now()) {
+					got.cooldowns = append(got.cooldowns, record.Scope+":"+record.Reason)
+				}
+				return got
+			}
+			original, forced := call(false), call(true)
+			if original.status < 400 || original.attempts == 0 || forced.status != original.status || forced.attempts != original.attempts || !slices.Equal(forced.cooldowns, original.cooldowns) {
+				t.Fatalf("upstream failure behavior changed: original=%+v forced=%+v", original, forced)
+			}
+		})
 	}
 }
 
