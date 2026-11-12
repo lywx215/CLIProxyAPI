@@ -11,13 +11,14 @@ import (
 const (
 	ArgonModel           = "gemini-4-argon"
 	CarbonModel          = "gemini-4-carbon"
+	HydrogenModel        = "gemini-4-hydrogen"
 	ArgonForceEnabledKey = "argon_force_enabled"
 	AllModelsEnabledKey  = "all_models_enabled"
 )
 
-// IsArgonFamilyModel preserves the Argon policy boundary independently of Carbon.
+// IsArgonFamilyModel identifies the models controlled by the shared Argon policy.
 func IsArgonFamilyModel(model string) bool {
-	return model == ArgonModel
+	return model == ArgonModel || model == CarbonModel
 }
 
 type ModelPolicy struct {
@@ -32,9 +33,11 @@ type ModelPolicy struct {
 	EnforcedAllowedModels  []string `json:"enforced_allowed_models"`
 	EnforcedExcludedModels []string `json:"enforced_excluded_models,omitempty"`
 	EnforcedReason         string   `json:"enforced_reason"`
-	// Carbon admission is derived from the manual switch and credential eligibility.
+	// CarbonAllowed is retained for source compatibility; Carbon uses the shared policy.
 	CarbonAllowed bool `json:"-"`
-	restrictRaw   bool
+	// Hydrogen admission is derived from the manual switch and credential eligibility.
+	HydrogenAllowed bool `json:"-"`
+	restrictRaw     bool
 }
 
 func ReadArgonForceEnabled(metadata map[string]any) (bool, error) {
@@ -135,10 +138,10 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 		}
 	}
 	if policy.EffectiveMode == "argon_only" {
-		policy.AllowedModels = []string{ArgonModel}
+		policy.AllowedModels = []string{ArgonModel, CarbonModel}
 	}
 	if policy.EffectiveMode == "exclude_argon" {
-		policy.ExcludedModels = append(policy.ExcludedModels, ArgonModel)
+		policy.ExcludedModels = append(policy.ExcludedModels, ArgonModel, CarbonModel)
 	}
 	if policy.EffectiveMode == "custom" {
 		policy.AllowedModels = allowed
@@ -156,7 +159,7 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	}
 	if !*subscription.FreeTrial {
 		// The paid ceiling comes only from runtime license verification, never saved settings.
-		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1"}
+		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, HydrogenModel, "gemini-3-pro-image", "veo-3.1"}
 		policy.EnforcedReason = "paid_subscription_restricted"
 	}
 	if allModels {
@@ -193,8 +196,8 @@ func (p ModelPolicy) Allows(model string) bool {
 	if model == "" {
 		return false
 	}
-	if model == CarbonModel {
-		return p.CarbonAllowed
+	if model == HydrogenModel {
+		return p.HydrogenAllowed
 	}
 	if slices.Contains(p.EnforcedExcludedModels, model) {
 		return false

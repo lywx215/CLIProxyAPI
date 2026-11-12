@@ -40,9 +40,6 @@ func TestEnterpriseFallbackPolicyAdmissionAndMedia(t *testing.T) {
 					}
 					view := m.EnterpriseModelPolicyView(a)
 					wantCatalog := 4
-					if !trial {
-						wantCatalog++
-					}
 					if !view.CatalogKnown || view.CatalogState.Source != "custom" || len(view.CatalogModels) != wantCatalog {
 						t.Fatalf("%+v", view)
 					}
@@ -71,7 +68,7 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "business_standard", true)
-	if v := m.EnterpriseModelPolicyView(a); len(v.EffectiveModels) != 1 || v.EffectiveModels[0] != ge.ArgonModel {
+	if v := m.EnterpriseModelPolicyView(a); len(v.EffectiveModels) != 2 || v.EffectiveModels[0] != ge.ArgonModel {
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "enterprise_plus", false)

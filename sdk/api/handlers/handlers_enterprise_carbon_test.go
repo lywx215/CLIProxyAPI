@@ -17,7 +17,7 @@ import (
 func TestEnterpriseCarbonUnavailableDoesNotFallBackToOtherProviders(t *testing.T) {
 	for _, alias := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
-			name := ge.CarbonModel
+			name := ge.HydrogenModel
 			if alias {
 				name = "enterprise-carbon-handler-alias"
 			}
@@ -37,7 +37,7 @@ func TestEnterpriseCarbonUnavailableDoesNotFallBackToOtherProviders(t *testing.T
 				}
 				handler := newModelExecutionHandler(t, name, executor, nil)
 				if alias {
-					handler.AuthManager.SetOAuthModelAlias(map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.CarbonModel, Alias: name}}})
+					handler.AuthManager.SetOAuthModelAlias(map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.HydrogenModel, Alias: name}}})
 				}
 				payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"OK"}]}]}`)
 				if stream {
@@ -75,23 +75,23 @@ func TestEnterpriseCarbonMediaStillUsesIndependentWebChannel(t *testing.T) {
 	if err := credential.SetCookies("SID=synthetic; SAPISID=synthetic"); err != nil {
 		t.Fatal(err)
 	}
-	credential.SetCatalog([]web.AvailableModel{{ID: ge.CarbonModel}}, time.Now())
+	credential.SetCatalog([]web.AvailableModel{{ID: ge.HydrogenModel}}, time.Now())
 	auth, err := manager.Register(t.Context(), &coreauth.Auth{ID: "carbon-independent-web", Provider: web.Provider, Status: coreauth.StatusActive, Metadata: map[string]any{"enterprise_web": credential.MetadataValue()}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry.GetGlobalRegistry().RegisterClient(auth.ID, web.Provider, []*registry.ModelInfo{{ID: ge.CarbonModel}})
+	registry.GetGlobalRegistry().RegisterClient(auth.ID, web.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel}})
 	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(auth.ID) })
 	calls := 0
 	manager.RegisterExecutor(&modelExecutionCaptureExecutor{provider: web.Provider, execute: func(_ context.Context, selected *coreauth.Auth, req coreexecutor.Request, _ coreexecutor.Options) (coreexecutor.Response, error) {
 		calls++
-		if selected.ID != auth.ID || req.Model != ge.CarbonModel {
+		if selected.ID != auth.ID || req.Model != ge.HydrogenModel {
 			t.Errorf("media target changed: %s/%s", selected.ID, req.Model)
 		}
 		return coreexecutor.Response{Payload: []byte(`{"candidates":[{"finishReason":"STOP"}]}`)}, nil
 	}})
 	handler := NewBaseAPIHandlers(nil, manager)
-	_, _, failure := handler.executeWithAuthManagerFormats(t.Context(), "gemini", "gemini", ge.CarbonModel, []byte(`{"contents":[{"role":"user","parts":[{"text":"read"},{"inlineData":{"mimeType":"text/plain","data":"YQ=="}}]}]}`), "", false, modelExecutionOptions{Operation: "generate_content"})
+	_, _, failure := handler.executeWithAuthManagerFormats(t.Context(), "gemini", "gemini", ge.HydrogenModel, []byte(`{"contents":[{"role":"user","parts":[{"text":"read"},{"inlineData":{"mimeType":"text/plain","data":"YQ=="}}]}]}`), "", false, modelExecutionOptions{Operation: "generate_content"})
 	if failure != nil || calls != 1 {
 		t.Fatalf("OAuth Carbon admission captured an independent media request: calls=%d error=%#v", calls, failure)
 	}

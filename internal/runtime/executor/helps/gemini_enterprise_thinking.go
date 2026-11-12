@@ -24,7 +24,7 @@ func ApplyEnterpriseThinking(body []byte, req coreexec.Request, opts coreexec.Op
 			}
 			actual = thinking.ParseSuffix(strings.TrimPrefix(strings.TrimSpace(actual), "models/")).ModelName
 		}
-		if actual == ge.CarbonModel {
+		if actual == ge.CarbonModel || actual == ge.HydrogenModel {
 			// Carbon has no verified thinking levels or budget controls. Preserve
 			// only summary visibility without the generic nil-capability cleanup.
 			source := req.Payload

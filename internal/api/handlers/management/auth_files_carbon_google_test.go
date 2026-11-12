@@ -351,3 +351,29 @@ func TestCarbonGoogleManagementDuplicateAndGlobalConcurrencyAreBounded(t *testin
 		t.Fatal("configuration admission or resource locks leaked")
 	}
 }
+
+func TestHydrogenGoogleConfigurationAndSnapshotIsolation(t *testing.T) {
+	h, root, children := enterpriseAccountFixture(t)
+	mock := mockCarbonGoogleManagement(t)
+	req := carbonGoogleManagementRequest(root, children[0])
+	response := enterpriseManagementRequest(t, h.ConfigureGeminiEnterpriseHydrogenGoogle, http.MethodPost, req)
+	if response.Code != http.StatusOK || !gjson.GetBytes(response.Body.Bytes(), "google_hydrogen_configure_supported").Bool() {
+		t.Fatalf("Hydrogen endpoint failed: %d %s", response.Code, response.Body.String())
+	}
+	engine := ge.Engine(ge.FromMetadata(children[0].Metadata))
+	if mock.values[engine]["modelConfigs"].(map[string]any)[ge.HydrogenModel] != "MODEL_ENABLED" || mock.patch != 2 {
+		t.Fatal("Hydrogen remote configuration did not reach the selected Engine and explicit Assistant")
+	}
+	if _, exists := mock.values[engine]["modelConfigs"].(map[string]any)[ge.CarbonModel]; exists {
+		t.Fatal("Hydrogen configuration also changed Carbon")
+	}
+	child, _ := h.authManager.GetByID(children[0].ID)
+	if h.authManager.EnterpriseHydrogenAdmissionView(child).Enabled {
+		t.Fatal("remote configuration enabled the local business switch")
+	}
+	req.SnapshotID = gjson.GetBytes(response.Body.Bytes(), "snapshot_id").String()
+	wrong := enterpriseManagementRequest(t, h.ConfigureGeminiEnterpriseCarbonGoogle, http.MethodPost, req)
+	if wrong.Code != http.StatusConflict || gjson.GetBytes(wrong.Body.Bytes(), "code").String() != "credential_changed" {
+		t.Fatal("a Hydrogen snapshot was reused for Carbon")
+	}
+}

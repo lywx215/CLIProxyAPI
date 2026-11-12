@@ -145,16 +145,19 @@ func TestEnterpriseForceArgonRegistersWithoutCatalog(t *testing.T) {
 			assertArgon := func() {
 				t.Helper()
 				models := GlobalModelRegistry().GetModelsForClient(auth.ID)
-				if len(models) != 2 {
+				if len(models) != 4 {
 					t.Fatalf("expected the aliased and prefixed Argon routes, got %v", models)
 				}
 				for _, model := range models {
+					if model.MetadataModelID == ge.CarbonModel || model.ID == ge.CarbonModel || model.ID == "team/"+ge.CarbonModel {
+						continue
+					}
 					if (model.ID != "team-argon" && model.ID != "team/team-argon") || model.MetadataModelID != ge.ArgonModel {
 						t.Fatalf("incorrect Argon registration: %+v", model)
 					}
 				}
 				view := svc.coreManager.EnterpriseModelPolicyView(auth)
-				if len(view.EffectiveModels) != 1 || len(view.CatalogModels) != 1 || view.CatalogModels[0].CatalogSource != "manual" || view.CatalogModels[0].UpstreamListed {
+				if len(view.EffectiveModels) != 2 || len(view.CatalogModels) != 2 || view.CatalogModels[0].CatalogSource != "manual" || view.CatalogModels[0].UpstreamListed {
 					t.Fatalf("manual Argon was not identified separately from the catalog: %+v", view)
 				}
 			}

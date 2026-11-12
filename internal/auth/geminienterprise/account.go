@@ -110,6 +110,9 @@ func ReadAccount(metadata map[string]any) (*Account, error) {
 		if _, err := ReadCarbonEnabled(collection.Settings); err != nil {
 			return nil, fmt.Errorf("gemini-enterprise: invalid collection settings: %w", err)
 		}
+		if _, err := HydrogenAdmissionModel.ReadEnabled(collection.Settings); err != nil {
+			return nil, fmt.Errorf("gemini-enterprise: invalid collection settings: %w", err)
+		}
 		if _, err := ReadArgonForceEnabled(collection.Settings); err != nil {
 			return nil, fmt.Errorf("gemini-enterprise: invalid collection settings: %w", err)
 		}
@@ -144,6 +147,9 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 	if _, err := ReadCarbonEnabled(metadata); err != nil {
 		return Account{}, fmt.Errorf("gemini-enterprise: invalid legacy settings: %w", err)
 	}
+	if _, err := HydrogenAdmissionModel.ReadEnabled(metadata); err != nil {
+		return Account{}, fmt.Errorf("gemini-enterprise: invalid legacy settings: %w", err)
+	}
 	if _, err := ReadArgonForceEnabled(metadata); err != nil {
 		return Account{}, fmt.Errorf("gemini-enterprise: invalid legacy settings: %w", err)
 	}
@@ -164,7 +170,7 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 	}
 	resources := canonicalCollectionResources(Resources(binding))
 	collection := Collection{ID: CollectionID(resources), Revision: 1, ResourceBinding: resources}
-	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", CarbonEnabledKey, ArgonForceEnabledKey, AllModelsEnabledKey} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "weight", "headers", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", CarbonEnabledKey, HydrogenEnabledKey, ArgonForceEnabledKey, AllModelsEnabledKey} {
 		if value, ok := metadata[key]; ok {
 			if collection.Settings == nil {
 				collection.Settings = make(map[string]any)
@@ -317,7 +323,7 @@ func MergeDiscoveredCollections(account Account, result DiscoveryResult) (Accoun
 						continue
 					}
 					for key, value := range source.Settings {
-						if (key == CarbonEnabledKey || key == ArgonForceEnabledKey || key == AllModelsEnabledKey) && current.ResourceBinding != source.ResourceBinding {
+						if (key == CarbonEnabledKey || key == HydrogenEnabledKey || key == ArgonForceEnabledKey || key == AllModelsEnabledKey) && current.ResourceBinding != source.ResourceBinding {
 							continue
 						}
 						if current.Settings == nil {

@@ -590,7 +590,7 @@ func (m *Manager) availableAuthsForRouteModelForRequest(ctx context.Context, aut
 		checkModel := m.selectionModelForAuth(candidate, routeModel)
 		if candidate != nil && candidate.Provider == "gemini-enterprise" {
 			policyModel := checkModel
-			if deferEnterpriseModelAdmission && canonicalModelKey(checkModel) != ge.CarbonModel {
+			if deferEnterpriseModelAdmission && canonicalModelKey(checkModel) != ge.HydrogenModel {
 				// Payload rules can replace the actual model. Keep paused collections
 				// out of scheduling and validate the final model at the executor barrier.
 				policyModel = ""

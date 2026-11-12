@@ -187,8 +187,11 @@ func ValidateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 // CommitEnterpriseModelSubmission checks manual admission again just before sending.
 func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model string) error {
 	modelKey := canonicalModelKey(model)
-	if modelKey == ge.CarbonModel {
-		return CommitEnterpriseCarbonSubmission(ctx, auth, model)
+	if modelKey == ge.HydrogenModel {
+		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, ge.HydrogenAdmissionModel)
+	}
+	if scope := enterpriseCarbonTestScope(ctx); scope != nil {
+		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, scope.model)
 	}
 	if auth == nil {
 		return nil
@@ -322,11 +325,11 @@ func (m *Manager) observeEnterpriseModelError(ctx context.Context, auth *Auth, m
 	c.records[key][model] = now.Add(time.Minute)
 	c.mu.Unlock()
 	m.mu.RUnlock()
-	if model == ge.CarbonModel {
+	if admissionModel, exists := ge.AdmissionModelForID(model); exists {
 		// The request lease is already released from all coordinator locks before
 		// persisting a model-specific review state. A newer proof must be fenced by
 		// its original test identity in the evidence store.
-		_ = m.MarkEnterpriseCarbonNeedsReview(ctx, auth, "model_not_enabled", rejection.HTTPStatus)
+		_ = m.MarkEnterpriseAdmissionNeedsReview(ctx, auth, "model_not_enabled", rejection.HTTPStatus, admissionModel)
 	}
 }
 

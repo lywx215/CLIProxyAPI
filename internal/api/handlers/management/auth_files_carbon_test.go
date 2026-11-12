@@ -174,7 +174,7 @@ func TestCarbonDirectModelTestUsesRegisteredModelWithoutVerification(t *testing.
 	h, root, children := enterpriseAccountFixture(t)
 	child := children[0]
 	paid := false
-	publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}, ge.Model{ID: ge.ArgonModel})
+	publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}, ge.Model{ID: ge.ArgonModel}, ge.Model{ID: ge.CarbonModel})
 	const alias = "carbon-public"
 	h.authManager.SetOAuthModelAlias(map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.CarbonModel, Alias: alias, Fork: true}}})
 	reg := registry.GetGlobalRegistry()
@@ -218,8 +218,8 @@ func TestCarbonDirectModelTestUsesRegisteredModelWithoutVerification(t *testing.
 		t.Fatalf("closing a default-enabled Carbon failed: %s", response.Body.String())
 	}
 	request["expected_revision"] = 2
-	if response := probe(ge.CarbonModel); response.Code != http.StatusConflict || gjson.GetBytes(response.Body.Bytes(), "code").String() != "carbon_unavailable" || calls != 2 {
-		t.Fatalf("manual close did not stop direct tests: %d %s (calls=%d)", response.Code, response.Body.String(), calls)
+	if response := probe(ge.CarbonModel); response.Code != http.StatusOK || gjson.GetBytes(response.Body.Bytes(), "status").String() != "ok" || calls != 3 {
+		t.Fatalf("legacy switch overrode normal Carbon catalog routing: %d %s (calls=%d)", response.Code, response.Body.String(), calls)
 	}
 }
 
@@ -290,5 +290,150 @@ func TestCarbonGenericMetadataEditsCannotForgeServerEvidence(t *testing.T) {
 				t.Fatalf("generic metadata write bypassed the server-owned boundary (tagged=%v field=%s): %s", tagged, field, w.Body.String())
 			}
 		}
+	}
+}
+
+func TestHydrogenManagementFixedTestProofAndManualSwitch(t *testing.T) {
+	for _, scenario := range []string{"verified", "verified-trial", "wrong-nonce", "no-session", "wrong-model", "missing-model", "foreign-session", "truncated", "model-changed", "read-forbidden", "read-redirect", "oversized-proof"} {
+		t.Run(scenario, func(t *testing.T) {
+			h, root, children := enterpriseAccountFixture(t)
+			child := children[0]
+			trial := scenario == "verified-trial"
+			publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}, ge.Model{ID: ge.ArgonModel})
+			if _, err := h.authManager.UpdateEnterpriseHydrogenEnabled(t.Context(), child, 1, false, ""); err != nil {
+				t.Fatal(err)
+			}
+			child, _ = h.authManager.GetByID(child.ID)
+			const initialRevision = 2
+			calls, reads := 0, 0
+			readStatus := http.StatusOK
+			nonce := ""
+			session := ge.Engine(ge.FromMetadata(child.Metadata)) + "/sessions/carbon-test"
+			h.authManager.RegisterExecutor(&enterpriseProbeExecutor{execute: func(ctx context.Context, selected *coreauth.Auth, request coreexec.Request, opts coreexec.Options) (coreexec.Response, error) {
+				calls++
+				if selected.ID != child.ID || request.Model != ge.HydrogenModel || !coreauth.EnterpriseCarbonModelTestActive(ctx) || opts.Metadata[coreexec.PinnedAuthMetadataKey] != child.ID {
+					t.Fatal("Carbon probe lost its internal fixed-application scope")
+				}
+				coreexec.MarkUpstreamAttempt(ctx)
+				nonce = regexp.MustCompile(`HYDROGEN_[a-f0-9]{32}`).FindString(string(request.Payload))
+				if nonce == "" {
+					t.Fatal("missing independent verification code")
+				}
+				if scenario == "model-changed" {
+					return coreexec.Response{}, &coreauth.EnterpriseModelProbeError{Code: "model_changed", Message: "changed by fixture", HTTPStatus: 409}
+				}
+				text, stop := nonce, "STOP"
+				if scenario == "wrong-nonce" {
+					text = "incorrect"
+				}
+				if scenario == "truncated" {
+					stop = ""
+				}
+				payload, _ := json.Marshal(map[string]any{"candidates": []any{map[string]any{"finishReason": stop, "content": map[string]any{"parts": []any{map[string]string{"text": text}}}}}})
+				metadata := map[string]any{"enterprise_carbon_model": ge.HydrogenModel, "enterprise_carbon_session": session}
+				if scenario == "no-session" {
+					delete(metadata, "enterprise_carbon_session")
+				}
+				if scenario == "foreign-session" {
+					metadata["enterprise_carbon_session"] = "projects/other/locations/global/collections/default_collection/engines/foreign/sessions/test"
+				}
+				return coreexec.Response{Payload: payload, Metadata: metadata}, nil
+			}})
+			previous := newGeminiEnterpriseResourceClient
+			t.Cleanup(func() { newGeminiEnterpriseResourceClient = previous })
+			newGeminiEnterpriseResourceClient = func(string) (*http.Client, error) {
+				return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: carbonSessionRoundTrip(func(request *http.Request) (*http.Response, error) {
+					reads++
+					if request.Method != "GET" || request.URL.Host != "discoveryengine.googleapis.com" || request.Header.Get("Authorization") != "Bearer synthetic-private-access" || !strings.Contains(request.URL.Query().Get("fields"), "queryConfig") {
+						t.Fatal("session proof escaped official bound read")
+					}
+					if scenario == "read-forbidden" {
+						readStatus = http.StatusForbidden
+					}
+					if scenario == "read-redirect" {
+						readStatus = http.StatusFound
+					}
+					if readStatus != http.StatusOK {
+						return &http.Response{StatusCode: readStatus, Header: http.Header{"Location": {"https://untrusted.example.test"}}, Body: io.NopCloser(strings.NewReader("not a model proof"))}, nil
+					}
+					if scenario == "oversized-proof" {
+						return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", 2*1024*1024+1)))}, nil
+					}
+					actual := ge.HydrogenModel
+					if scenario == "wrong-model" {
+						actual = ge.ArgonModel
+					}
+					queryConfig := map[string]any{"google.discoveryengine.googleapis.com.Assistant.model_id": actual}
+					if scenario == "missing-model" {
+						queryConfig = map[string]any{}
+					}
+					payload, _ := json.Marshal(map[string]any{"name": session, "turns": []any{map[string]any{"query": map[string]string{"text": "verification " + nonce}, "queryConfig": queryConfig}}})
+					return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(string(payload)))}, nil
+				})}, nil
+			}
+			request := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": initialRevision, "expected": ge.Resources(ge.FromMetadata(child.Metadata)), "model": ge.HydrogenModel}
+			response := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, "POST", request)
+			expectedStatus := http.StatusOK
+			if scenario == "model-changed" {
+				expectedStatus = http.StatusConflict
+			}
+			if response.Code != expectedStatus || calls != 1 {
+				t.Fatalf("fixed closed candidate failed: %d %s calls=%d", response.Code, response.Body.String(), calls)
+			}
+			currentChild, _ := h.authManager.GetByID(child.ID)
+			admission := h.authManager.EnterpriseHydrogenAdmissionView(currentChild)
+			if admission.Enabled || admission.Available {
+				t.Fatal("test automatically enabled Carbon")
+			}
+			if scenario != "verified" && scenario != "verified-trial" {
+				if !admission.CanEnable || admission.VerificationRequired || gjson.GetBytes(response.Body.Bytes(), "status").String() == "ok" {
+					t.Fatalf("failed diagnostics blocked manual admission or falsely reported success: %s", response.Body.String())
+				}
+				return
+			}
+			if !admission.CanEnable || admission.Test == nil || admission.Test.Status != "verified" || admission.Test.UpstreamModel != ge.HydrogenModel || reads != 1 {
+				t.Fatalf("saved verification incomplete: %+v reads=%d body=%s", admission, reads, response.Body.String())
+			}
+			if gjson.GetBytes(response.Body.Bytes(), "expected_revision").Uint() != initialRevision || gjson.GetBytes(response.Body.Bytes(), "revision").Uint() != initialRevision {
+				t.Fatal("observation changed collection edit revision")
+			}
+			toggle := map[string]any{"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child), "expected_revision": initialRevision, "fields": map[string]any{"hydrogen_enabled": true}}
+			changed := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, "PATCH", toggle)
+			if changed.Code != 200 {
+				t.Fatalf("manual enable failed: %s", changed.Body.String())
+			}
+			current, _ := h.enterpriseTarget(root.FileName, child.Index, coreauth.EnterpriseBindingID(child))
+			if !h.authManager.EnterpriseHydrogenAdmissionView(current).Available {
+				t.Fatal("successful manual switch was not effective")
+			}
+			toggle["expected_revision"], toggle["fields"] = initialRevision+1, map[string]any{"hydrogen_enabled": false}
+			delete(toggle, "hydrogen_test_id")
+			closed := enterpriseManagementRequest(t, h.PatchGeminiEnterpriseCollection, "PATCH", toggle)
+			if closed.Code != 200 {
+				t.Fatalf("manual disable failed: %s", closed.Body.String())
+			}
+			current, _ = h.enterpriseTarget(root.FileName, child.Index, coreauth.EnterpriseBindingID(child))
+			state := h.authManager.EnterpriseHydrogenAdmissionView(current)
+			if state.Enabled || state.Available || !state.CanEnable || state.Test.TestID != admission.Test.TestID || calls != 1 || reads != 1 {
+				t.Fatal("closing reset proof or generated extra content")
+			}
+			// A temporary session-read failure must not revoke an existing proof.
+			readStatus = http.StatusServiceUnavailable
+			request["expected_revision"] = initialRevision + 2
+			retry := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, "POST", request)
+			current, _ = h.enterpriseTarget(root.FileName, child.Index, coreauth.EnterpriseBindingID(child))
+			state = h.authManager.EnterpriseHydrogenAdmissionView(current)
+			if retry.Code != http.StatusOK || gjson.GetBytes(retry.Body.Bytes(), "status").String() == "ok" || !state.CanEnable || state.Test.TestID != admission.Test.TestID {
+				t.Fatalf("temporary proof-read failure revoked verified evidence: %s", retry.Body.String())
+			}
+			// An actual model mismatch, including a 502 result, is not temporary.
+			readStatus, scenario = http.StatusOK, "wrong-model"
+			mismatch := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, "POST", request)
+			current, _ = h.enterpriseTarget(root.FileName, child.Index, coreauth.EnterpriseBindingID(child))
+			state = h.authManager.EnterpriseHydrogenAdmissionView(current)
+			if mismatch.Code != http.StatusOK || !state.CanEnable || state.Test == nil || state.Test.Status != "incomplete" {
+				t.Fatalf("wrong model was not recorded diagnostically or blocked manual enablement: %s", mismatch.Body.String())
+			}
+		})
 	}
 }

@@ -22,7 +22,7 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 				account.Collections[0].Settings["model_policy"] = "exclude_argon"
 				account.Collections[0].Settings["prefix"] = "team"
 				if scenario == "missing-proof" {
-					account.Collections[0].Settings[ge.CarbonEnabledKey] = true
+					account.Collections[0].Settings[ge.HydrogenEnabledKey] = true
 				}
 				return nil
 			})
@@ -41,24 +41,24 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 			if scenario != "missing-proof" {
 				owner, account, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
 				revision := account.Collections[0].Revision
-				pending, err := h.authManager.BeginEnterpriseCarbonTest(child, revision)
+				pending, err := h.authManager.BeginEnterpriseHydrogenTest(child, revision)
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.CarbonModel, HTTPStatus: 200}})
+				_, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.HydrogenModel, HTTPStatus: 200}})
 				if err != nil {
 					t.Fatal(err)
 				}
 				child, _ = h.authManager.GetByID(child.ID)
 				if scenario != "closed" {
-					if _, err = h.authManager.UpdateEnterpriseCarbonEnabled(t.Context(), child, revision, true, pending.TestID); err != nil {
+					if _, err = h.authManager.UpdateEnterpriseHydrogenEnabled(t.Context(), child, revision, true, pending.TestID); err != nil {
 						t.Fatal(err)
 					}
 				}
 				if scenario == "excluded" {
 					owner, _, _ = h.authManager.EnterpriseAccountSnapshot(owner.ID)
 					if _, err = h.authManager.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error {
-						account.Collections[0].Settings["excluded_models"] = []string{ge.CarbonModel}
+						account.Collections[0].Settings["excluded_models"] = []string{ge.HydrogenModel}
 						return nil
 					}); err != nil {
 						t.Fatal(err)
@@ -67,7 +67,7 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 				if scenario == "incomplete-proof" {
 					child, _ = h.authManager.GetByID(child.ID)
 					_, account, _ = h.authManager.EnterpriseAccountSnapshot(owner.ID)
-					pending, err = h.authManager.BeginEnterpriseCarbonTest(child, account.Collections[0].Revision)
+					pending, err = h.authManager.BeginEnterpriseHydrogenTest(child, account.Collections[0].Revision)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -80,8 +80,8 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 			// Deliberately include stale Carbon registry rows in rejected cases. The
 			// read API must never promote a test candidate into business capability.
 			models = append(models,
-				&registry.ModelInfo{ID: "team/" + ge.CarbonModel, MetadataModelID: ge.CarbonModel, Type: "gemini"},
-				&registry.ModelInfo{ID: "team/carbon-public", MetadataModelID: ge.CarbonModel, Type: "gemini"},
+				&registry.ModelInfo{ID: "team/" + ge.HydrogenModel, MetadataModelID: ge.HydrogenModel, Type: "gemini"},
+				&registry.ModelInfo{ID: "team/carbon-public", MetadataModelID: ge.HydrogenModel, Type: "gemini"},
 			)
 			registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, models)
 			t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
@@ -96,12 +96,12 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 			if available {
 				wantModels = len(models)
 			}
-			if recorder.Code != 200 || int(gjson.GetBytes(body, "models.#").Int()) != wantModels || gjson.GetBytes(body, "carbon_admission.available").Bool() != available || gjson.GetBytes(body, "test_candidates.0.business_registered").Bool() != available {
+			if recorder.Code != 200 || int(gjson.GetBytes(body, "models.#").Int()) != wantModels || gjson.GetBytes(body, "hydrogen_admission.available").Bool() != available || gjson.GetBytes(body, "test_candidates.1.business_registered").Bool() != available {
 				t.Fatalf("credential models diverged from effective Carbon capability: %d %s", recorder.Code, recorder.Body.String())
 			}
 			carbonRows := 0
 			for _, model := range gjson.GetBytes(body, "models").Array() {
-				if model.Get("upstream_model").String() != ge.CarbonModel {
+				if model.Get("upstream_model").String() != ge.HydrogenModel {
 					continue
 				}
 				carbonRows++
@@ -139,11 +139,11 @@ func TestEnterpriseAccountCarbonPublicFenceTracksAuthorizationInsteadOfEvidence(
 		t.Fatal("the initial zero authorization revision or owner registration epoch was lost")
 	}
 	_, before, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
-	pending, err := h.authManager.BeginEnterpriseCarbonTest(children[0], before.Collections[0].Revision)
+	pending, err := h.authManager.BeginEnterpriseHydrogenTest(children[0], before.Collections[0].Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.CarbonModel, HTTPStatus: 200}}); err != nil {
+	if _, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.HydrogenModel, HTTPStatus: 200}}); err != nil {
 		t.Fatal(err)
 	}
 	current, after, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)

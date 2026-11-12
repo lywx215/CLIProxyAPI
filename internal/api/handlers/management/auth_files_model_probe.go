@@ -36,6 +36,9 @@ type enterpriseModelTestResult struct {
 	CarbonSupported   bool                `json:"carbon_admission_supported,omitempty"`
 	CarbonAdmission   *ge.CarbonAdmission `json:"carbon_admission,omitempty"`
 	CarbonTestID      string              `json:"carbon_test_id,omitempty"`
+	HydrogenSupported bool                `json:"hydrogen_admission_supported,omitempty"`
+	HydrogenAdmission *ge.CarbonAdmission `json:"hydrogen_admission,omitempty"`
+	HydrogenTestID    string              `json:"hydrogen_test_id,omitempty"`
 }
 
 type enterpriseModelTestRequest struct {
@@ -112,6 +115,10 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		return
 	}
 	modelID := strings.TrimSpace(req.Model)
+	if modelID == ge.HydrogenModel {
+		h.testGeminiEnterpriseAdmissionModel(c, auth, req, revision, ge.HydrogenAdmissionModel)
+		return
+	}
 	if modelID == ge.CarbonModel && !req.CarbonDirect {
 		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
 		return
@@ -137,13 +144,13 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		fail(http.StatusConflict, "subscription_unverified", "This collection is paused until the current user's assigned subscription is verified")
 		return
 	}
-	if req.CarbonDirect && !policy.CarbonAdmission.Available {
+	if req.CarbonDirect && !policy.Allows(actualModel) {
 		fail(http.StatusConflict, "carbon_unavailable", "Carbon is unavailable for the selected application")
 		return
 	}
 	deniedMessage := "This collection's model policy does not allow the selected upstream model"
 	if policy.EnforcedReason == "paid_subscription_restricted" {
-		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
+		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, manually enabled gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
 	}
 	for _, entry := range policy.CatalogModels {
 		if !forceArgon && entry.ID == modelID && !entry.Allowed {
@@ -153,6 +160,10 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	}
 	if model == nil {
 		fail(http.StatusBadRequest, "model_not_supported", "The selected model is not registered for this credential")
+		return
+	}
+	if actualModel == ge.HydrogenModel {
+		h.testGeminiEnterpriseAdmissionModel(c, auth, req, revision, ge.HydrogenAdmissionModel)
 		return
 	}
 	if actualModel == ge.CarbonModel && !req.CarbonDirect {

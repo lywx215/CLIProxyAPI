@@ -15,7 +15,7 @@ func carbonManagedKey(key string) bool {
 			return true
 		}
 	}
-	return key == ge.CarbonEnabledKey || key == ge.CarbonEvidenceKey || key == "carbon_test_id" || key == "carbon_admission" || key == "carbon_admission_supported" || strings.HasPrefix(key, "enterprise_carbon_")
+	return key == ge.HydrogenEnabledKey || key == ge.HydrogenEvidenceKey || key == "hydrogen_test_id" || key == "hydrogen_admission" || key == "hydrogen_admission_supported" || strings.HasPrefix(key, "enterprise_hydrogen_") || key == ge.CarbonEnabledKey || key == ge.CarbonEvidenceKey || key == "carbon_test_id" || key == "carbon_admission" || key == "carbon_admission_supported" || strings.HasPrefix(key, "enterprise_carbon_")
 }
 
 func containsCarbonManagedFields(value any) bool {
@@ -65,9 +65,9 @@ func sanitizeCarbonCredentialImport(data []byte) ([]byte, error) {
 			for key, child := range values {
 				if carbonManagedKey(key) {
 					canonical := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"))
-					if canonical == ge.CarbonEnabledKey {
+					if canonical == ge.CarbonEnabledKey || canonical == ge.HydrogenEnabledKey {
 						if _, valid := child.(bool); !valid {
-							return fmt.Errorf("carbon_enabled must be a boolean")
+							return fmt.Errorf("%s must be a boolean", canonical)
 						}
 						values[key], changed = false, true
 					} else {

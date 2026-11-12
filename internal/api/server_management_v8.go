@@ -58,6 +58,7 @@ func (s *Server) registerManagementV8Routes() {
 	v8.GET("/credentials/models", s.mgmt.GetAuthFileModels)
 	v8.POST("/credentials/models/test", s.mgmt.TestGeminiEnterpriseModel)
 	v8.POST("/credentials/gemini-enterprise/carbon/configure-google", s.mgmt.ConfigureGeminiEnterpriseCarbonGoogle)
+	v8.POST("/credentials/gemini-enterprise/hydrogen/configure-google", s.mgmt.ConfigureGeminiEnterpriseHydrogenGoogle)
 	v8.POST("/credentials/gemini-enterprise-web/models/test", s.mgmt.TestEnterpriseWebModel)
 	v8.GET("/credentials/download", s.mgmt.DownloadAuthFile)
 	v8.PATCH("/credentials/status", s.mgmt.PatchAuthFileStatus)

@@ -106,11 +106,11 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 		trial       bool
 		want        int
 	}{
-		{"paid", "ok", false, 4},
+		{"paid", "ok", false, 3},
 		{"trial", "ok", true, len(models)},
-		{"paid-again", "ok", false, 4},
+		{"paid-again", "ok", false, 3},
 		{"revoked", "unassigned", false, 0},
-		{"restored", "ok", false, 4},
+		{"restored", "ok", false, 3},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			trial, state = step.trial, step.state
@@ -124,9 +124,6 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 			view := s.coreManager.EnterpriseModelPolicyView(auth)
 			wantCatalog := len(models)
 			paid := !step.trial && step.state == "ok"
-			if paid {
-				wantCatalog++
-			}
 			if view.Mode != "catalog" || len(view.CatalogModels) != wantCatalog {
 				t.Fatalf("subscription refresh rewrote manual settings or lost raw catalog: %+v", view)
 			}

@@ -71,9 +71,9 @@ func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservati
 		source = "default"
 		ids = []string{"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro"}
 		if allModels {
-			ids = append(ids, ArgonModel)
+			ids = append(ids, ArgonModel, CarbonModel)
 		} else if !*subscription.FreeTrial || subscription.Edition == "business_standard" {
-			ids = []string{ArgonModel}
+			ids = []string{ArgonModel, CarbonModel}
 		}
 	}
 	models := make([]Model, 0, len(ids))

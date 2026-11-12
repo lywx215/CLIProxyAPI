@@ -63,9 +63,9 @@ func (m *Manager) sameCarbonAuthorizationLocked(ownerID, before, after string) b
 	return false
 }
 
-// reconcileEnterpriseCarbonAuthorization changes only Carbon-owned state. A
+// reconcileEnterpriseAdmissionAuthorization changes only the target model's state. A
 // trusted OAuth refresh may rotate refresh material without replacing the grant.
-func reconcileEnterpriseCarbonAuthorization(previous, incoming *Auth, mode updateAuthMode) {
+func reconcileEnterpriseAdmissionAuthorization(previous, incoming *Auth, mode updateAuthMode, model ge.AdmissionModel) {
 	if previous == nil || incoming == nil || previous.Provider != ge.Provider || incoming.Provider != ge.Provider {
 		return
 	}
@@ -73,35 +73,35 @@ func reconcileEnterpriseCarbonAuthorization(previous, incoming *Auth, mode updat
 	after := ge.CarbonAuthorizationFingerprint(incoming.Metadata)
 	if mode == updateModeRefresh && before != "" && after != "" && sameEnterprisePrincipal(previous, incoming) {
 		if before != after {
-			cache := ge.ReadCarbonEvidenceStore(previous.Metadata)
+			cache := model.ReadEvidenceStore(previous.Metadata)
 			for key, value := range cache {
 				data, _ := json.Marshal(value)
 				var evidence ge.CarbonTestEvidence
-				if json.Unmarshal(data, &evidence) == nil && ge.ValidCarbonEvidence(&evidence) && evidence.AuthorizationFingerprint == before {
+				if json.Unmarshal(data, &evidence) == nil && model.ValidEvidence(&evidence) && evidence.AuthorizationFingerprint == before {
 					evidence.AuthorizationFingerprint = after
 					cache[key] = evidence
 				}
 			}
 			if len(cache) > 0 {
-				incoming.Metadata[ge.CarbonEvidenceStoreKey] = cache
+				incoming.Metadata[model.EvidenceStoreKey] = cache
 			}
 		}
 		return
 	}
 	if mode == updateModeEnterpriseReauthorize || before != after || !sameEnterprisePrincipal(previous, incoming) {
 		if !sameEnterprisePrincipal(previous, incoming) {
-			resetEnterpriseCarbonAuthorization(incoming)
+			resetEnterpriseAdmissionAuthorization(incoming, model)
 			return
 		}
 		// Reauthorizing the same account invalidates diagnostics, not the user's
 		// application settings. Subscription eligibility is checked independently.
-		clearEnterpriseCarbonEvidence(incoming)
+		clearEnterpriseAdmissionEvidence(incoming, model)
 	}
 	prior, errPrior := ge.AccountFromLegacy(previous.Metadata)
 	next, errNext := ge.ReadAccount(incoming.Metadata)
 	if errPrior == nil && errNext == nil && next != nil {
 		beforeIncoming := ge.CloneAccount(*next)
-		if resetEnterpriseCarbonResourceChanges(incoming.Metadata, prior, next) {
+		if resetEnterpriseAdmissionResourceChanges(incoming.Metadata, prior, next, model) {
 			if err := advanceEnterpriseRevisions(beforeIncoming, next); err == nil {
 				if next.Revision == beforeIncoming.Revision {
 					next.Revision++
@@ -110,31 +110,31 @@ func reconcileEnterpriseCarbonAuthorization(previous, incoming *Auth, mode updat
 			}
 		}
 	} else if ge.Resources(ge.FromMetadata(previous.Metadata)) != ge.Resources(ge.FromMetadata(incoming.Metadata)) {
-		resetEnterpriseCarbonAuthorization(incoming)
+		resetEnterpriseAdmissionAuthorization(incoming, model)
 	}
 }
 
-func clearEnterpriseCarbonEvidence(auth *Auth) {
+func clearEnterpriseAdmissionEvidence(auth *Auth, model ge.AdmissionModel) {
 	if auth == nil || auth.Metadata == nil {
 		return
 	}
-	delete(auth.Metadata, ge.CarbonEvidenceStoreKey)
-	delete(auth.Metadata, ge.CarbonEvidenceKey)
+	delete(auth.Metadata, model.EvidenceStoreKey)
+	delete(auth.Metadata, model.EvidenceKey)
 }
 
-func resetEnterpriseCarbonAuthorization(auth *Auth) {
+func resetEnterpriseAdmissionAuthorization(auth *Auth, model ge.AdmissionModel) {
 	if auth == nil || auth.Metadata == nil {
 		return
 	}
-	clearEnterpriseCarbonEvidence(auth)
-	if _, exists := auth.Metadata[ge.CarbonEnabledKey]; exists {
-		auth.Metadata[ge.CarbonEnabledKey] = false
+	clearEnterpriseAdmissionEvidence(auth, model)
+	if _, exists := auth.Metadata[model.EnabledKey]; exists {
+		auth.Metadata[model.EnabledKey] = false
 	}
 	if account, err := ge.ReadAccount(auth.Metadata); err == nil && account != nil {
 		before := ge.CloneAccount(*account)
 		for i := range account.Collections {
-			if _, exists := account.Collections[i].Settings[ge.CarbonEnabledKey]; exists {
-				account.Collections[i].Settings[ge.CarbonEnabledKey] = false
+			if _, exists := account.Collections[i].Settings[model.EnabledKey]; exists {
+				account.Collections[i].Settings[model.EnabledKey] = false
 			}
 		}
 		_ = advanceEnterpriseRevisions(before, account)
@@ -142,7 +142,7 @@ func resetEnterpriseCarbonAuthorization(auth *Auth) {
 	}
 }
 
-func resetEnterpriseCarbonResourceChanges(metadata map[string]any, previous ge.Account, next *ge.Account) bool {
+func resetEnterpriseAdmissionResourceChanges(metadata map[string]any, previous ge.Account, next *ge.Account, model ge.AdmissionModel) bool {
 	if next == nil {
 		return false
 	}
@@ -150,7 +150,7 @@ func resetEnterpriseCarbonResourceChanges(metadata map[string]any, previous ge.A
 	for _, collection := range previous.Collections {
 		prior[collection.ID] = collection
 	}
-	cache := ge.ReadCarbonEvidenceStore(metadata)
+	cache := model.ReadEvidenceStore(metadata)
 	changed := false
 	for i := range next.Collections {
 		collection := &next.Collections[i]
@@ -166,8 +166,8 @@ func resetEnterpriseCarbonResourceChanges(metadata map[string]any, previous ge.A
 		if !existed || old.ResourceBinding == collection.ResourceBinding {
 			continue
 		}
-		if value, exists := collection.Settings[ge.CarbonEnabledKey]; exists && value != false {
-			collection.Settings[ge.CarbonEnabledKey] = false
+		if value, exists := collection.Settings[model.EnabledKey]; exists && value != false {
+			collection.Settings[model.EnabledKey] = false
 			changed = true
 		}
 		for _, key := range []string{ge.CarbonBindingFingerprint(old.ResourceBinding.Apply(ge.FromMetadata(metadata))), ge.CarbonBindingFingerprint(collection.ResourceBinding.Apply(ge.FromMetadata(metadata)))} {
@@ -178,7 +178,22 @@ func resetEnterpriseCarbonResourceChanges(metadata map[string]any, previous ge.A
 		}
 	}
 	if changed {
-		metadata[ge.CarbonEvidenceStoreKey] = cache
+		metadata[model.EvidenceStoreKey] = cache
 	}
 	return changed
+}
+
+func reconcileEnterpriseCarbonAuthorization(previous, incoming *Auth, mode updateAuthMode) {
+	for _, model := range ge.AdmissionModels() {
+		reconcileEnterpriseAdmissionAuthorization(previous, incoming, mode, model)
+	}
+}
+func clearEnterpriseCarbonEvidence(auth *Auth) {
+	clearEnterpriseAdmissionEvidence(auth, ge.CarbonAdmissionModel)
+}
+func resetEnterpriseCarbonAuthorization(auth *Auth) {
+	resetEnterpriseAdmissionAuthorization(auth, ge.CarbonAdmissionModel)
+}
+func resetEnterpriseCarbonResourceChanges(metadata map[string]any, previous ge.Account, next *ge.Account) bool {
+	return resetEnterpriseAdmissionResourceChanges(metadata, previous, next, ge.CarbonAdmissionModel)
 }

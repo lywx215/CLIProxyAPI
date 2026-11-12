@@ -150,7 +150,7 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	}
 	if web.ExistingLease(ctx) == nil {
 		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
 		if carbonErr != nil {
 			return cliproxyexecutor.Response{}, carbonErr
 		}
@@ -240,7 +240,7 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 	defer webDone()
 	if web.ExistingLease(ctx) == nil {
 		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
 		if carbonErr != nil {
 			return cliproxyexecutor.Response{}, carbonErr
 		}
@@ -337,7 +337,7 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 	}()
 	if web.ExistingLease(ctx) == nil {
 		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseCarbon(ctx, normalized, req.Model)
+		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
 		if carbonErr != nil {
 			return nil, carbonErr
 		}

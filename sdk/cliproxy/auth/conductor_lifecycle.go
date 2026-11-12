@@ -99,8 +99,10 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 		}
 		auth = projected[0]
 	} else if auth.Provider == ge.Provider {
-		if _, errCarbon := ge.ReadCarbonEnabled(auth.Metadata); errCarbon != nil {
-			return nil, fmt.Errorf("register auth: %w", errCarbon)
+		for _, model := range ge.AdmissionModels() {
+			if _, errSetting := model.ReadEnabled(auth.Metadata); errSetting != nil {
+				return nil, fmt.Errorf("register auth: %w", errSetting)
+			}
 		}
 	}
 	NormalizeCredentialMetadata(auth.Metadata)
@@ -262,8 +264,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		}
 		auth = projected[0]
 	} else if auth.Provider == ge.Provider {
-		if _, errCarbon := ge.ReadCarbonEnabled(auth.Metadata); errCarbon != nil {
-			return nil, fmt.Errorf("update auth: %w", errCarbon)
+		for _, model := range ge.AdmissionModels() {
+			if _, errSetting := model.ReadEnabled(auth.Metadata); errSetting != nil {
+				return nil, fmt.Errorf("update auth: %w", errSetting)
+			}
 		}
 	}
 	NormalizeCredentialMetadata(auth.Metadata)

@@ -134,22 +134,22 @@ func carbonGoogleAllowedModels(assistant map[string]any) ([]any, bool) {
 	return append([]any(nil), models...), true
 }
 
-func carbonGoogleHasModel(models []any) bool {
+func admissionGoogleHasModel(models []any, target string) bool {
 	for _, model := range models {
-		if model == CarbonModel {
+		if model == target {
 			return true
 		}
 	}
 	return false
 }
 
-func carbonGoogleAllowedRangePreserved(before, after map[string]any) bool {
+func admissionGoogleAllowedRangePreserved(before, after map[string]any, target string) bool {
 	prior, validBefore := carbonGoogleAllowedModels(before)
 	next, validAfter := carbonGoogleAllowedModels(after)
 	if !validBefore || !validAfter || len(prior) == 0 || len(next) == 0 {
 		return false
 	}
-	expected := map[string]bool{CarbonModel: true}
+	expected := map[string]bool{target: true}
 	actual := map[string]bool{}
 	for _, model := range prior {
 		expected[model.(string)] = true
@@ -160,7 +160,7 @@ func carbonGoogleAllowedRangePreserved(before, after map[string]any) bool {
 	return CarbonFingerprintValue(expected) == CarbonFingerprintValue(actual)
 }
 
-func carbonGooglePreserved(value map[string]any, assistant bool) string {
+func admissionGooglePreserved(value map[string]any, assistant bool, target string) string {
 	data, _ := json.Marshal(value)
 	var clone map[string]any
 	_ = json.Unmarshal(data, &clone)
@@ -171,7 +171,7 @@ func carbonGooglePreserved(value map[string]any, assistant bool) string {
 		}
 	} else {
 		if models, ok := clone["modelConfigs"].(map[string]any); ok {
-			delete(models, CarbonModel)
+			delete(models, target)
 			if len(models) == 0 {
 				delete(clone, "modelConfigs")
 			}
@@ -182,20 +182,20 @@ func carbonGooglePreserved(value map[string]any, assistant bool) string {
 	return CarbonFingerprintValue(clone)
 }
 
-func carbonGoogleResourceEnabled(value map[string]any, assistant bool) bool {
+func admissionGoogleResourceEnabled(value map[string]any, assistant bool, target string) bool {
 	if assistant {
 		models, valid := carbonGoogleAllowedModels(value)
-		return valid && carbonGoogleHasModel(models)
+		return valid && admissionGoogleHasModel(models, target)
 	}
 	models, ok := value["modelConfigs"].(map[string]any)
-	return ok && models[CarbonModel] == "MODEL_ENABLED"
+	return ok && models[target] == "MODEL_ENABLED"
 }
 
 // ConfigureCarbonGoogle changes only the explicitly bound Engine/Assistant.
 // An implicit Assistant model range is kept implicit: only the Engine override
 // is configured, and the result requires a separate generation test. No model
 // range is inferred from a catalog. Configuration is not model-call evidence.
-func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string, guard func(context.Context) error, cache *CarbonGoogleConfigureCache) CarbonGoogleConfigureResult {
+func ConfigureAdmissionGoogle(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string, guard func(context.Context) error, cache *CarbonGoogleConfigureCache, target string) CarbonGoogleConfigureResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -248,7 +248,7 @@ func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding con
 		assistant bool
 		state     *carbonGoogleConfiguredResource
 	}{{engineName, false, &engine}, {assistantName, true, &assistant}} {
-		if carbonGoogleResourceEnabled(resource.state.value, resource.assistant) {
+		if admissionGoogleResourceEnabled(resource.state.value, resource.assistant, target) {
 			cache.resources[resource.name] = *resource.state
 			continue
 		}
@@ -274,7 +274,7 @@ func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding con
 			if !valid {
 				return carbonGoogleResult("failed", "google_response_invalid", http.StatusOK)
 			}
-			payload["generationConfig"] = map[string]any{"allowedModelIds": append(models, CarbonModel)}
+			payload["generationConfig"] = map[string]any{"allowedModelIds": append(models, target)}
 			mask = "generationConfig.allowedModelIds"
 		} else {
 			models := map[string]any{}
@@ -283,7 +283,7 @@ func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding con
 					models[key] = value
 				}
 			}
-			models[CarbonModel] = "MODEL_ENABLED"
+			models[target] = "MODEL_ENABLED"
 			payload["modelConfigs"] = models
 		}
 		_, patchCode, patchErr := carbonGoogleRequest(ctx, client, binding, token, http.MethodPatch, resource.name, mask, payload, guard)
@@ -305,13 +305,13 @@ func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding con
 		if readErr != nil || readCode != http.StatusOK {
 			return carbonGoogleResult("failed", "write_result_unknown", readCode)
 		}
-		if !carbonGoogleResourceEnabled(confirmed, resource.assistant) {
+		if !admissionGoogleResourceEnabled(confirmed, resource.assistant, target) {
 			return carbonGoogleResult("failed", "write_not_confirmed", readCode)
 		}
-		if carbonGooglePreserved(latest, resource.assistant) != carbonGooglePreserved(confirmed, resource.assistant) {
+		if admissionGooglePreserved(latest, resource.assistant, target) != admissionGooglePreserved(confirmed, resource.assistant, target) {
 			return carbonGoogleResult("changed", "google_configuration_changed", 409)
 		}
-		if resource.assistant && !carbonGoogleAllowedRangePreserved(latest, confirmed) {
+		if resource.assistant && !admissionGoogleAllowedRangePreserved(latest, confirmed, target) {
 			return carbonGoogleResult("changed", "google_configuration_changed", 409)
 		}
 		resource.state.value, resource.state.changed = confirmed, true
@@ -324,4 +324,18 @@ func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding con
 		return carbonGoogleResult("configured", "", http.StatusOK)
 	}
 	return carbonGoogleResult("unchanged", "", http.StatusOK)
+}
+
+func ConfigureCarbonGoogle(ctx context.Context, client *http.Client, binding config.GeminiEnterpriseOAuth, token string, guard func(context.Context) error, cache *CarbonGoogleConfigureCache) CarbonGoogleConfigureResult {
+	return ConfigureAdmissionGoogle(ctx, client, binding, token, guard, cache, CarbonModel)
+}
+func carbonGoogleHasModel(models []any) bool { return admissionGoogleHasModel(models, CarbonModel) }
+func carbonGoogleAllowedRangePreserved(before, after map[string]any) bool {
+	return admissionGoogleAllowedRangePreserved(before, after, CarbonModel)
+}
+func carbonGooglePreserved(value map[string]any, assistant bool) string {
+	return admissionGooglePreserved(value, assistant, CarbonModel)
+}
+func carbonGoogleResourceEnabled(value map[string]any, assistant bool) bool {
+	return admissionGoogleResourceEnabled(value, assistant, CarbonModel)
 }

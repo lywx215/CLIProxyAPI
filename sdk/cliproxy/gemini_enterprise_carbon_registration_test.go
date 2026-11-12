@@ -27,7 +27,7 @@ func testEnterpriseCarbonRegistration(t *testing.T, trial bool) {
 		return []ge.Model{{ID: ge.ArgonModel}}, nil
 	}
 	auth.Prefix = "carbon-team"
-	auth.Attributes = map[string]string{"model_aliases": `[{"name":"gemini-4-carbon","alias":"carbon-public","fork":true}]`}
+	auth.Attributes = map[string]string{"model_aliases": `[{"name":"gemini-4-hydrogen","alias":"carbon-public","fork":true}]`}
 	var err error
 	auth, err = s.coreManager.Update(t.Context(), auth)
 	if err != nil {
@@ -45,20 +45,20 @@ func testEnterpriseCarbonRegistration(t *testing.T, trial bool) {
 		for _, model := range GlobalModelRegistry().GetModelsForClient(auth.ID) {
 			ids = append(ids, model.ID)
 		}
-		if !slices.Contains(ids, "carbon-team/"+ge.ArgonModel) || slices.Contains(ids, "carbon-team/"+ge.CarbonModel) != wantCarbon || slices.Contains(ids, "carbon-team/carbon-public") != wantCarbon {
+		if !slices.Contains(ids, "carbon-team/"+ge.ArgonModel) || slices.Contains(ids, "carbon-team/"+ge.HydrogenModel) != wantCarbon || slices.Contains(ids, "carbon-team/carbon-public") != wantCarbon {
 			t.Fatalf("unexpected publication with Carbon available=%v: %v", wantCarbon, ids)
 		}
 	}
-	check(!trial)
-	auth.Metadata[ge.CarbonEnabledKey] = false
+	check(false)
+	auth.Metadata[ge.HydrogenEnabledKey] = false
 	auth, err = s.coreManager.Update(t.Context(), auth)
 	if err != nil {
 		t.Fatal(err)
 	}
 	check(false)
-	fingerprint := s.coreManager.EnterpriseCarbonEvidenceFingerprint(auth)
-	auth.Metadata[ge.CarbonEvidenceKey] = ge.CarbonTestEvidence{
-		CarbonTestSummary: ge.CarbonTestSummary{TestID: "synthetic-registration-proof", Status: "verified", CheckedAt: time.Now().UTC(), UpstreamModel: ge.CarbonModel, HTTPStatus: 200},
+	fingerprint := s.coreManager.EnterpriseHydrogenEvidenceFingerprint(auth)
+	auth.Metadata[ge.HydrogenEvidenceKey] = ge.CarbonTestEvidence{
+		CarbonTestSummary: ge.CarbonTestSummary{TestID: "synthetic-registration-proof", Status: "verified", CheckedAt: time.Now().UTC(), UpstreamModel: ge.HydrogenModel, HTTPStatus: 200},
 		Version:           1, AuthorizationFingerprint: fingerprint.Authorization, BindingFingerprint: fingerprint.Binding, ConfigFingerprint: fingerprint.Configuration,
 	}
 	auth, err = s.coreManager.Update(t.Context(), auth)
@@ -66,7 +66,7 @@ func testEnterpriseCarbonRegistration(t *testing.T, trial bool) {
 		t.Fatal(err)
 	}
 	check(false)
-	auth.Metadata[ge.CarbonEnabledKey] = true
+	auth.Metadata[ge.HydrogenEnabledKey] = true
 	auth, err = s.coreManager.Update(t.Context(), auth)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func testEnterpriseCarbonRegistration(t *testing.T, trial bool) {
 	if len(view.CatalogModels) != 2 || view.CatalogModels[1].CatalogSource != "manual" || view.CatalogModels[1].UpstreamListed {
 		t.Fatalf("manual admission was confused with the raw catalog: %+v", view.CatalogModels)
 	}
-	auth.Metadata[ge.CarbonEnabledKey] = false
+	auth.Metadata[ge.HydrogenEnabledKey] = false
 	auth, err = s.coreManager.Update(t.Context(), auth)
 	if err != nil {
 		t.Fatal(err)

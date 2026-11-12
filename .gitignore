@@ -36,6 +36,7 @@ docs/*
 !docs/enterprise-shared-quota-validation.md
 !docs/enterprise-model-policy.md
 !docs/gemini-enterprise-carbon-admission.md
+!docs/gemini-enterprise-hydrogen-admission.md
 !docs/gemini-enterprise-carbon-verification.md
 !docs/gemini-enterprise-web-phase1.md
 !docs/gemini-enterprise-web-phase1-verification.md

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
@@ -325,5 +326,36 @@ func TestCarbonGoogleConfigureSafeReadErrorsNeverStartWrites(t *testing.T) {
 		if result.Status != "failed" || result.HTTPStatus != code || requests != 1 || len(mock.patches) != 0 || strings.Contains(string(data), "private") || strings.Contains(string(data), "synthetic-token") {
 			t.Fatalf("failed Google read was not safely isolated: %+v", result)
 		}
+	}
+}
+
+func TestHydrogenGoogleConfigurationPreservesCarbonAndImplicitAssistant(t *testing.T) {
+	for _, explicit := range []bool{true, false} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			mock, client, binding := carbonGoogleFixture(t)
+			engine := Engine(binding)
+			assistant := engine + "/assistants/" + binding.AssistantID
+			mock.values[engine]["modelConfigs"].(map[string]any)[CarbonModel] = "MODEL_DISABLED"
+			if !explicit {
+				delete(mock.values[assistant], "generationConfig")
+			}
+			beforeEngine := admissionGooglePreserved(mock.values[engine], false, HydrogenModel)
+			beforeAssistant := admissionGooglePreserved(mock.values[assistant], true, HydrogenModel)
+			result := ConfigureAdmissionGoogle(t.Context(), client, binding, "synthetic-token", nil, nil, HydrogenModel)
+			want := "configured"
+			if !explicit {
+				want = "verification_required"
+			}
+			if result.Status != want || mock.patches[engine] != 1 || admissionGooglePreserved(mock.values[engine], false, HydrogenModel) != beforeEngine || admissionGooglePreserved(mock.values[assistant], true, HydrogenModel) != beforeAssistant {
+				t.Fatalf("Hydrogen configuration changed unrelated settings: %+v", result)
+			}
+			if explicit && mock.patches[assistant] != 1 || !explicit && mock.patches[assistant] != 0 {
+				t.Fatal("Assistant model range was handled incorrectly")
+			}
+			ConfigureAdmissionGoogle(t.Context(), client, binding, "synthetic-token", nil, nil, HydrogenModel)
+			if mock.patches[engine] != 1 {
+				t.Fatal("idempotent configuration repeated a write")
+			}
+		})
 	}
 }

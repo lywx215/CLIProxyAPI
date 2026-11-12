@@ -23,6 +23,7 @@ type enterpriseCarbonEvidenceCoordinator struct {
 // EnterpriseCarbonTestSnapshot is an internal fixed-application test lease.
 // Runtime versions fence late writes; persisted evidence never depends on them.
 type EnterpriseCarbonTestSnapshot struct {
+	Model            ge.AdmissionModel
 	TestID           string
 	AuthID           string
 	OwnerID          string
@@ -42,12 +43,12 @@ func (*EnterpriseCarbonEvidenceError) StatusCode() int       { return 409 }
 func (*EnterpriseCarbonEvidenceError) IsRequestScoped() bool { return true }
 
 func carbonEvidenceChanged() error {
-	return &EnterpriseCarbonEvidenceError{"credential_changed", "The Carbon application or authorization changed; reload and test again"}
+	return &EnterpriseCarbonEvidenceError{"credential_changed", "The Enterprise application or authorization changed; reload and test again"}
 }
 
-// EnterpriseCarbonEvidenceFingerprint reads immutable snapshots only, including
+// EnterpriseAdmissionEvidenceFingerprint reads immutable snapshots only, including
 // from callers that already hold Manager.mu during credential selection.
-func (m *Manager) EnterpriseCarbonEvidenceFingerprint(auth *Auth) ge.CarbonEvidenceFingerprint {
+func (m *Manager) EnterpriseAdmissionEvidenceFingerprint(auth *Auth, model ge.AdmissionModel) ge.CarbonEvidenceFingerprint {
 	if auth == nil || auth.Provider != ge.Provider {
 		return ge.CarbonEvidenceFingerprint{}
 	}
@@ -70,12 +71,12 @@ func (m *Manager) EnterpriseCarbonEvidenceFingerprint(auth *Auth) ge.CarbonEvide
 	}
 	var payload config.PayloadConfig
 	if cfg != nil {
-		payload.Default = carbonPayloadRules(cfg.Payload.Default)
-		payload.DefaultRaw = carbonPayloadRules(cfg.Payload.DefaultRaw)
-		payload.Override = carbonPayloadRules(cfg.Payload.Override)
-		payload.OverrideRaw = carbonPayloadRules(cfg.Payload.OverrideRaw)
+		payload.Default = admissionPayloadRules(cfg.Payload.Default, model.ID)
+		payload.DefaultRaw = admissionPayloadRules(cfg.Payload.DefaultRaw, model.ID)
+		payload.Override = admissionPayloadRules(cfg.Payload.Override, model.ID)
+		payload.OverrideRaw = admissionPayloadRules(cfg.Payload.OverrideRaw, model.ID)
 		for _, rule := range cfg.Payload.Filter {
-			if models := carbonPayloadModels(rule.Models); len(models) > 0 {
+			if models := admissionPayloadModels(rule.Models, model.ID); len(models) > 0 {
 				rule.Models = models
 				payload.Filter = append(payload.Filter, rule)
 			}
@@ -92,20 +93,20 @@ func (m *Manager) EnterpriseCarbonEvidenceFingerprint(auth *Auth) ge.CarbonEvide
 	return ge.CarbonEvidenceFingerprint{Authorization: ge.CarbonAuthorizationFingerprint(auth.Metadata), Binding: ge.CarbonBindingFingerprint(ge.FromMetadata(auth.Metadata)), Configuration: ge.CarbonFingerprintValue(configuration)}
 }
 
-func carbonPayloadModels(models []config.PayloadModelRule) []config.PayloadModelRule {
+func admissionPayloadModels(models []config.PayloadModelRule, modelID string) []config.PayloadModelRule {
 	var matching []config.PayloadModelRule
 	for _, model := range models {
-		if ge.MatchModelPattern(model.Name, ge.CarbonModel) {
+		if ge.MatchModelPattern(model.Name, modelID) {
 			matching = append(matching, model)
 		}
 	}
 	return matching
 }
 
-func carbonPayloadRules(rules []config.PayloadRule) []config.PayloadRule {
+func admissionPayloadRules(rules []config.PayloadRule, modelID string) []config.PayloadRule {
 	var matching []config.PayloadRule
 	for _, rule := range rules {
-		if models := carbonPayloadModels(rule.Models); len(models) > 0 {
+		if models := admissionPayloadModels(rule.Models, modelID); len(models) > 0 {
 			rule.Models = models
 			matching = append(matching, rule)
 		}
@@ -113,11 +114,11 @@ func carbonPayloadRules(rules []config.PayloadRule) []config.PayloadRule {
 	return matching
 }
 
-func (m *Manager) EnterpriseCarbonEvidenceState(auth *Auth) ge.CarbonEvidenceState {
+func (m *Manager) EnterpriseAdmissionEvidenceState(auth *Auth, model ge.AdmissionModel) ge.CarbonEvidenceState {
 	if auth == nil {
 		return ge.CarbonEvidenceState{Reason: "test_required"}
 	}
-	settings, err := ge.ReadCarbonSettings(auth.Metadata)
+	settings, err := model.ReadSettings(auth.Metadata)
 	if err != nil {
 		return ge.CarbonEvidenceState{Reason: "invalid_settings"}
 	}
@@ -126,7 +127,7 @@ func (m *Manager) EnterpriseCarbonEvidenceState(auth *Auth) ge.CarbonEvidenceSta
 		return ge.CarbonEvidenceState{Reason: "test_required"}
 	}
 	state := ge.CarbonEvidenceState{Test: evidence, NeedsReview: evidence.Status == "needs_review"}
-	fingerprint := m.EnterpriseCarbonEvidenceFingerprint(auth)
+	fingerprint := m.EnterpriseAdmissionEvidenceFingerprint(auth, model)
 	switch {
 	case fingerprint.Authorization == "":
 		state.Reason = "authorization_unverified"
@@ -143,7 +144,7 @@ func (m *Manager) EnterpriseCarbonEvidenceState(auth *Auth) ge.CarbonEvidenceSta
 	case evidence.Status != "verified":
 		state.Reason = "test_failed"
 	default:
-		state.Valid = ge.CarbonEvidenceMatches(evidence, fingerprint)
+		state.Valid = model.EvidenceMatches(evidence, fingerprint)
 	}
 	return state
 }
@@ -177,7 +178,7 @@ func (m *Manager) BeginEnterpriseCarbonTest(auth *Auth, expectedRevision uint64)
 	return m.BeginEnterpriseCarbonTestContext(context.Background(), auth, expectedRevision)
 }
 
-func (m *Manager) BeginEnterpriseCarbonTestContext(ctx context.Context, auth *Auth, expectedRevision uint64) (*EnterpriseCarbonTestSnapshot, error) {
+func (m *Manager) BeginEnterpriseAdmissionTestContext(ctx context.Context, auth *Auth, expectedRevision uint64, model ge.AdmissionModel) (*EnterpriseCarbonTestSnapshot, error) {
 	if m == nil || auth == nil || auth.Provider != ge.Provider || expectedRevision == 0 {
 		return nil, carbonEvidenceChanged()
 	}
@@ -200,24 +201,24 @@ func (m *Manager) BeginEnterpriseCarbonTestContext(ctx context.Context, auth *Au
 	if current == nil || owner == nil {
 		return nil, carbonEvidenceChanged()
 	}
-	if err := m.EnterpriseCarbonTestEligibility(current); err != nil {
+	if err := m.EnterpriseAdmissionTestEligibility(current, model); err != nil {
 		return nil, err
 	}
 	revision, ok := carbonCollectionRevision(owner, EnterpriseBindingID(current))
 	if !ok || revision != expectedRevision {
 		return nil, carbonEvidenceChanged()
 	}
-	fingerprint := m.EnterpriseCarbonEvidenceFingerprint(current)
+	fingerprint := m.EnterpriseAdmissionEvidenceFingerprint(current, model)
 	if fingerprint.Authorization == "" || fingerprint.Binding == "" || fingerprint.Configuration == "" {
-		return nil, &EnterpriseCarbonEvidenceError{"authorization_unverified", "A stable OAuth refresh authorization is required to verify Carbon"}
+		return nil, &EnterpriseCarbonEvidenceError{"authorization_unverified", "A stable OAuth refresh authorization is required to verify " + model.Label}
 	}
-	snapshot := &EnterpriseCarbonTestSnapshot{TestID: uuid.NewString(), AuthID: current.ID, OwnerID: owner.ID, BindingID: EnterpriseBindingID(current), Resources: ge.Resources(ge.FromMetadata(current.Metadata)), ExpectedRevision: expectedRevision, Fingerprint: fingerprint, StartedAt: m.enterprisePolicies.now().UTC(), ownerEpoch: owner.RegistrationEpoch, targetEpoch: current.RegistrationEpoch}
+	snapshot := &EnterpriseCarbonTestSnapshot{Model: model, TestID: uuid.NewString(), AuthID: current.ID, OwnerID: owner.ID, BindingID: EnterpriseBindingID(current), Resources: ge.Resources(ge.FromMetadata(current.Metadata)), ExpectedRevision: expectedRevision, Fingerprint: fingerprint, StartedAt: m.enterprisePolicies.now().UTC(), ownerEpoch: owner.RegistrationEpoch, targetEpoch: current.RegistrationEpoch}
 	c := &m.enterpriseCarbonEvidence
 	c.mu.Lock()
 	if c.tests == nil {
 		c.tests = map[string]string{}
 	}
-	c.tests[snapshot.OwnerID+"\x00"+snapshot.Fingerprint.Binding] = snapshot.TestID
+	c.tests[snapshot.testKey()] = snapshot.TestID
 	c.mu.Unlock()
 	return snapshot, nil
 }
@@ -233,7 +234,7 @@ func (m *Manager) CancelEnterpriseCarbonTest(snapshot *EnterpriseCarbonTestSnaps
 	defer release()
 	coordinator := &m.enterpriseCarbonEvidence
 	coordinator.mu.Lock()
-	key := snapshot.OwnerID + "\x00" + snapshot.Fingerprint.Binding
+	key := snapshot.testKey()
 	if coordinator.tests[key] == snapshot.TestID {
 		delete(coordinator.tests, key)
 	}
@@ -312,7 +313,7 @@ func carbonSafeReason(reason string) string {
 }
 
 // RecordEnterpriseCarbonTestEvidence accepts only results from a current
-// server-created lease. It never modifies the user's Carbon enablement choice.
+// server-created lease. It never modifies the user's model enablement choice.
 func (m *Manager) RecordEnterpriseCarbonTestEvidence(ctx context.Context, snapshot *EnterpriseCarbonTestSnapshot, outcome *ge.CarbonTestEvidence) (*Auth, error) {
 	if m == nil || snapshot == nil || outcome == nil {
 		return nil, carbonEvidenceChanged()
@@ -323,23 +324,24 @@ func (m *Manager) RecordEnterpriseCarbonTestEvidence(ctx context.Context, snapsh
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	result, err := m.mutateEnterpriseCarbonMetadata(ctx, snapshot.OwnerID, func(owner, target *Auth, cache map[string]any) (bool, error) {
+	model := snapshot.admissionModel()
+	result, err := m.mutateEnterpriseAdmissionMetadata(ctx, model, snapshot.OwnerID, func(owner, target *Auth, cache map[string]any) (bool, error) {
 		if target == nil || owner.RegistrationEpoch != snapshot.ownerEpoch || target.RegistrationEpoch != snapshot.targetEpoch || ge.Resources(ge.FromMetadata(target.Metadata)) != snapshot.Resources || target.Disabled || owner.Disabled || target.Status == StatusDisabled || owner.Status == StatusDisabled {
 			return false, carbonEvidenceChanged()
 		}
 		if revision, ok := carbonCollectionRevision(owner, snapshot.BindingID); !ok || revision != snapshot.ExpectedRevision {
 			return false, carbonEvidenceChanged()
 		}
-		if err := m.EnterpriseCarbonTestEligibility(target); err != nil {
+		if err := m.EnterpriseAdmissionTestEligibility(target, model); err != nil {
 			return false, err
 		}
-		fingerprint := m.EnterpriseCarbonEvidenceFingerprint(target)
+		fingerprint := m.EnterpriseAdmissionEvidenceFingerprint(target, model)
 		if fingerprint.Binding != snapshot.Fingerprint.Binding || fingerprint.Configuration != snapshot.Fingerprint.Configuration || !m.sameCarbonAuthorizationLocked(snapshot.OwnerID, snapshot.Fingerprint.Authorization, fingerprint.Authorization) {
 			return false, carbonEvidenceChanged()
 		}
 		coordinator := &m.enterpriseCarbonEvidence
 		coordinator.mu.Lock()
-		current := coordinator.tests[snapshot.OwnerID+"\x00"+snapshot.Fingerprint.Binding]
+		current := coordinator.tests[snapshot.testKey()]
 		coordinator.mu.Unlock()
 		if current != snapshot.TestID {
 			return false, carbonEvidenceChanged()
@@ -349,16 +351,16 @@ func (m *Manager) RecordEnterpriseCarbonTestEvidence(ctx context.Context, snapsh
 		evidence.AuthorizationFingerprint, evidence.BindingFingerprint, evidence.ConfigFingerprint = fingerprint.Authorization, fingerprint.Binding, fingerprint.Configuration
 		if evidence.Status == "verified" {
 			evidence.Reason = ""
-			if evidence.UpstreamModel != ge.CarbonModel || evidence.HTTPStatus != 200 {
-				return false, &EnterpriseCarbonEvidenceError{"test_incomplete", "Carbon success requires a complete response and the actual upstream Carbon model"}
+			if evidence.UpstreamModel != model.ID || evidence.HTTPStatus != 200 {
+				return false, &EnterpriseCarbonEvidenceError{"test_incomplete", model.Label + " success requires a complete response and the actual upstream " + model.Label + " model"}
 			}
 		} else {
 			evidence.Reason = carbonSafeReason(evidence.Reason)
 		}
-		if !ge.ValidCarbonEvidence(&evidence) {
-			return false, &EnterpriseCarbonEvidenceError{"test_incomplete", "The Carbon verification result is incomplete"}
+		if !model.ValidEvidence(&evidence) {
+			return false, &EnterpriseCarbonEvidenceError{"test_incomplete", "The " + model.Label + " verification result is incomplete"}
 		}
-		if carbonEvidenceTemporary(&evidence) && m.EnterpriseCarbonEvidenceState(target).Valid {
+		if carbonEvidenceTemporary(&evidence) && m.EnterpriseAdmissionEvidenceState(target, model).Valid {
 			return false, nil
 		}
 		cache[fingerprint.Binding] = evidence
@@ -370,7 +372,7 @@ func (m *Manager) RecordEnterpriseCarbonTestEvidence(ctx context.Context, snapsh
 	return result, err
 }
 
-func (m *Manager) mutateEnterpriseCarbonMetadata(ctx context.Context, ownerID string, mutate func(*Auth, *Auth, map[string]any) (bool, error), authID, bindingID string) (*Auth, error) {
+func (m *Manager) mutateEnterpriseAdmissionMetadata(ctx context.Context, model ge.AdmissionModel, ownerID string, mutate func(*Auth, *Auth, map[string]any) (bool, error), authID, bindingID string) (*Auth, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -385,7 +387,7 @@ func (m *Manager) mutateEnterpriseCarbonMetadata(ctx context.Context, ownerID st
 		m.mu.Unlock()
 		return nil, carbonEvidenceChanged()
 	}
-	cache := ge.ReadCarbonEvidenceStore(owner.Metadata)
+	cache := model.ReadEvidenceStore(owner.Metadata)
 	changed, err := mutate(owner, target, cache)
 	if err != nil {
 		m.mu.Unlock()
@@ -405,9 +407,9 @@ func (m *Manager) mutateEnterpriseCarbonMetadata(ctx context.Context, ownerID st
 	var stored map[string]any
 	if json.Unmarshal(encoded, &stored) != nil {
 		m.mu.Unlock()
-		return nil, fmt.Errorf("invalid Carbon evidence metadata")
+		return nil, fmt.Errorf("invalid %s evidence metadata", model.Label)
 	}
-	updated.Metadata[ge.CarbonEvidenceStoreKey], updated.Storage = stored, nil
+	updated.Metadata[model.EvidenceStoreKey], updated.Storage = stored, nil
 	storeContext := ctx
 	if account, errRead := ge.ReadAccount(owner.Metadata); errRead != nil {
 		m.mu.Unlock()
@@ -445,7 +447,7 @@ func (m *Manager) mutateEnterpriseCarbonMetadata(ctx context.Context, ownerID st
 }
 
 // The legacy test ID is accepted for older clients but is not an enablement gate.
-func (m *Manager) UpdateEnterpriseCarbonEnabled(ctx context.Context, auth *Auth, expectedRevision uint64, enabled bool, _ string) (*Auth, error) {
+func (m *Manager) UpdateEnterpriseAdmissionEnabled(ctx context.Context, auth *Auth, expectedRevision uint64, enabled bool, model ge.AdmissionModel) (*Auth, error) {
 	if m == nil || auth == nil || expectedRevision == 0 {
 		return nil, carbonEvidenceChanged()
 	}
@@ -475,36 +477,36 @@ func (m *Manager) UpdateEnterpriseCarbonEnabled(ctx context.Context, auth *Auth,
 				return carbonEvidenceChanged()
 			}
 			if enabled {
-				if err := m.enterpriseCarbonEligibility(current, m.EnterpriseSubscriptionSnapshot(current)); err != nil {
+				if err := m.enterpriseAdmissionEligibility(current, m.EnterpriseSubscriptionSnapshot(current), model); err != nil {
 					return err
 				}
 			}
 			if collection.Settings == nil {
 				collection.Settings = map[string]any{}
 			}
-			collection.Settings[ge.CarbonEnabledKey] = enabled
+			collection.Settings[model.EnabledKey] = enabled
 			return nil
 		}
 		return carbonEvidenceChanged()
 	})
 }
 
-func (m *Manager) MarkEnterpriseCarbonNeedsReview(ctx context.Context, auth *Auth, reason string, httpStatus int) error {
+func (m *Manager) MarkEnterpriseAdmissionNeedsReview(ctx context.Context, auth *Auth, reason string, httpStatus int, model ge.AdmissionModel) error {
 	if m == nil || auth == nil || auth.Provider != ge.Provider {
 		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := m.mutateEnterpriseCarbonMetadata(context.WithoutCancel(ctx), EnterpriseOwnerID(auth), func(owner, target *Auth, cache map[string]any) (bool, error) {
+	_, err := m.mutateEnterpriseAdmissionMetadata(context.WithoutCancel(ctx), model, EnterpriseOwnerID(auth), func(owner, target *Auth, cache map[string]any) (bool, error) {
 		if target.RegistrationEpoch != auth.RegistrationEpoch || ge.CarbonAuthorizationFingerprint(target.Metadata) != ge.CarbonAuthorizationFingerprint(auth.Metadata) || ge.Resources(ge.FromMetadata(target.Metadata)) != ge.Resources(ge.FromMetadata(auth.Metadata)) {
 			return false, nil
 		}
-		state := m.EnterpriseCarbonEvidenceState(target)
+		state := m.EnterpriseAdmissionEvidenceState(target, model)
 		if state.Test == nil || !state.Valid {
 			return false, nil
 		}
-		source, errRead := ge.ReadCarbonSettings(auth.Metadata)
+		source, errRead := model.ReadSettings(auth.Metadata)
 		if errRead != nil || source.Evidence == nil || source.Evidence.TestID != state.Test.TestID {
 			return false, nil
 		}
@@ -514,4 +516,61 @@ func (m *Manager) MarkEnterpriseCarbonNeedsReview(ctx context.Context, auth *Aut
 		return true, nil
 	}, auth.ID, EnterpriseBindingID(auth))
 	return err
+}
+
+func (snapshot *EnterpriseCarbonTestSnapshot) admissionModel() ge.AdmissionModel {
+	if snapshot.Model.ID == "" {
+		return ge.CarbonAdmissionModel
+	}
+	return snapshot.Model
+}
+func (snapshot *EnterpriseCarbonTestSnapshot) testKey() string {
+	key := snapshot.OwnerID + "\x00" + snapshot.Fingerprint.Binding
+	if snapshot.admissionModel().ID != ge.CarbonModel {
+		key += "\x00" + snapshot.Model.ID
+	}
+	return key
+}
+func (m *Manager) EnterpriseCarbonEvidenceFingerprint(auth *Auth) ge.CarbonEvidenceFingerprint {
+	return m.EnterpriseAdmissionEvidenceFingerprint(auth, ge.CarbonAdmissionModel)
+}
+func carbonPayloadModels(models []config.PayloadModelRule) []config.PayloadModelRule {
+	return admissionPayloadModels(models, ge.CarbonModel)
+}
+func carbonPayloadRules(rules []config.PayloadRule) []config.PayloadRule {
+	return admissionPayloadRules(rules, ge.CarbonModel)
+}
+func (m *Manager) EnterpriseCarbonEvidenceState(auth *Auth) ge.CarbonEvidenceState {
+	return m.EnterpriseAdmissionEvidenceState(auth, ge.CarbonAdmissionModel)
+}
+func (m *Manager) BeginEnterpriseCarbonTestContext(ctx context.Context, auth *Auth, expectedRevision uint64) (*EnterpriseCarbonTestSnapshot, error) {
+	return m.BeginEnterpriseAdmissionTestContext(ctx, auth, expectedRevision, ge.CarbonAdmissionModel)
+}
+func (m *Manager) mutateEnterpriseCarbonMetadata(ctx context.Context, ownerID string, mutate func(*Auth, *Auth, map[string]any) (bool, error), authID, bindingID string) (*Auth, error) {
+	return m.mutateEnterpriseAdmissionMetadata(ctx, ge.CarbonAdmissionModel, ownerID, mutate, authID, bindingID)
+}
+func (m *Manager) UpdateEnterpriseCarbonEnabled(ctx context.Context, auth *Auth, expectedRevision uint64, enabled bool, _ string) (*Auth, error) {
+	return m.UpdateEnterpriseAdmissionEnabled(ctx, auth, expectedRevision, enabled, ge.CarbonAdmissionModel)
+}
+func (m *Manager) MarkEnterpriseCarbonNeedsReview(ctx context.Context, auth *Auth, reason string, status int) error {
+	return m.MarkEnterpriseAdmissionNeedsReview(ctx, auth, reason, status, ge.CarbonAdmissionModel)
+}
+
+func (m *Manager) EnterpriseHydrogenEvidenceFingerprint(auth *Auth) ge.CarbonEvidenceFingerprint {
+	return m.EnterpriseAdmissionEvidenceFingerprint(auth, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) EnterpriseHydrogenEvidenceState(auth *Auth) ge.CarbonEvidenceState {
+	return m.EnterpriseAdmissionEvidenceState(auth, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) BeginEnterpriseHydrogenTest(auth *Auth, revision uint64) (*EnterpriseCarbonTestSnapshot, error) {
+	return m.BeginEnterpriseAdmissionTestContext(context.Background(), auth, revision, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) BeginEnterpriseHydrogenTestContext(ctx context.Context, auth *Auth, revision uint64) (*EnterpriseCarbonTestSnapshot, error) {
+	return m.BeginEnterpriseAdmissionTestContext(ctx, auth, revision, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) UpdateEnterpriseHydrogenEnabled(ctx context.Context, auth *Auth, revision uint64, enabled bool, _ string) (*Auth, error) {
+	return m.UpdateEnterpriseAdmissionEnabled(ctx, auth, revision, enabled, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) MarkEnterpriseHydrogenNeedsReview(ctx context.Context, auth *Auth, reason string, status int) error {
+	return m.MarkEnterpriseAdmissionNeedsReview(ctx, auth, reason, status, ge.HydrogenAdmissionModel)
 }

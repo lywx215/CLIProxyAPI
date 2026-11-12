@@ -144,7 +144,7 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 			reason := gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_reason").String()
 			switch state {
 			case "paid":
-				if enforced.Raw != `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 4 || !gjson.GetBytes(w.Body.Bytes(), "test_candidates.0.test_candidate").Bool() || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
+				if enforced.Raw != `["gemini-4-argon","gemini-4-carbon","gemini-4-hydrogen","gemini-3-pro-image","veo-3.1"]` || reason != "paid_subscription_restricted" || gjson.GetBytes(w.Body.Bytes(), "models.#").Int() != 3 || !gjson.GetBytes(w.Body.Bytes(), "test_candidates.0.test_candidate").Bool() || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
 					t.Fatalf("paid state was not enforced: %s", w.Body.String())
 				}
 			case "trial":
@@ -206,7 +206,7 @@ func TestEnterpriseForceArgonCollectionPatchAndProbe(t *testing.T) {
 	collection := account.Get(fmt.Sprintf(`collections.#(binding_id==%q)`, bindingID))
 	if !account.Get("argon_force_supported").Bool() || !collection.Get("settings.argon_force_enabled").Bool() ||
 		!collection.Get("model_policy_state.argon_force_enabled").Bool() || collection.Get("model_policy_state.subscription.state").String() != "EXPIRED" ||
-		collection.Get("model_policy_state.effective_models").Raw != `["gemini-4-argon"]` || collection.Get("revision").Uint() != 2 {
+		collection.Get("model_policy_state.effective_models").Raw != `["gemini-4-argon","gemini-4-carbon"]` || collection.Get("revision").Uint() != 2 {
 		t.Fatalf("wrong forced Argon view: %s", collection.Raw)
 	}
 	patch(1, map[string]any{ge.ArgonForceEnabledKey: false}, http.StatusConflict)

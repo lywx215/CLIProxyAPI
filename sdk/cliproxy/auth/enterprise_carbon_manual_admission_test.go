@@ -22,18 +22,18 @@ func TestCarbonManualAdmissionDoesNotRequireDiagnosticEvidence(t *testing.T) {
 				publishSubscription(t, m, target, "enterprise_plus", trial)
 				if status == "malformed" {
 					copy := target.Clone()
-					copy.Metadata[ge.CarbonEvidenceKey] = map[string]any{"invalid_historical_record": true}
+					copy.Metadata[ge.HydrogenEvidenceKey] = map[string]any{"invalid_historical_record": true}
 					var err error
 					target, err = m.Update(t.Context(), copy)
 					if err != nil {
 						t.Fatal(err)
 					}
 				} else if status != "missing" {
-					pending, err := m.BeginEnterpriseCarbonTest(target, 1)
+					pending, err := m.BeginEnterpriseHydrogenTest(target, 1)
 					if err != nil {
 						t.Fatal(err)
 					}
-					evidence := &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: status, UpstreamModel: ge.CarbonModel, HTTPStatus: 200}}
+					evidence := &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: status, UpstreamModel: ge.HydrogenModel, HTTPStatus: 200}}
 					if status != "verified" {
 						evidence.HTTPStatus, evidence.Reason = 400, "model_not_enabled"
 					}
@@ -42,39 +42,39 @@ func TestCarbonManualAdmissionDoesNotRequireDiagnosticEvidence(t *testing.T) {
 					}
 				}
 				current, _ := m.GetByID(target.ID)
-				defaultEnabled := !trial
-				if view := m.EnterpriseCarbonAdmissionView(current); !view.CanEnable || view.Enabled != defaultEnabled || view.Available != defaultEnabled || view.VerificationRequired {
+				defaultEnabled := false
+				if view := m.EnterpriseHydrogenAdmissionView(current); !view.CanEnable || view.Enabled != defaultEnabled || view.Available != defaultEnabled || view.VerificationRequired {
 					t.Fatalf("diagnostic state became an enablement prerequisite: %+v", view)
 				}
-				if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), current, 1, true, ""); err != nil {
+				if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, ""); err != nil {
 					t.Fatal(err)
 				}
 				current, _ = m.GetByID(target.ID)
 				assertAvailable := func() {
 					t.Helper()
-					view := m.EnterpriseCarbonAdmissionView(current)
+					view := m.EnterpriseHydrogenAdmissionView(current)
 					if !view.Enabled || !view.Available || !view.CanEnable || view.VerificationRequired || view.Reason != "" {
 						t.Fatalf("manual admission depended on diagnostics: %+v", view)
 					}
-					if err := ValidateEnterpriseModelRequest(t.Context(), current, ge.CarbonModel+"(high)"); err != nil {
+					if err := ValidateEnterpriseModelRequest(t.Context(), current, ge.HydrogenModel+"(high)"); err != nil {
 						t.Fatal(err)
 					}
 					policy := m.EnterpriseModelPolicyView(current)
-					if !slices.Contains(policy.EffectiveModels, ge.CarbonModel) {
+					if !slices.Contains(policy.EffectiveModels, ge.HydrogenModel) {
 						t.Fatal("manual Carbon was absent from the effective model list")
 					}
 				}
 				assertAvailable()
-				m.SetConfig(&config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: ge.CarbonModel, Protocol: ge.Provider}}, Params: map[string]any{"generationSpec.thinkingConfig.includeThoughts": true}}}}})
+				m.SetConfig(&config.Config{Payload: config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: ge.HydrogenModel, Protocol: ge.Provider}}, Params: map[string]any{"generationSpec.thinkingConfig.includeThoughts": true}}}}})
 				assertAvailable()
-				if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), current, 2, false, ""); err != nil {
+				if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 2, false, ""); err != nil {
 					t.Fatal(err)
 				}
 				current, _ = m.GetByID(target.ID)
-				if m.EnterpriseCarbonAdmissionView(current).Available {
+				if m.EnterpriseHydrogenAdmissionView(current).Available {
 					t.Fatal("manual close was ignored")
 				}
-				if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), current, 3, true, "legacy-ignored-test-id"); err != nil {
+				if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 3, true, "legacy-ignored-test-id"); err != nil {
 					t.Fatal(err)
 				}
 				current, _ = m.GetByID(target.ID)
@@ -90,11 +90,11 @@ func TestCarbonManualBusinessWithoutModelTestsRetainsSharedQuota(t *testing.T) {
 			m, _, target, _ := carbonEvidenceFixture(t, false)
 			now := time.Date(2026, time.November, 7, 10, 0, 0, 0, time.UTC)
 			m.enterpriseQuota.nowFunc = func() time.Time { return now }
-			if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), target, 1, true, ""); err != nil {
+			if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), target, 1, true, ""); err != nil {
 				t.Fatal(err)
 			}
 			current, _ := m.GetByID(target.ID)
-			registry.GetGlobalRegistry().RegisterClient(current.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.CarbonModel, Type: "gemini"}})
+			registry.GetGlobalRegistry().RegisterClient(current.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel, Type: "gemini"}})
 			t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(current.ID) })
 			rejectSharedQuota(t, current, now, "credential")
 			calls := 0
@@ -108,7 +108,7 @@ func TestCarbonManualBusinessWithoutModelTestsRetainsSharedQuota(t *testing.T) {
 					return nil, nil
 				},
 			})
-			req := exec.Request{Model: ge.CarbonModel, Payload: []byte(`{"contents":[{"parts":[{"text":"synthetic"}]}]}`)}
+			req := exec.Request{Model: ge.HydrogenModel, Payload: []byte(`{"contents":[{"parts":[{"text":"synthetic"}]}]}`)}
 			opts := exec.Options{SourceFormat: translator.FormatGemini, Metadata: map[string]any{exec.OperationMetadataKey: "generate_content", exec.PinnedAuthMetadataKey: current.ID}}
 			var err error
 			if stream {
@@ -126,7 +126,7 @@ func TestCarbonManualBusinessWithoutModelTestsRetainsSharedQuota(t *testing.T) {
 
 func TestCarbonManualAdmissionUsesSubscriptionEligibilityIndependentlyFromModelTests(t *testing.T) {
 	m, _, target, _ := carbonEvidenceFixture(t, false)
-	if _, err := m.UpdateEnterpriseCarbonEnabled(t.Context(), target, 1, true, ""); err != nil {
+	if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), target, 1, true, ""); err != nil {
 		t.Fatal(err)
 	}
 	current, _ := m.GetByID(target.ID)
@@ -135,11 +135,11 @@ func TestCarbonManualAdmissionUsesSubscriptionEligibilityIndependentlyFromModelT
 	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "unassigned", Edition: "enterprise_plus"}) {
 		t.Fatal("could not publish the current unassigned subscription")
 	}
-	if view := m.EnterpriseCarbonAdmissionView(current); !view.Enabled || view.Available || view.CanEnable || view.Reason != "subscription_unverified" {
+	if view := m.EnterpriseHydrogenAdmissionView(current); !view.Enabled || view.Available || view.CanEnable || view.Reason != "subscription_unverified" {
 		t.Fatalf("manual opening bypassed unknown subscription: %+v", view)
 	}
 	publishSubscription(t, m, current, "enterprise_plus", false)
-	if view := m.EnterpriseCarbonAdmissionView(current); !view.Available || view.Test != nil {
+	if view := m.EnterpriseHydrogenAdmissionView(current); !view.Available || view.Test != nil {
 		t.Fatalf("confirmed subscription required a model test: %+v", view)
 	}
 }
@@ -154,11 +154,11 @@ func TestCarbonManualAdmissionDoesNotRequireARefreshTokenOnlyUsedByDiagnostics(t
 	}
 	current, _ := m.GetByID(target.ID)
 	publishSubscription(t, m, current, "enterprise_plus", false)
-	if _, err = m.UpdateEnterpriseCarbonEnabled(t.Context(), current, 1, true, ""); err != nil {
+	if _, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, ""); err != nil {
 		t.Fatal(err)
 	}
 	current, _ = m.GetByID(current.ID)
-	if view := m.EnterpriseCarbonAdmissionView(current); !view.Available || !view.CanEnable || view.CanTest {
+	if view := m.EnterpriseHydrogenAdmissionView(current); !view.Available || !view.CanEnable || view.CanTest {
 		t.Fatalf("diagnostic identity requirements leaked into ordinary generation: %+v", view)
 	}
 }

@@ -49,6 +49,7 @@ type carbonGoogleFrozenApplication struct {
 }
 
 type carbonGoogleSnapshot struct {
+	model                                 ge.AdmissionModel
 	id, ownerID, accountID, authorization string
 	ownerEpoch, rootRevision              uint64
 	authorizationRevision                 uint64
@@ -132,7 +133,7 @@ func (c *enterpriseCarbonGoogleCoordinator) lockEngine(ctx context.Context, name
 	return func() { once.Do(func() { <-lock.gate; releaseReference() }) }, nil
 }
 
-func (h *Handler) carbonGoogleSnapshot(req carbonGoogleConfigureRequest, root *coreauth.Auth, account ge.Account) (*carbonGoogleSnapshot, string) {
+func (h *Handler) admissionGoogleSnapshot(req carbonGoogleConfigureRequest, root *coreauth.Auth, account ge.Account, model ge.AdmissionModel) (*carbonGoogleSnapshot, string) {
 	coordinator := &h.enterpriseCarbonGoogle
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
@@ -147,7 +148,7 @@ func (h *Handler) carbonGoogleSnapshot(req carbonGoogleConfigureRequest, root *c
 		if snapshot == nil {
 			return nil, "snapshot_expired"
 		}
-		if snapshot.ownerID != root.ID || snapshot.accountID != account.ID || snapshot.manager != h.authManager || snapshot.rootRevision != req.ExpectedRevision {
+		if snapshot.model.ID != model.ID || snapshot.ownerID != root.ID || snapshot.accountID != account.ID || snapshot.manager != h.authManager || snapshot.rootRevision != req.ExpectedRevision {
 			return nil, "credential_changed"
 		}
 		return snapshot, ""
@@ -167,7 +168,7 @@ func (h *Handler) carbonGoogleSnapshot(req carbonGoogleConfigureRequest, root *c
 	if authorization == "" {
 		return nil, "credential_changed"
 	}
-	snapshot := &carbonGoogleSnapshot{id: uuid.NewString(), ownerID: root.ID, accountID: account.ID, authorization: authorization, ownerEpoch: root.RegistrationEpoch, authorizationRevision: h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID), rootRevision: account.Revision, manager: h.authManager, expires: now.Add(carbonGoogleSnapshotLifetime), applications: map[string]carbonGoogleFrozenApplication{}}
+	snapshot := &carbonGoogleSnapshot{model: model, id: uuid.NewString(), ownerID: root.ID, accountID: account.ID, authorization: authorization, ownerEpoch: root.RegistrationEpoch, authorizationRevision: h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID), rootRevision: account.Revision, manager: h.authManager, expires: now.Add(carbonGoogleSnapshotLifetime), applications: map[string]carbonGoogleFrozenApplication{}}
 	children := map[string]*coreauth.Auth{}
 	for _, child := range h.authManager.EnterpriseCollections(root.ID) {
 		children[coreauth.EnterpriseBindingID(child)] = child
@@ -181,7 +182,7 @@ func (h *Handler) carbonGoogleSnapshot(req carbonGoogleConfigureRequest, root *c
 			continue
 		}
 		resources := ge.Resources(collection.ResourceBinding.Apply(ge.FromMetadata(root.Metadata)))
-		snapshot.applications[collection.ID] = carbonGoogleFrozenApplication{authID: child.ID, authIndex: lockedAuthIndex(child), configuration: h.authManager.EnterpriseCarbonEvidenceFingerprint(child).Configuration, proxy: h.enterpriseProxy(child), resources: resources, revision: collection.Revision}
+		snapshot.applications[collection.ID] = carbonGoogleFrozenApplication{authID: child.ID, authIndex: lockedAuthIndex(child), configuration: h.authManager.EnterpriseAdmissionEvidenceFingerprint(child, model).Configuration, proxy: h.enterpriseProxy(child), resources: resources, revision: collection.Revision}
 	}
 	if coordinator.snapshots == nil {
 		coordinator.snapshots = map[string]*carbonGoogleSnapshot{}
@@ -216,7 +217,7 @@ func (h *Handler) carbonGoogleCurrent(snapshot *carbonGoogleSnapshot, bindingID 
 			return nil, collection.Revision, false
 		}
 		current, ok := h.authManager.GetByID(frozen.authID)
-		if !ok || current.Provider != ge.Provider || coreauth.EnterpriseOwnerID(current) != snapshot.ownerID || ge.Resources(ge.FromMetadata(current.Metadata)) != frozen.resources || h.authManager.EnterpriseCarbonEvidenceFingerprint(current).Configuration != frozen.configuration || h.enterpriseProxy(current) != frozen.proxy {
+		if !ok || current.Provider != ge.Provider || coreauth.EnterpriseOwnerID(current) != snapshot.ownerID || ge.Resources(ge.FromMetadata(current.Metadata)) != frozen.resources || h.authManager.EnterpriseAdmissionEvidenceFingerprint(current, snapshot.model).Configuration != frozen.configuration || h.enterpriseProxy(current) != frozen.proxy {
 			return nil, collection.Revision, false
 		}
 		return current, collection.Revision, true
@@ -224,9 +225,9 @@ func (h *Handler) carbonGoogleCurrent(snapshot *carbonGoogleSnapshot, bindingID 
 	return nil, 0, false
 }
 
-// ConfigureGeminiEnterpriseCarbonGoogle is an authenticated, bounded foreground
+// configureGeminiEnterpriseGoogle is an authenticated, bounded foreground
 // operation. It never generates content or changes local admission/proof state.
-func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
+func (h *Handler) configureGeminiEnterpriseGoogle(c *gin.Context, model ge.AdmissionModel) {
 	c.Header("Cache-Control", "no-store")
 	if !h.enterpriseManagementAllowed(c) {
 		return
@@ -236,7 +237,7 @@ func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
 	decoder := json.NewDecoder(c.Request.Body)
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&req) != nil || decoder.Decode(new(any)) != io.EOF || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.AuthIndex) == "" || req.ExpectedRevision == 0 || len(req.Applications) == 0 || len(req.Applications) > 5 {
-		enterpriseManagementFailure(c, 400, "invalid_carbon_configuration", "Select one to five imported applications with their current revisions and resources")
+		enterpriseManagementFailure(c, 400, "invalid_"+strings.ToLower(model.Label)+"_configuration", "Select one to five imported applications with their current revisions and resources")
 		return
 	}
 	root, ok := h.lookupAuthFile(req.Name, req.AuthIndex)
@@ -246,7 +247,7 @@ func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
 	}
 	account, err := ge.AccountFromLegacy(root.Metadata)
 	if err != nil || req.ExpectedRevision != account.Revision || req.AccountID != "" && req.AccountID != account.ID {
-		enterpriseManagementFailure(c, 409, "credential_changed", "Account changed; reload before configuring Google Carbon")
+		enterpriseManagementFailure(c, 409, "credential_changed", "Account changed; reload before configuring Google "+model.Label)
 		return
 	}
 	release, reason := h.enterpriseCarbonGoogle.begin(root.ID)
@@ -255,11 +256,11 @@ func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
 		if reason == "configure_busy" {
 			code = http.StatusTooManyRequests
 		}
-		enterpriseManagementFailure(c, code, reason, "Google Carbon configuration is already running; try again after it completes")
+		enterpriseManagementFailure(c, code, reason, "Google "+model.Label+" configuration is already running; try again after it completes")
 		return
 	}
 	defer release()
-	snapshot, reason := h.carbonGoogleSnapshot(req, root, account)
+	snapshot, reason := h.admissionGoogleSnapshot(req, root, account, model)
 	if reason != "" {
 		enterpriseManagementFailure(c, 409, reason, "The configuration snapshot is no longer current; reload and start again")
 		return
@@ -309,7 +310,7 @@ func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
 	if partial {
 		status = "partial"
 	}
-	body := gin.H{"status": status, "snapshot_id": snapshot.id, "snapshot_expires_at": snapshot.expires, "applications": results, "google_carbon_configure_supported": true}
+	body := gin.H{"status": status, "snapshot_id": snapshot.id, "snapshot_expires_at": snapshot.expires, "applications": results, "google_" + strings.ToLower(model.Label) + "_configure_supported": true}
 	if fresh, exists := h.authManager.GetByID(root.ID); exists {
 		body["gemini_enterprise"] = h.enterpriseAccountSummary(fresh)
 	}
@@ -337,9 +338,19 @@ func (h *Handler) configureCarbonGoogleApplication(ctx context.Context, snapshot
 		}
 		return nil
 	}
-	result := ge.ConfigureCarbonGoogle(ctx, client, binding, ge.String(fresh.Metadata, "access_token"), guard, cache)
+	result := ge.ConfigureAdmissionGoogle(ctx, client, binding, ge.String(fresh.Metadata, "access_token"), guard, cache, snapshot.model.ID)
 	if _, _, valid := h.carbonGoogleCurrent(snapshot, bindingID); !valid {
 		return ge.CarbonGoogleConfigureResult{Status: "changed", Reason: "credential_changed", HTTPStatus: 409}
 	}
 	return result
+}
+
+func (h *Handler) ConfigureGeminiEnterpriseCarbonGoogle(c *gin.Context) {
+	h.configureGeminiEnterpriseGoogle(c, ge.CarbonAdmissionModel)
+}
+func (h *Handler) ConfigureGeminiEnterpriseHydrogenGoogle(c *gin.Context) {
+	h.configureGeminiEnterpriseGoogle(c, ge.HydrogenAdmissionModel)
+}
+func (h *Handler) carbonGoogleSnapshot(req carbonGoogleConfigureRequest, root *coreauth.Auth, account ge.Account) (*carbonGoogleSnapshot, string) {
+	return h.admissionGoogleSnapshot(req, root, account, ge.CarbonAdmissionModel)
 }

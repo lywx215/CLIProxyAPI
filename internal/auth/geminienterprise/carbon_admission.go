@@ -12,10 +12,39 @@ import (
 )
 
 const (
-	CarbonEnabledKey       = "carbon_enabled"
-	CarbonEvidenceKey      = "carbon_test_evidence"
-	CarbonEvidenceStoreKey = "enterprise_carbon_evidence"
+	CarbonEnabledKey         = "carbon_enabled"
+	CarbonEvidenceKey        = "carbon_test_evidence"
+	CarbonEvidenceStoreKey   = "enterprise_carbon_evidence"
+	HydrogenEnabledKey       = "hydrogen_enabled"
+	HydrogenEvidenceKey      = "hydrogen_test_evidence"
+	HydrogenEvidenceStoreKey = "enterprise_hydrogen_evidence"
 )
+
+// AdmissionModel identifies independently stored application settings and evidence.
+type AdmissionModel struct {
+	ID               string
+	Label            string
+	EnabledKey       string
+	EvidenceKey      string
+	EvidenceStoreKey string
+}
+
+var CarbonAdmissionModel = AdmissionModel{CarbonModel, "Carbon", CarbonEnabledKey, CarbonEvidenceKey, CarbonEvidenceStoreKey}
+var HydrogenAdmissionModel = AdmissionModel{HydrogenModel, "Hydrogen", HydrogenEnabledKey, HydrogenEvidenceKey, HydrogenEvidenceStoreKey}
+
+// AdmissionModels returns the supported model identities, including legacy Carbon.
+func AdmissionModels() []AdmissionModel {
+	return []AdmissionModel{CarbonAdmissionModel, HydrogenAdmissionModel}
+}
+
+func AdmissionModelForID(id string) (AdmissionModel, bool) {
+	for _, model := range AdmissionModels() {
+		if id == model.ID {
+			return model, true
+		}
+	}
+	return AdmissionModel{}, false
+}
 
 // CarbonTestSummary contains only safe, server-observed test information.
 type CarbonTestSummary struct {
@@ -73,41 +102,41 @@ type CarbonAdmission struct {
 	Test                 *CarbonTestSummary `json:"test,omitempty"`
 }
 
-func ReadCarbonEnabled(metadata map[string]any) (bool, error) {
-	if value, exists := metadata[CarbonEnabledKey]; exists {
+func (model AdmissionModel) ReadEnabled(metadata map[string]any) (bool, error) {
+	if value, exists := metadata[model.EnabledKey]; exists {
 		enabled, ok := value.(bool)
 		if !ok {
-			return false, fmt.Errorf("carbon_enabled must be a boolean")
+			return false, fmt.Errorf("%s must be a boolean", model.EnabledKey)
 		}
 		return enabled, nil
 	}
 	return false, nil
 }
 
-func ReadCarbonSettings(metadata map[string]any) (CarbonSettings, error) {
-	enabled, err := ReadCarbonEnabled(metadata)
+func (model AdmissionModel) ReadSettings(metadata map[string]any) (CarbonSettings, error) {
+	enabled, err := model.ReadEnabled(metadata)
 	if err != nil {
 		return CarbonSettings{}, err
 	}
 	settings := CarbonSettings{Enabled: enabled}
-	value, exists := metadata[CarbonEvidenceKey]
-	if !exists && metadata[CarbonEvidenceStoreKey] != nil {
-		value, exists = ReadCarbonEvidenceStore(metadata)[CarbonBindingFingerprint(FromMetadata(metadata))]
+	value, exists := metadata[model.EvidenceKey]
+	if !exists && metadata[model.EvidenceStoreKey] != nil {
+		value, exists = model.ReadEvidenceStore(metadata)[CarbonBindingFingerprint(FromMetadata(metadata))]
 	}
 	if exists && value != nil {
 		data, err := json.Marshal(value)
 		var evidence CarbonTestEvidence
-		if err != nil || len(data) > 8192 || json.Unmarshal(data, &evidence) != nil || !ValidCarbonEvidence(&evidence) {
-			return settings, fmt.Errorf("invalid server-owned Carbon test evidence")
+		if err != nil || len(data) > 8192 || json.Unmarshal(data, &evidence) != nil || !model.ValidEvidence(&evidence) {
+			return settings, fmt.Errorf("invalid server-owned %s test evidence", model.Label)
 		}
 		settings.Evidence = &evidence
 	}
 	return settings, nil
 }
 
-func ReadCarbonEvidenceStore(metadata map[string]any) map[string]any {
+func (model AdmissionModel) ReadEvidenceStore(metadata map[string]any) map[string]any {
 	result := map[string]any{}
-	if raw := metadata[CarbonEvidenceStoreKey]; raw != nil {
+	if raw := metadata[model.EvidenceStoreKey]; raw != nil {
 		data, err := json.Marshal(raw)
 		if err == nil && len(data) <= 16*1024*1024 {
 			_ = json.Unmarshal(data, &result)
@@ -119,7 +148,7 @@ func ReadCarbonEvidenceStore(metadata map[string]any) map[string]any {
 	return result
 }
 
-func ValidCarbonEvidence(evidence *CarbonTestEvidence) bool {
+func (model AdmissionModel) ValidEvidence(evidence *CarbonTestEvidence) bool {
 	if evidence == nil || evidence.Version != 1 || evidence.TestID == "" || len(evidence.TestID) > 128 || evidence.CheckedAt.IsZero() || evidence.HTTPStatus < 0 || evidence.HTTPStatus > 599 {
 		return false
 	}
@@ -139,7 +168,7 @@ func ValidCarbonEvidence(evidence *CarbonTestEvidence) bool {
 			return false
 		}
 	}
-	return evidence.Status != "verified" || evidence.UpstreamModel == CarbonModel && evidence.HTTPStatus == 200 && evidence.Reason == ""
+	return evidence.Status != "verified" || evidence.UpstreamModel == model.ID && evidence.HTTPStatus == 200 && evidence.Reason == ""
 }
 
 // CarbonAuthorizationFingerprint requires a stable OAuth refresh authorization.
@@ -170,8 +199,25 @@ func CarbonFingerprintValue(value any) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func CarbonEvidenceMatches(evidence *CarbonTestEvidence, fingerprint CarbonEvidenceFingerprint) bool {
-	return ValidCarbonEvidence(evidence) && evidence.Status == "verified" &&
+func (model AdmissionModel) EvidenceMatches(evidence *CarbonTestEvidence, fingerprint CarbonEvidenceFingerprint) bool {
+	return model.ValidEvidence(evidence) && evidence.Status == "verified" &&
 		fingerprint.Authorization != "" && fingerprint.Binding != "" && fingerprint.Configuration != "" &&
 		evidence.AuthorizationFingerprint == fingerprint.Authorization && evidence.BindingFingerprint == fingerprint.Binding && evidence.ConfigFingerprint == fingerprint.Configuration
+}
+
+// Legacy entry points retain the Carbon metadata contract.
+func ReadCarbonEnabled(metadata map[string]any) (bool, error) {
+	return CarbonAdmissionModel.ReadEnabled(metadata)
+}
+func ReadCarbonSettings(metadata map[string]any) (CarbonSettings, error) {
+	return CarbonAdmissionModel.ReadSettings(metadata)
+}
+func ReadCarbonEvidenceStore(metadata map[string]any) map[string]any {
+	return CarbonAdmissionModel.ReadEvidenceStore(metadata)
+}
+func ValidCarbonEvidence(evidence *CarbonTestEvidence) bool {
+	return CarbonAdmissionModel.ValidEvidence(evidence)
+}
+func CarbonEvidenceMatches(evidence *CarbonTestEvidence, fingerprint CarbonEvidenceFingerprint) bool {
+	return CarbonAdmissionModel.EvidenceMatches(evidence, fingerprint)
 }

@@ -135,7 +135,7 @@ func TestModelPolicyManualOverridesAndExactWhitelist(t *testing.T) {
 
 func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 	paid := false
-	allowed := []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1"}
+	allowed := []string{ArgonModel, CarbonModel, HydrogenModel, "gemini-3-pro-image", "veo-3.1"}
 	for _, edition := range []string{"enterprise_plus", "enterprise_standard", "enterprise_emerging", "frontline_worker", "frontline_starter", "starter", "business_standard", "edu", "edu_pro", "edu_emerging", "edu_pro_emerging"} {
 		for _, status := range []string{"ok", "stale"} {
 			for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
@@ -147,7 +147,7 @@ func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 					}
 					for _, model := range append(append([]string{}, allowed...), "gemini-3.8-flash", "gemini-3-pro-image-preview", "veo-3.1-fast", "auto", "future-model") {
 						want := slices.Contains(allowed, model)
-						if model == CarbonModel {
+						if model == HydrogenModel {
 							want = false
 						}
 						if mode == "argon_only" {
@@ -218,7 +218,7 @@ func TestModelPolicyForceArgonOverridesOnlyArgon(t *testing.T) {
 			if original.Status != forced.Status || original.Reason != forced.Reason || original.EffectiveMode != forced.EffectiveMode {
 				t.Fatalf("the original subscription and model policy changed: %+v", forced)
 			}
-			for _, model := range []string{"", "auto", ArgonModel + "-preview", CarbonModel, "gemini-3.8-flash", "veo-3.1"} {
+			for _, model := range []string{"", "auto", ArgonModel + "-preview", HydrogenModel, "gemini-3.8-flash", "veo-3.1"} {
 				if original.Allows(model) != forced.Allows(model) {
 					t.Fatalf("switch changed admission for %q", model)
 				}
@@ -265,7 +265,7 @@ func TestAllModelsOverridesEditionAndApplicationModelPolicy(t *testing.T) {
 			metadata[AllModelsEnabledKey] = true
 			policy := ModelPolicyFor(metadata, observation)
 			if policy.Mode != tc.mode || policy.EffectiveMode != "catalog" || !policy.AllModelsEnabled ||
-				!policy.Allows(ArgonModel) || !policy.Allows("gemini-3.8-flash") || policy.Allows(CarbonModel) ||
+				!policy.Allows(ArgonModel) || !policy.Allows("gemini-3.8-flash") || policy.Allows(HydrogenModel) ||
 				policy.Allows("veo-3.1") || !policy.RestrictsRawOperations() {
 				t.Fatalf("unexpected enabled policy: %+v", policy)
 			}
@@ -289,7 +289,7 @@ func TestEnforcedModelPolicyJSONDistinguishesTrialAndBlocked(t *testing.T) {
 		json        string
 	}{
 		{"trial", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial}, "null"},
-		{"paid", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, `["gemini-4-argon","gemini-4-carbon","gemini-3-pro-image","veo-3.1"]`},
+		{"paid", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, `["gemini-4-argon","gemini-4-carbon","gemini-4-hydrogen","gemini-3-pro-image","veo-3.1"]`},
 		{"blocked", SubscriptionObservation{}, "[]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

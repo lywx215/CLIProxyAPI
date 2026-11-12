@@ -88,6 +88,10 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	summary["argon_force_supported"] = true
 	summary["all_models_supported"] = true
 	summary["carbon_admission_supported"] = true
+	summary["hydrogen_admission_supported"] = true
+	summary["google_hydrogen_configure_supported"] = true
+	summary["hydrogen_authorization_revision"] = h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID)
+	summary["hydrogen_registration_epoch"] = root.RegistrationEpoch
 	summary["carbon_authorization_revision"] = h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID)
 	summary["carbon_registration_epoch"] = root.RegistrationEpoch
 	summary["google_carbon_configure_supported"] = true
@@ -101,6 +105,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	now := time.Now().UTC()
 	collections := make([]gin.H, 0, len(account.Collections))
 	carbonEnabled, carbonAvailable := 0, 0
+	hydrogenEnabled, hydrogenAvailable := 0, 0
 	for _, collection := range account.Collections {
 		child := children[collection.ID]
 		if child == nil && !coreauth.IsEnterpriseAccountAuth(root) {
@@ -119,6 +124,14 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			entry["quota_balancing"] = h.authManager.EnterpriseQuotaBalance(child)
 			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
 			carbon := h.authManager.EnterpriseCarbonAdmissionView(child)
+			hydrogen := h.authManager.EnterpriseModelAdmissionView(child, ge.HydrogenAdmissionModel)
+			entry["hydrogen_admission_supported"], entry["hydrogen_admission"] = true, hydrogen
+			if hydrogen.Enabled {
+				hydrogenEnabled++
+			}
+			if hydrogen.Available {
+				hydrogenAvailable++
+			}
 			entry["carbon_admission_supported"], entry["carbon_admission"] = true, carbon
 			if carbon.Enabled {
 				carbonEnabled++
@@ -128,6 +141,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			}
 			if len(account.Collections) == 1 {
 				summary["carbon_admission"] = carbon
+				summary["hydrogen_admission"] = hydrogen
 			}
 			unavailable, status, message, _ := reconcileAuthFileCooldownState(child, now)
 			entry["auth_index"], entry["status"], entry["status_message"] = lockedAuthIndex(child), status, message
@@ -143,6 +157,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	}
 	summary["collections"] = collections
 	summary["carbon_enabled_count"], summary["carbon_available_count"] = carbonEnabled, carbonAvailable
+	summary["hydrogen_enabled_count"], summary["hydrogen_available_count"] = hydrogenEnabled, hydrogenAvailable
 	return summary
 }
 
@@ -183,7 +198,7 @@ func (h *Handler) addEnterpriseAccountSummary(entry gin.H, auth *coreauth.Auth) 
 
 func enterpriseCollectionSettings(settings map[string]any) map[string]any {
 	result := map[string]any{}
-	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", ge.CarbonEnabledKey, ge.ArgonForceEnabledKey, ge.AllModelsEnabledKey} {
+	for _, key := range []string{"prefix", "proxy_url", "note", "headers", "weight", "priority", "catalog_fallback", "model_policy", "allowed_models", "excluded_models", "model_aliases", "oauth_model_alias", "disable_cooling", "request_retry", "request_scoped_errors", "credential_weight", "max_concurrent_requests", ge.CarbonEnabledKey, ge.HydrogenEnabledKey, ge.ArgonForceEnabledKey, ge.AllModelsEnabledKey} {
 		if value, exists := settings[key]; exists {
 			result[key] = value
 		}
@@ -365,6 +380,7 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		Disabled         *bool               `json:"disabled"`
 		Resources        *ge.ResourceBinding `json:"resources"`
 		Fields           map[string]any      `json:"fields"`
+		HydrogenTestID   string              `json:"hydrogen_test_id"`
 		CarbonTestID     string              `json:"carbon_test_id"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
@@ -399,13 +415,17 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		return
 	}
 	coreauth.NormalizeCredentialMetadata(req.Fields)
-	if value, carbonChange := req.Fields[ge.CarbonEnabledKey]; carbonChange {
+	for _, model := range ge.AdmissionModels() {
+		value, changing := req.Fields[model.EnabledKey]
+		if !changing {
+			continue
+		}
 		enabled, valid := value.(bool)
 		if !valid || len(req.Fields) != 1 || req.Disabled != nil || req.Resources != nil {
-			enterpriseManagementFailure(c, 400, "invalid_carbon_change", "carbon_enabled must be a boolean changed separately from other application settings")
+			enterpriseManagementFailure(c, 400, "invalid_"+strings.ToLower(model.Label)+"_change", model.EnabledKey+" must be a boolean changed separately from other application settings")
 			return
 		}
-		updated, err := h.authManager.UpdateEnterpriseCarbonEnabled(c.Request.Context(), auth, req.ExpectedRevision, enabled, req.CarbonTestID)
+		updated, err := h.authManager.UpdateEnterpriseAdmissionEnabled(c.Request.Context(), auth, req.ExpectedRevision, enabled, model)
 		if c.Request.Context().Err() != nil {
 			return
 		}
@@ -422,10 +442,10 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 			enterpriseManagementFailure(c, 409, "credential_changed", "Application changed while saving; reload")
 			return
 		}
-		c.JSON(200, gin.H{"status": "ok", "carbon_admission_supported": true, "carbon_admission": h.authManager.EnterpriseCarbonAdmissionView(current), "gemini_enterprise": h.enterpriseAccountSummary(updated)})
+		c.JSON(200, gin.H{"status": "ok", strings.ToLower(model.Label) + "_admission_supported": true, strings.ToLower(model.Label) + "_admission": h.authManager.EnterpriseModelAdmissionView(current, model), "gemini_enterprise": h.enterpriseAccountSummary(updated)})
 		return
 	}
-	if req.CarbonTestID != "" || containsCarbonManagedFields(req.Fields) {
+	if req.CarbonTestID != "" || req.HydrogenTestID != "" || containsCarbonManagedFields(req.Fields) {
 		enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Carbon verification evidence is server-owned; use the dedicated application switch")
 		return
 	}

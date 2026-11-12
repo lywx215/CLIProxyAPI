@@ -52,6 +52,7 @@ type Auth struct {
 	enterpriseQuota            *enterpriseQuotaGate
 	antigravityEnterpriseQuota *antigravityEnterpriseGate
 	enterpriseCarbonWindow     uint64
+	enterpriseHydrogenWindow   uint64
 	// ID uniquely identifies the auth record across restarts.
 	ID string `json:"id"`
 	// RegistrationEpoch tracks monotonic registration cycles across unregister/re-register.

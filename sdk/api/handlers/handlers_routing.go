@@ -213,7 +213,7 @@ func (h *BaseAPIHandler) getRequestDetailsWithOptions(modelName string, allowIma
 	}
 	// Closed Carbon applications remain addressable for an explicit 503 after
 	// the manager's existing media-to-Web routing. They never fall across providers.
-	if h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseCarbonRoute(baseModel) {
+	if h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseHydrogenRoute(baseModel) {
 		return []string{"gemini-enterprise"}, resolvedModelName, nil
 	}
 

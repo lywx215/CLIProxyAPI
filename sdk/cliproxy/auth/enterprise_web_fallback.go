@@ -91,7 +91,7 @@ func (m *Manager) startEnterpriseMediaFallback(ctx context.Context, providers []
 		return ctx, nil, err
 	}
 	model := authSelectionModelFromOptions(*opts, req.Model)
-	if !containsEnterpriseProvider(providers) && !m.EnterpriseCarbonRoute(req.Model) &&
+	if !containsEnterpriseProvider(providers) && !m.EnterpriseHydrogenRoute(req.Model) &&
 		!containsEnterpriseProvider(registry.GetGlobalRegistry().GetModelProviders(canonicalModelKey(model))) {
 		message := "Ordinary Gemini Enterprise has no matching model for media fallback"
 		if fallback, _ := web.MediaFallbackFrom(ctx); fallback.Reason == web.FallbackNoCredential {
@@ -127,7 +127,7 @@ func (m *Manager) lateEnterpriseMediaFallback(ctx context.Context, providers []s
 	if err != nil {
 		return ctx, nil, true, err
 	}
-	selected, err = m.routeEnterpriseCarbon(ctx, selected, req.Model)
+	selected, err = m.routeEnterpriseHydrogen(ctx, selected, req.Model)
 	if err == nil {
 		*req, *opts = session.Enrich(*req, *opts)
 	}

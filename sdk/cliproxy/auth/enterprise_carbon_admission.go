@@ -14,6 +14,7 @@ type enterpriseCarbonModelTestKey struct{}
 type enterpriseCarbonModelTest struct {
 	authID   string
 	expected ge.ResourceBinding
+	model    ge.AdmissionModel
 }
 
 // reconcileEnterpriseCarbonAdmissionWindow preserves a request's admission
@@ -23,26 +24,32 @@ func reconcileEnterpriseCarbonAdmissionWindow(previous, next *Auth) {
 	if next == nil || next.Provider != ge.Provider || IsEnterpriseAccountAuth(next) {
 		return
 	}
-	window := uint64(1)
-	if previous != nil && previous.Provider == ge.Provider {
-		window = max(previous.enterpriseCarbonWindow, window)
-		oldEnabled, oldExplicit := previous.Metadata[ge.CarbonEnabledKey].(bool)
-		newEnabled, newExplicit := next.Metadata[ge.CarbonEnabledKey].(bool)
-		if oldEnabled != newEnabled || oldExplicit != newExplicit || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
-			window++
+	for _, model := range ge.AdmissionModels() {
+		window := uint64(1)
+		if previous != nil && previous.Provider == ge.Provider {
+			window = max(enterpriseAdmissionWindow(previous, model), window)
+			oldEnabled, oldExplicit := previous.Metadata[model.EnabledKey].(bool)
+			newEnabled, newExplicit := next.Metadata[model.EnabledKey].(bool)
+			if oldEnabled != newEnabled || oldExplicit != newExplicit || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
+				window++
+			}
+		}
+		if model.ID == ge.HydrogenModel {
+			next.enterpriseHydrogenWindow = window
+		} else {
+			next.enterpriseCarbonWindow = window
 		}
 	}
-	next.enterpriseCarbonWindow = window
 }
 
-// WithEnterpriseCarbonModelTest is created only by the authenticated management
+// WithEnterpriseAdmissionTest is created only by the authenticated management
 // test handler. It does not register a public model or bypass paid/user policy.
-func WithEnterpriseCarbonModelTest(ctx context.Context, authID string, expected ge.ResourceBinding) context.Context {
+func WithEnterpriseAdmissionTest(ctx context.Context, authID string, expected ge.ResourceBinding, model ge.AdmissionModel) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx = WithEnterpriseModelProbe(ctx, authID, expected, ge.CarbonModel)
-	return context.WithValue(ctx, enterpriseCarbonModelTestKey{}, &enterpriseCarbonModelTest{authID: authID, expected: expected})
+	ctx = WithEnterpriseModelProbe(ctx, authID, expected, model.ID)
+	return context.WithValue(ctx, enterpriseCarbonModelTestKey{}, &enterpriseCarbonModelTest{authID: authID, expected: expected, model: model})
 }
 
 func enterpriseCarbonTestScope(ctx context.Context) *enterpriseCarbonModelTest {
@@ -63,60 +70,62 @@ func EnterpriseCarbonModelTestActive(ctx context.Context) bool {
 func enterpriseCarbonTestMatches(ctx context.Context, auth *Auth, model string) bool {
 	scope := enterpriseCarbonTestScope(ctx)
 	return scope != nil && auth != nil && auth.Provider == ge.Provider && auth.ID == scope.authID &&
-		(model == "" || canonicalModelKey(model) == ge.CarbonModel) &&
+		(model == "" || canonicalModelKey(model) == scope.model.ID) &&
 		ge.Resources(ge.FromMetadata(auth.Metadata)) == scope.expected
 }
 
-// EnterpriseCarbonTestEligibility evaluates only conditions a management probe
+// EnterpriseAdmissionTestEligibility evaluates only conditions a management probe
 // cannot bypass. It is safe under Manager.mu and performs no network I/O.
-func (m *Manager) EnterpriseCarbonTestEligibility(auth *Auth) error {
-	if err := m.enterpriseCarbonEligibility(auth, m.EnterpriseSubscriptionSnapshot(auth)); err != nil {
+func (m *Manager) EnterpriseAdmissionTestEligibility(auth *Auth, model ge.AdmissionModel) error {
+	if err := m.enterpriseAdmissionEligibility(auth, m.EnterpriseSubscriptionSnapshot(auth), model); err != nil {
 		return err
 	}
 	if ge.CarbonAuthorizationFingerprint(auth.Metadata) == "" {
-		return carbonPolicyError("authorization_unverified", "A stable OAuth refresh authorization is required to record a Carbon model test", http.StatusServiceUnavailable)
+		return carbonPolicyError("authorization_unverified", strings.ReplaceAll("A stable OAuth refresh authorization is required to record a Carbon model test", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
 	return nil
 }
 
-func (m *Manager) enterpriseCarbonEligibility(auth *Auth, subscription ge.SubscriptionObservation) error {
+func (m *Manager) enterpriseAdmissionEligibility(auth *Auth, subscription ge.SubscriptionObservation, model ge.AdmissionModel) error {
 	if auth == nil || auth.Provider != ge.Provider || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
-		return carbonPolicyError("credential_not_found", "Select a Gemini Enterprise application before testing Carbon", http.StatusServiceUnavailable)
+		return carbonPolicyError("credential_not_found", strings.ReplaceAll("Select a Gemini Enterprise application before testing Carbon", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
 	if auth.Disabled || auth.Status == StatusDisabled {
-		return carbonPolicyError("credential_disabled", "Enable this credential and application before using Carbon", http.StatusServiceUnavailable)
+		return carbonPolicyError("credential_disabled", strings.ReplaceAll("Enable this credential and application before using Carbon", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
 	if ge.FromMetadata(auth.Metadata).Validate() != nil {
 		return carbonPolicyError("invalid_application_binding", "The Enterprise application binding is not valid", http.StatusConflict)
 	}
 	if (subscription.Status != "ok" && subscription.Status != "stale") || subscription.FreeTrial == nil {
-		return carbonPolicyError("subscription_unverified", "Carbon requires the current user's verified and assigned Enterprise subscription", http.StatusServiceUnavailable)
+		return carbonPolicyError("subscription_unverified", strings.ReplaceAll("Carbon requires the current user's verified and assigned Enterprise subscription", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
 	policy := ge.ModelPolicyFor(auth.Metadata, subscription)
 	if policy.Reason == "invalid_model_policy" {
 		return carbonPolicyError("invalid_model_policy", "The saved Enterprise model policy is not valid", http.StatusBadRequest)
 	}
-	if policy.EffectiveMode == "custom" && policy.AllowedModels != nil && !slices.Contains(policy.AllowedModels, ge.CarbonModel) {
-		return carbonPolicyError("model_not_allowed", "The application's custom whitelist does not allow Carbon", http.StatusBadRequest)
+	if policy.EffectiveMode == "custom" && policy.AllowedModels != nil && !slices.Contains(policy.AllowedModels, model.ID) {
+		return carbonPolicyError("model_not_allowed", strings.ReplaceAll("The application's custom whitelist does not allow Carbon", "Carbon", model.Label), http.StatusBadRequest)
 	}
-	// Argon templates do not imply Carbon permission or exclusion. Only explicit
-	// credential/provider patterns and a custom whitelist constrain this model.
+	// Hydrogen uses independent admission; Carbon follows the shared group policy.
+	if model.ID == ge.CarbonModel && !policy.Allows(model.ID) {
+		return policyError(policy, model.ID)
+	}
 	for _, pattern := range policy.ExcludedModels {
-		if ge.MatchModelPattern(pattern, ge.CarbonModel) {
-			return carbonPolicyError("model_excluded", "Carbon is explicitly excluded for this application", http.StatusBadRequest)
+		if ge.MatchModelPattern(pattern, model.ID) {
+			return carbonPolicyError("model_excluded", strings.ReplaceAll("Carbon is explicitly excluded for this application", "Carbon", model.Label), http.StatusBadRequest)
 		}
 	}
 	if raw, ok := auth.Attributes["excluded_models"]; ok {
 		for _, pattern := range strings.Split(raw, ",") {
-			if ge.MatchModelPattern(pattern, ge.CarbonModel) {
-				return carbonPolicyError("model_excluded", "Carbon is explicitly excluded for this credential", http.StatusBadRequest)
+			if ge.MatchModelPattern(pattern, model.ID) {
+				return carbonPolicyError("model_excluded", strings.ReplaceAll("Carbon is explicitly excluded for this credential", "Carbon", model.Label), http.StatusBadRequest)
 			}
 		}
 	}
 	if cfg := m.runtimeConfigSnapshot(); cfg != nil {
 		for _, pattern := range cfg.OAuthExcludedModels[ge.Provider] {
-			if ge.MatchModelPattern(pattern, ge.CarbonModel) {
-				return carbonPolicyError("model_excluded", "Carbon is explicitly excluded for Gemini Enterprise", http.StatusBadRequest)
+			if ge.MatchModelPattern(pattern, model.ID) {
+				return carbonPolicyError("model_excluded", strings.ReplaceAll("Carbon is explicitly excluded for Gemini Enterprise", "Carbon", model.Label), http.StatusBadRequest)
 			}
 		}
 	}
@@ -134,7 +143,7 @@ func EnterpriseCarbonUnavailableError() error {
 
 // EnterpriseCarbonRoute recognizes the actual OAuth model behind shared aliases
 // and credential prefixes without scanning credentials on ordinary text routes.
-func (m *Manager) EnterpriseCarbonRoute(model string) bool {
+func (m *Manager) enterpriseAdmissionRoute(model string, target string) bool {
 	if m == nil {
 		return false
 	}
@@ -142,10 +151,10 @@ func (m *Manager) EnterpriseCarbonRoute(model string) bool {
 	lookup := func(name string) (bool, bool) {
 		if table, ok := m.oauthModelAlias.Load().(*oauthModelAliasTable); ok && table != nil {
 			if entry, found := table.reverse[ge.Provider][strings.ToLower(name)]; found {
-				return canonicalModelKey(entry.upstreamModel) == ge.CarbonModel, true
+				return canonicalModelKey(entry.upstreamModel) == target, true
 			}
 		}
-		return name == ge.CarbonModel, false
+		return name == target, false
 	}
 	if carbon, mapped := lookup(base); carbon || mapped {
 		return carbon
@@ -160,15 +169,15 @@ func (m *Manager) EnterpriseCarbonRoute(model string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, auth := range m.auths {
-		if auth.Provider == ge.Provider && !IsEnterpriseAccountAuth(auth) && auth.Prefix != "" && strings.HasPrefix(base, auth.Prefix+"/") && canonicalModelKey(m.selectionModelForAuth(auth, base)) == ge.CarbonModel {
+		if auth.Provider == ge.Provider && !IsEnterpriseAccountAuth(auth) && auth.Prefix != "" && strings.HasPrefix(base, auth.Prefix+"/") && canonicalModelKey(m.selectionModelForAuth(auth, base)) == target {
 			return true
 		}
 	}
 	return false
 }
 
-func (m *Manager) routeEnterpriseCarbon(ctx context.Context, providers []string, model string) ([]string, error) {
-	if m.HomeEnabled() || !m.EnterpriseCarbonRoute(model) {
+func (m *Manager) routeEnterpriseHydrogen(ctx context.Context, providers []string, model string) ([]string, error) {
+	if m.HomeEnabled() || !m.EnterpriseHydrogenRoute(model) {
 		return providers, nil
 	}
 	if EnterpriseCarbonModelTestActive(ctx) {
@@ -177,43 +186,43 @@ func (m *Manager) routeEnterpriseCarbon(ctx context.Context, providers []string,
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, auth := range m.auths {
-		if auth != nil && auth.Provider == ge.Provider && !IsEnterpriseAccountAuth(auth) && canonicalModelKey(m.selectionModelForAuth(auth, model)) == ge.CarbonModel && m.EnterpriseCarbonAdmissionView(auth).Available {
+		if auth != nil && auth.Provider == ge.Provider && !IsEnterpriseAccountAuth(auth) && canonicalModelKey(m.selectionModelForAuth(auth, model)) == ge.HydrogenModel && m.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel).Available {
 			return []string{ge.Provider}, nil
 		}
 	}
-	return nil, EnterpriseCarbonUnavailableError()
+	return nil, EnterpriseHydrogenUnavailableError()
 }
 
-// EnterpriseCarbonAdmissionView is read-only and never acquires Manager.mu. It
+// EnterpriseModelAdmissionView is read-only and never acquires Manager.mu. It
 // can be evaluated from the existing selection and account transaction locks.
-func (m *Manager) EnterpriseCarbonAdmissionView(auth *Auth) ge.CarbonAdmission {
+func (m *Manager) EnterpriseModelAdmissionView(auth *Auth, model ge.AdmissionModel) ge.CarbonAdmission {
 	if m == nil {
 		return ge.CarbonAdmission{Reason: "credential_not_found"}
 	}
-	return m.enterpriseCarbonAdmissionView(auth, m.EnterpriseSubscriptionSnapshot(auth))
+	return m.enterpriseAdmissionView(auth, m.EnterpriseSubscriptionSnapshot(auth), model)
 }
 
-func (m *Manager) enterpriseCarbonAdmissionView(auth *Auth, subscription ge.SubscriptionObservation) ge.CarbonAdmission {
+func (m *Manager) enterpriseAdmissionView(auth *Auth, subscription ge.SubscriptionObservation, model ge.AdmissionModel) ge.CarbonAdmission {
 	out := ge.CarbonAdmission{}
 	if auth == nil {
 		out.Reason = "credential_not_found"
 		return out
 	}
-	enabled, err := ge.ReadCarbonEnabled(auth.Metadata)
+	enabled, err := model.ReadEnabled(auth.Metadata)
 	if err != nil {
-		out.Reason = "invalid_carbon_settings"
+		out.Reason = "invalid_" + strings.ToLower(model.Label) + "_settings"
 		return out
 	}
-	if _, configured := auth.Metadata[ge.CarbonEnabledKey]; !configured {
+	if _, configured := auth.Metadata[model.EnabledKey]; !configured && model.ID == ge.CarbonModel {
 		enabled = (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil && !*subscription.FreeTrial
 	}
 	out.Enabled = enabled
 	// Historical diagnostics never determine business admission. In particular,
 	// changing payload rules or a failed test must not revoke a manual opening.
-	if settings, errRead := ge.ReadCarbonSettings(auth.Metadata); errRead == nil && settings.Evidence != nil {
+	if settings, errRead := model.ReadSettings(auth.Metadata); errRead == nil && settings.Evidence != nil {
 		out.Test = settings.Evidence.Summary()
 	}
-	if err = m.enterpriseCarbonEligibility(auth, subscription); err != nil {
+	if err = m.enterpriseAdmissionEligibility(auth, subscription, model); err != nil {
 		var policy *EnterpriseModelPolicyError
 		if errors.As(err, &policy) {
 			out.Reason = policy.Code
@@ -223,56 +232,107 @@ func (m *Manager) enterpriseCarbonAdmissionView(auth *Auth, subscription ge.Subs
 	out.CanTest = ge.CarbonAuthorizationFingerprint(auth.Metadata) != ""
 	out.CanEnable = true
 	if !enabled {
-		out.Reason = "carbon_disabled"
+		out.Reason = strings.ToLower(model.Label) + "_disabled"
 		return out
 	}
 	out.Available = true
 	return out
 }
 
-func (m *Manager) validateEnterpriseCarbonPolicy(ctx context.Context, auth *Auth) error {
-	if enterpriseCarbonTestMatches(ctx, auth, ge.CarbonModel) {
-		return m.EnterpriseCarbonTestEligibility(auth)
+func (m *Manager) validateEnterpriseAdmissionPolicy(ctx context.Context, auth *Auth, model ge.AdmissionModel) error {
+	if enterpriseCarbonTestMatches(ctx, auth, model.ID) {
+		return m.EnterpriseAdmissionTestEligibility(auth, model)
 	}
-	view := m.EnterpriseCarbonAdmissionView(auth)
+	view := m.EnterpriseModelAdmissionView(auth, model)
 	if view.Available {
 		return nil
 	}
-	if err := m.EnterpriseCarbonTestEligibility(auth); err != nil {
+	if err := m.EnterpriseAdmissionTestEligibility(auth, model); err != nil {
 		return err
 	}
-	return carbonPolicyError("carbon_unavailable", "Carbon is unavailable for this application: "+view.Reason, http.StatusServiceUnavailable)
+	return carbonPolicyError(strings.ToLower(model.Label)+"_unavailable", strings.ReplaceAll("Carbon is unavailable for this application: ", "Carbon", model.Label)+view.Reason, http.StatusServiceUnavailable)
 }
 
-// CommitEnterpriseCarbonSubmission is the linearization point immediately before
+// CommitEnterpriseAdmissionSubmission is the linearization point immediately before
 // one upstream send. Closing or rebinding an application takes Manager.mu for a
 // write and therefore either precedes this decision or follows an already
 // committed send. No manager lock is held across network I/O, and existing quota
 // and concurrency leases retain their normal lifetime.
-func CommitEnterpriseCarbonSubmission(ctx context.Context, auth *Auth, model string) error {
-	if canonicalModelKey(model) != ge.CarbonModel {
+func CommitEnterpriseAdmissionSubmission(ctx context.Context, auth *Auth, requested string, model ge.AdmissionModel) error {
+	if canonicalModelKey(requested) != model.ID {
 		return nil
 	}
 	if ctx != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if auth == nil || auth.enterpriseQuota == nil || auth.enterpriseQuota.manager == nil {
-		return carbonPolicyError("subscription_unverified", "Carbon requires a current managed Enterprise application", http.StatusServiceUnavailable)
+		return carbonPolicyError("subscription_unverified", strings.ReplaceAll("Carbon requires a current managed Enterprise application", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
 	m := auth.enterpriseQuota.manager
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	current := m.auths[auth.ID]
-	if current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || current.enterpriseCarbonWindow != auth.enterpriseCarbonWindow ||
+	if current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || enterpriseAdmissionWindow(current, model) != enterpriseAdmissionWindow(auth, model) ||
 		ge.CarbonAuthorizationFingerprint(current.Metadata) != ge.CarbonAuthorizationFingerprint(auth.Metadata) ||
 		ge.Resources(ge.FromMetadata(current.Metadata)) != ge.Resources(ge.FromMetadata(auth.Metadata)) {
-		return carbonPolicyError("credential_changed", "The Carbon application changed before generation submission", http.StatusConflict)
+		return carbonPolicyError("credential_changed", strings.ReplaceAll("The Carbon application changed before generation submission", "Carbon", model.Label), http.StatusConflict)
 	}
-	if err := m.validateEnterpriseCarbonPolicy(ctx, current); err != nil {
+	if err := m.validateEnterpriseAdmissionPolicy(ctx, current, model); err != nil {
 		return err
 	}
-	if scope := enterpriseCarbonTestScope(ctx); scope != nil && !enterpriseCarbonTestMatches(ctx, current, ge.CarbonModel) {
-		return carbonPolicyError("credential_changed", "The Carbon test application changed before generation submission", http.StatusConflict)
+	if scope := enterpriseCarbonTestScope(ctx); scope != nil && !enterpriseCarbonTestMatches(ctx, current, model.ID) {
+		return carbonPolicyError("credential_changed", strings.ReplaceAll("The Carbon test application changed before generation submission", "Carbon", model.Label), http.StatusConflict)
 	}
 	return nil
+}
+
+func enterpriseAdmissionWindow(auth *Auth, model ge.AdmissionModel) uint64 {
+	if model.ID == ge.HydrogenModel {
+		return auth.enterpriseHydrogenWindow
+	}
+	return auth.enterpriseCarbonWindow
+}
+
+func WithEnterpriseCarbonModelTest(ctx context.Context, authID string, expected ge.ResourceBinding) context.Context {
+	return WithEnterpriseAdmissionTest(ctx, authID, expected, ge.CarbonAdmissionModel)
+}
+func (m *Manager) EnterpriseCarbonTestEligibility(auth *Auth) error {
+	return m.EnterpriseAdmissionTestEligibility(auth, ge.CarbonAdmissionModel)
+}
+func (m *Manager) enterpriseCarbonEligibility(auth *Auth, subscription ge.SubscriptionObservation) error {
+	return m.enterpriseAdmissionEligibility(auth, subscription, ge.CarbonAdmissionModel)
+}
+func (m *Manager) EnterpriseCarbonRoute(model string) bool {
+	return m.enterpriseAdmissionRoute(model, ge.CarbonModel)
+}
+func (m *Manager) EnterpriseHydrogenRoute(model string) bool {
+	return m.enterpriseAdmissionRoute(model, ge.HydrogenModel)
+}
+func EnterpriseHydrogenUnavailableError() error {
+	return carbonPolicyError("hydrogen_unavailable", "No enabled and eligible Enterprise application is available for gemini-4-hydrogen", http.StatusServiceUnavailable)
+}
+func (m *Manager) EnterpriseCarbonAdmissionView(auth *Auth) ge.CarbonAdmission {
+	return m.EnterpriseModelAdmissionView(auth, ge.CarbonAdmissionModel)
+}
+func (m *Manager) enterpriseCarbonAdmissionView(auth *Auth, subscription ge.SubscriptionObservation) ge.CarbonAdmission {
+	return m.enterpriseAdmissionView(auth, subscription, ge.CarbonAdmissionModel)
+}
+func (m *Manager) validateEnterpriseCarbonPolicy(ctx context.Context, auth *Auth) error {
+	return m.validateEnterpriseAdmissionPolicy(ctx, auth, ge.CarbonAdmissionModel)
+}
+func CommitEnterpriseCarbonSubmission(ctx context.Context, auth *Auth, model string) error {
+	return CommitEnterpriseAdmissionSubmission(ctx, auth, model, ge.CarbonAdmissionModel)
+}
+
+func WithEnterpriseHydrogenModelTest(ctx context.Context, authID string, expected ge.ResourceBinding) context.Context {
+	return WithEnterpriseAdmissionTest(ctx, authID, expected, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) EnterpriseHydrogenAdmissionView(auth *Auth) ge.CarbonAdmission {
+	return m.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel)
+}
+func (m *Manager) EnterpriseHydrogenTestEligibility(auth *Auth) error {
+	return m.EnterpriseAdmissionTestEligibility(auth, ge.HydrogenAdmissionModel)
+}
+func CommitEnterpriseHydrogenSubmission(ctx context.Context, auth *Auth, model string) error {
+	return CommitEnterpriseAdmissionSubmission(ctx, auth, model, ge.HydrogenAdmissionModel)
 }

@@ -21,7 +21,7 @@ func TestEnterpriseCatalogFallbackSettingsAndDefaults(t *testing.T) {
 		first   string
 	}{
 		{"enterprise_plus", &trial, "ok", 6, "gemini-3.8-flash"}, {"enterprise_standard", &trial, "stale", 6, "gemini-3.8-flash"},
-		{"business_standard", &trial, "ok", 1, ArgonModel}, {"enterprise_plus", &paid, "ok", 1, ArgonModel}, {"business_standard", &paid, "stale", 1, ArgonModel},
+		{"business_standard", &trial, "ok", 2, ArgonModel}, {"enterprise_plus", &paid, "ok", 2, ArgonModel}, {"business_standard", &paid, "stale", 2, ArgonModel},
 		{"enterprise_plus", nil, "unknown", 0, ""}, {"enterprise_plus", &trial, "expired", 0, ""},
 	} {
 		models, _ := FallbackCatalog(CatalogFallback{Mode: "default"}, SubscriptionObservation{Edition: tc.edition, FreeTrial: tc.trial, Status: tc.status}, false)
@@ -60,7 +60,7 @@ func TestAllModelsFallbackUsesTheSameCatalogAcrossEditions(t *testing.T) {
 		{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid},
 	} {
 		models, source := FallbackCatalog(CatalogFallback{Mode: "default"}, observation, true)
-		if source != "default" || len(models) != 7 || models[0].ID != "gemini-3.8-flash" || models[6].ID != ArgonModel {
+		if source != "default" || len(models) != 8 || models[0].ID != "gemini-3.8-flash" || models[6].ID != ArgonModel {
 			t.Fatalf("fallback depended on the subscription edition: %+v", models)
 		}
 	}

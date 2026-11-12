@@ -249,15 +249,17 @@ type EnterprisePolicyModel struct {
 
 type EnterpriseModelPolicyView struct {
 	ge.ModelPolicy
-	CarbonAdmissionSupported bool                       `json:"carbon_admission_supported"`
-	CarbonAdmission          ge.CarbonAdmission         `json:"carbon_admission"`
-	GlobalExcludedModels     []string                   `json:"global_excluded_models"`
-	Subscription             ge.SubscriptionObservation `json:"subscription"`
-	ImageGenerationDisabled  bool                       `json:"image_generation_disabled"`
-	CatalogState             ge.CatalogState            `json:"catalog_state"`
-	CatalogKnown             bool                       `json:"catalog_known"`
-	CatalogModels            []EnterprisePolicyModel    `json:"catalog_models"`
-	EffectiveModels          []string                   `json:"effective_models"`
+	CarbonAdmissionSupported   bool                       `json:"carbon_admission_supported"`
+	CarbonAdmission            ge.CarbonAdmission         `json:"carbon_admission"`
+	HydrogenAdmissionSupported bool                       `json:"hydrogen_admission_supported"`
+	HydrogenAdmission          ge.CarbonAdmission         `json:"hydrogen_admission"`
+	GlobalExcludedModels       []string                   `json:"global_excluded_models"`
+	Subscription               ge.SubscriptionObservation `json:"subscription"`
+	ImageGenerationDisabled    bool                       `json:"image_generation_disabled"`
+	CatalogState               ge.CatalogState            `json:"catalog_state"`
+	CatalogKnown               bool                       `json:"catalog_known"`
+	CatalogModels              []EnterprisePolicyModel    `json:"catalog_models"`
+	EffectiveModels            []string                   `json:"effective_models"`
 }
 
 func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) {
@@ -300,12 +302,14 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 			policy.ExcludedModels = append(policy.ExcludedModels, pattern)
 		}
 	}
-	var admission ge.CarbonAdmission
+	var admission, hydrogen ge.CarbonAdmission
 	if includeCarbon {
 		admission = m.enterpriseCarbonAdmissionView(auth, subscription)
+		hydrogen = m.enterpriseAdmissionView(auth, subscription, ge.HydrogenAdmissionModel)
 	}
 	policy.CarbonAllowed = admission.Available
-	view := EnterpriseModelPolicyView{ModelPolicy: policy, CarbonAdmissionSupported: includeCarbon, CarbonAdmission: admission, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
+	policy.HydrogenAllowed = hydrogen.Available
+	view := EnterpriseModelPolicyView{ModelPolicy: policy, CarbonAdmissionSupported: includeCarbon, CarbonAdmission: admission, HydrogenAdmissionSupported: includeCarbon, HydrogenAdmission: hydrogen, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
 	c := &m.enterprisePolicies
 	c.mu.Lock()
 	models, known := c.catalogs[enterprisePolicyCatalogKey(auth)]
@@ -331,26 +335,29 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		}
 	}
 	view.CatalogState, view.CatalogKnown = state, known
-	argonSupplement := policy.ArgonForceEnabled && !slices.ContainsFunc(models, func(model ge.Model) bool {
-		return policy.ForcesArgon(model.ID)
-	})
-	if argonSupplement {
-		models = append(models, ge.Model{ID: ge.ArgonModel, DisplayName: ge.ArgonModel})
+	manualModels := map[string]bool{}
+	supplement := func(id string) {
+		if !slices.ContainsFunc(models, func(model ge.Model) bool { return model.ID == id }) {
+			models = append(models, ge.Model{ID: id, DisplayName: id})
+			manualModels[id] = true
+		}
 	}
-	// Manual admission is independent of catalog and diagnostic test history.
-	// Never register the closed Carbon candidate.
-	carbonSupplement := false
-	if admission.Available &&
-		!slices.ContainsFunc(models, func(model ge.Model) bool { return model.ID == ge.CarbonModel }) {
-		models = append(models, ge.Model{ID: ge.CarbonModel, DisplayName: ge.CarbonModel})
-		carbonSupplement = true
+	if policy.ArgonForceEnabled {
+		supplement(ge.ArgonModel)
+		supplement(ge.CarbonModel)
+	}
+	if enabled, err := ge.ReadCarbonEnabled(auth.Metadata); err == nil && enabled {
+		supplement(ge.CarbonModel)
+	}
+	if hydrogen.Available {
+		supplement(ge.HydrogenModel)
 	}
 	view.ImageGenerationDisabled = cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 	for _, model := range models {
 		automatic := strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto")
 		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
-		if model.ID == ge.CarbonModel {
-			allowed = admission.Available
+		if model.ID == ge.HydrogenModel {
+			allowed = hydrogen.Available
 			model.MediaKind = ""
 		} else if policy.ForcesArgon(model.ID) {
 			allowed = true
@@ -362,8 +369,8 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		}
 		reason := ""
 		if !allowed {
-			if model.ID == ge.CarbonModel {
-				reason = admission.Reason
+			if model.ID == ge.HydrogenModel {
+				reason = hydrogen.Reason
 			}
 			if mediaDisabled {
 				reason = "image_generation_disabled"
@@ -379,7 +386,7 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 			}
 		}
 		source := state.Source
-		if carbonSupplement && model.ID == ge.CarbonModel || argonSupplement && model.ID == ge.ArgonModel {
+		if manualModels[model.ID] {
 			source = "manual"
 		}
 		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: source, UpstreamListed: source == "upstream" || source == "cached"})
@@ -396,11 +403,12 @@ func (m *Manager) EnterpriseModelPolicySignature(auth *Auth) string {
 
 func (view EnterpriseModelPolicyView) Signature() string {
 	data, _ := json.Marshal(struct {
-		Policy ge.ModelPolicy
-		Source string
-		Models []EnterprisePolicyModel
-		Carbon ge.CarbonAdmission
-	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels, view.CarbonAdmission})
+		Policy   ge.ModelPolicy
+		Source   string
+		Models   []EnterprisePolicyModel
+		Carbon   ge.CarbonAdmission
+		Hydrogen ge.CarbonAdmission
+	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels, view.CarbonAdmission, view.HydrogenAdmission})
 	return string(data)
 }
 
@@ -435,7 +443,7 @@ func policyError(policy ge.ModelPolicy, model string) error {
 		return &EnterpriseModelPolicyError{"subscription_unverified", "The Enterprise collection is paused until the current user's assigned subscription is verified", 503}
 	}
 	if policy.EnforcedReason == "paid_subscription_restricted" {
-		return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
+		return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, manually enabled gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
 	}
 	return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
 }
@@ -445,8 +453,11 @@ func (m *Manager) validateEnterprisePolicy(auth *Auth, model string, catalog boo
 }
 
 func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *Auth, model string, catalog bool) error {
-	if canonicalModelKey(model) == ge.CarbonModel || model == "" && enterpriseCarbonTestMatches(ctx, auth, model) {
-		return m.validateEnterpriseCarbonPolicy(ctx, auth)
+	if scope := enterpriseCarbonTestScope(ctx); scope != nil && enterpriseCarbonTestMatches(ctx, auth, model) {
+		return m.EnterpriseAdmissionTestEligibility(auth, scope.model)
+	}
+	if canonicalModelKey(model) == ge.HydrogenModel {
+		return m.validateEnterpriseAdmissionPolicy(ctx, auth, ge.HydrogenAdmissionModel)
 	}
 	view := m.enterpriseModelPolicyView(auth, false)
 	// A deferred model is checked again after payload rules resolve its final ID.

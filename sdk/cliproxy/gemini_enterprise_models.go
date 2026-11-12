@@ -205,7 +205,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	expectedEpoch := reg.ClientRegistrationEpoch(auth.ID)
 	d.mu.Unlock()
 	forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
-	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
+	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available || s.coreManager.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel).Available {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while

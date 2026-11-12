@@ -280,7 +280,7 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		}
 		// A failed Carbon round trip cannot prove that Google did not accept
 		// the generation. Keep an uncertain submission out of credential retry.
-		return nil, input, &ge.TransportError{Cause: err, Started: kind != "" || finalModel == ge.CarbonModel}
+		return nil, input, &ge.TransportError{Cause: err, Started: kind != "" || (finalModel == ge.CarbonModel || finalModel == ge.HydrogenModel)}
 	}
 	helps.ObserveEnterpriseResponse(ctx, response)
 	helps.RecordAPIResponseMetadata(ctx, e.cfg, response.StatusCode, nil)
@@ -291,12 +291,12 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 			return nil, input, ctx.Err()
 		}
 		if errRead != nil {
-			return nil, input, &ge.TransportError{Cause: errRead, Started: finalModel == ge.CarbonModel}
+			return nil, input, &ge.TransportError{Cause: errRead, Started: (finalModel == ge.CarbonModel || finalModel == ge.HydrogenModel)}
 		}
 		if len(raw) > 64*1024 {
 			raw = nil
 		}
-		uncertain := finalModel == ge.CarbonModel && (response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError)
+		uncertain := (finalModel == ge.CarbonModel || finalModel == ge.HydrogenModel) && (response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError)
 		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, uncertain, finalModel)
 	}
 	return response, input, nil
@@ -346,10 +346,10 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 		}
 	}()
 	parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, MediaKind: input.MediaKind, Started: input.MediaKind != "", RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error {
-		return &ge.TransportError{Cause: err, Started: started || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel}
+		return &ge.TransportError{Cause: err, Started: started || (gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.HydrogenModel)}
 	}, Error: func(raw []byte, started bool) error {
 		model := gjson.GetBytes(input.Body, "generationSpec.modelId").String()
-		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || model == ge.CarbonModel, model)
+		return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || (model == ge.CarbonModel || model == ge.HydrogenModel), model)
 	}}
 	if input.MediaKind == "" {
 		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
@@ -489,10 +489,10 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 			}
 		}()
 		parser := &enterprise.Parser{IncludeThoughts: input.IncludeThoughts, RejectedText: func(text string) { rejectedParts = append(rejectedParts, map[string]any{"text": text}) }, ReadError: func(err error, started bool) error {
-			return &ge.TransportError{Cause: err, Started: started || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel}
+			return &ge.TransportError{Cause: err, Started: started || (gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.CarbonModel || gjson.GetBytes(input.Body, "generationSpec.modelId").String() == ge.HydrogenModel)}
 		}, Error: func(raw []byte, started bool) error {
 			model := gjson.GetBytes(input.Body, "generationSpec.modelId").String()
-			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || model == ge.CarbonModel, model)
+			return helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, started || (model == ge.CarbonModel || model == ge.HydrogenModel), model)
 		}}
 		parser.Usage, parser.Thought = counter.ObserveUsage, counter.ObserveThought
 		streamErr = parser.Parse(response.Body, func(event enterprise.Event) error {
