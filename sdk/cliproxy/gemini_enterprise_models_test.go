@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -299,6 +300,51 @@ func TestEnterpriseCatalogPreservesCooldownAndFencesRevision(t *testing.T) {
 	current, _ = svc.coreManager.GetByID(auth.ID)
 	if current.ModelStates[model] == nil || !current.ModelStates[model].NextRetryAfter.Equal(retry) || !registry.GetGlobalRegistry().IsModelQuotaExceededForClient(auth.ID, model) {
 		t.Fatal("catalog replacement cleared existing quota/cooldown state")
+	}
+}
+
+func TestEnterpriseCatalogDiscoverySurvivesOwnPendingLicensePublication(t *testing.T) {
+	svc, auth := enterpriseTestService(t, "enterprise-discovery-publication-epoch")
+	key := svc.enterpriseKey(auth)
+	d := svc.enterpriseState()
+	started, release := make(chan struct{}), make(chan struct{})
+	releaseFetch := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseFetch)
+	models := []ge.Model{{ID: ge.ArgonModel}}
+	var calls atomic.Int32
+	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		return models, nil
+	}
+	svc.queueEnterpriseDiscovery(t.Context(), auth)
+	<-started
+	epoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
+	if !svc.publishEnterpriseCatalog(t.Context(), auth, key, enterpriseCatalog{}, epoch) {
+		t.Fatal("the pending license did not publish its empty model view")
+	}
+	svc.queueEnterpriseDiscovery(t.Context(), auth)
+	publishEnterpriseTrialFixture(t, svc.coreManager, auth)
+	releaseFetch()
+	d.wg.Wait()
+	if calls.Load() != 1 {
+		t.Fatal("the service's own publication started a duplicate catalog request")
+	}
+	if got := GlobalModelRegistry().GetModelsForClient(auth.ID); len(got) != 1 || got[0].ID != ge.ArgonModel {
+		t.Fatalf("the completed discovery was not registered: %v", got)
+	}
+	epoch = GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
+	GlobalModelRegistry().UnregisterClient(auth.ID)
+	next := d.catalogs[key]
+	next.revision++
+	d.catalogs[key] = next
+	if svc.publishEnterpriseCatalog(t.Context(), auth, key, next, epoch) {
+		t.Fatal("an external unregistration did not fence a stale discovery")
+	}
+	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+		t.Fatal("a stale discovery resurrected an externally unregistered client")
 	}
 }
 

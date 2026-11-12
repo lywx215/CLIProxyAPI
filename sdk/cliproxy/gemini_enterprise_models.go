@@ -165,7 +165,18 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 		s.cfgMu.RUnlock()
 		return false
 	}
-	appliedEpoch, updated := registry.GetGlobalRegistry().ReplaceClientModels(auth.ID, ge.Provider, epoch, models)
+	if s.coreManager.EnterpriseModelPolicySignature(latest) != policySignature {
+		d.mu.Unlock()
+		s.cfgMu.RUnlock()
+		return false
+	}
+	reg := registry.GetGlobalRegistry()
+	// A subscription-only publication may advance this service's registry epoch
+	// while discovery is in flight. External replacements must still fence it.
+	if epoch < current.appliedEpoch && reg.ClientRegistrationEpoch(auth.ID) == current.appliedEpoch {
+		epoch = current.appliedEpoch
+	}
+	appliedEpoch, updated := reg.ReplaceClientModels(auth.ID, ge.Provider, epoch, models)
 	if updated {
 		current.appliedEpoch = appliedEpoch
 		current.appliedRevision = catalog.revision
@@ -263,7 +274,13 @@ func (s *Service) queueEnterpriseDiscovery(ctx context.Context, auth *coreauth.A
 		return
 	}
 	if old, ok := d.pending[auth.ID]; ok {
-		if old.signature == signature {
+		catalog := d.catalogs[key]
+		// Reuse a probe when only this service's own publication advanced the
+		// registry epoch. Credential changes and external replacements still cancel it.
+		ownPublication := catalog.appliedEpoch != 0 &&
+			catalog.appliedEpoch == GlobalModelRegistry().ClientRegistrationEpoch(auth.ID) &&
+			strings.HasPrefix(old.signature, failureKey+"/")
+		if old.signature == signature || ownPublication {
 			d.mu.Unlock()
 			return
 		}
@@ -338,7 +355,10 @@ func (s *Service) queueEnterpriseDiscovery(ctx context.Context, auth *coreauth.A
 			return
 		}
 		checkedAt := d.now().UTC()
-		catalog := enterpriseCatalog{models: models, known: true, revision: revision, expires: d.now().Add(enterpriseCatalogTTL), credential: failureKey, state: ge.CatalogState{Source: "upstream", Status: "ok", CheckedAt: &checkedAt, LastSuccessAt: &checkedAt}}
+		catalog := d.catalogs[key]
+		catalog.models, catalog.known, catalog.revision = models, true, revision
+		catalog.expires, catalog.credential = d.now().Add(enterpriseCatalogTTL), failureKey
+		catalog.state = ge.CatalogState{Source: "upstream", Status: "ok", CheckedAt: &checkedAt, LastSuccessAt: &checkedAt}
 		d.catalogs[key] = catalog
 		delete(d.failures, failureKey)
 		s.coreManager.PublishEnterprisePolicyCatalog(auth, models)
