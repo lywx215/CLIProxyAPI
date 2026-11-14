@@ -1,29 +1,49 @@
 # Gemini Enterprise Hydrogen application admission
 
-The OAuth Gemini Enterprise management UI provides Configure Google Hydrogen, Batch test Hydrogen and a separate per-application Hydrogen switch. The normal model list includes Hydrogen after the application is manually enabled and eligible. A closed application's fixed-model test candidate remains visible even when Google returns no Hydrogen catalog entry.
+Gemini Enterprise OAuth applications with a confirmed paid subscription can
+register and use `gemini-4-hydrogen` through the ordinary model path. A valid
+cached paid subscription remains eligible during a temporary subscription
+refresh failure. The application must be enabled and its effective model policy
+and catalog must allow Hydrogen. The paid group includes Argon, Carbon and
+Hydrogen, and trial applications cannot use Hydrogen in any policy mode.
 
-## Configuration and local admission
+A successful Google catalog takes precedence, including an empty catalog. A
+catalog read failure uses available cached results before applying the configured
+fallback. The default paid fallback includes Hydrogen. A custom fallback uses
+the specified model IDs. See [Enterprise model policies](enterprise-model-policy.md).
 
-`POST /v8/management/credentials/gemini-enterprise/hydrogen/configure-google` accepts the same frozen-account and application-revision payload as the retained Carbon endpoint, with batches of at most five imported applications. Snapshot IDs are bound to the target model. Both endpoints share bounded operation coordination and Engine locking.
+## Model tests and legacy clients
 
-The Google operation sets only `Engine.modelConfigs["gemini-4-hydrogen"] = MODEL_ENABLED`. If the Assistant already has an explicit allowed-model list, Hydrogen is appended. Empty or missing lists remain implicit. Other model states and application options are preserved and the resource is reread after writing. An uncertain PATCH is reread without automatic replay.
+`POST /v8/management/credentials/models/test` with `hydrogen_direct: true`
+runs an ordinary fixed-application text test. Request the model ID from
+`GET /v8/management/credentials/models` and include the current credential index,
+application binding, revision and resources. Registered aliases are supported.
+The response includes the canonical `upstream_model`, the current application
+binding and revision, and the standard model test result. Normal usage, quota,
+concurrency and cooldown rules apply, including the check on the final model
+after payload configuration. An application edit or replacement OAuth grant
+invalidates the test.
 
-The local switch is `settings.hydrogen_enabled`. Use the existing v8 collection PATCH with only `fields: {"hydrogen_enabled": true}` and the current binding and revision. Missing values default to false. Imported credentials cannot inject an enabled switch or server-owned proof. Reauthorization by a different principal or resource rebinding resets the affected model state. Carbon metadata is independent.
+Ordinary generation can try another eligible application if the first
+application rejects the model locally. Local policy rejections do not count as
+upstream requests. Raw management generation must specify a single
+unambiguous value for each model selector.
 
-Credential summaries, collections and model snapshots expose `hydrogen_admission_supported` and `hydrogen_admission`. The summary has the existing enablement, eligibility and diagnostic fields, including `verification_required: false`. Account summaries also expose `google_hydrogen_configure_supported`, authorization and registration fences, and enabled/available counts.
+A legacy test request that omits `hydrogen_direct` still uses the diagnostic
+response with `hydrogen_test_id` and `hydrogen_admission`. The diagnostic checks
+the same subscription, catalog and policy before starting. Completing the
+diagnostic requires an independent random code and proof that Google's saved
+session selected Hydrogen. Historical `hydrogen_enabled` and verification
+records remain in credential storage for rollback. Editing the former switch
+returns HTTP 409 with the code `hydrogen_managed_by_policy`.
 
-Manual eligibility uses a current enabled credential, assigned active subscription, explicit custom allowlists and exclusions. Trial status alone does not grant or deny Hydrogen. No historical test is required to open the switch. Business generation retains normal quota, concurrency, cooldown and cancellation behavior. The shared Argon/Carbon force switch does not admit Hydrogen.
+## Explicit Google configuration
 
-## Diagnostic generation
-
-`POST /v8/management/credentials/models/test` accepts `model: "gemini-4-hydrogen"` with the current selected application and resources. A server-created internal scope pins one credential, application and canonical model, allowing a diagnostic while the business switch is closed. Ordinary requests cannot create this scope.
-
-A verified result requires both a complete independent random code and the same Google session's saved `queryConfig["google.discoveryengine.googleapis.com.Assistant.model_id"]` equal to `gemini-4-hydrogen`. HTTP 200 and a matching code without model proof remain incomplete. Payload configuration is evaluated once at the final business-payload boundary, and a changed model fails the fixed-model test.
-
-Results use `hydrogen_test_id` and `hydrogen_admission`. Evidence is stored under `enterprise_hydrogen_evidence` and projected only into its bound application. Model-specific leases prevent overlapping Carbon and Hydrogen tests from overwriting each other. Failures affect diagnostic history independently of the user's switch.
-
-The two-worker batch queue records each submitted application once, continues after ordinary application failures, and stops scheduling on cancellation or invalidated scope. Configuration, tests and manual enablement remain explicit operations.
-
-## Compatibility
-
-Existing Carbon v8 endpoints, settings and evidence formats remain available. The new UI requires Hydrogen capabilities from the backend and shows unsupported controls when connected to an older backend. Carbon follows the shared Argon group behavior on all applications, including applications created before this change.
+`POST /v8/management/credentials/gemini-enterprise/hydrogen/configure-google`
+retains the frozen-account and application-revision request format, with a
+maximum of five imported applications. Existing clients can explicitly enable
+Hydrogen in Google Engine settings and, if configured, append it to the
+Assistant's explicit model list. Empty and missing lists keep their implicit
+defaults. The endpoint rereads the resource after writing and rereads uncertain
+PATCH results without replaying them. Ordinary registration and testing do not
+edit Google Engine settings.

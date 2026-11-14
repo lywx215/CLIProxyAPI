@@ -35,9 +35,7 @@ type ModelPolicy struct {
 	EnforcedReason         string   `json:"enforced_reason"`
 	// CarbonAllowed is retained for source compatibility; Carbon uses the shared policy.
 	CarbonAllowed bool `json:"-"`
-	// Hydrogen admission is derived from the manual switch and credential eligibility.
-	HydrogenAllowed bool `json:"-"`
-	restrictRaw     bool
+	restrictRaw   bool
 }
 
 func ReadArgonForceEnabled(metadata map[string]any) (bool, error) {
@@ -126,6 +124,7 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	}
 	explicitExclusions := len(policy.ExcludedModels)
 	confirmed := (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil
+	paid := confirmed && !*subscription.FreeTrial
 	if mode == "auto" && confirmed {
 		policy.EffectiveMode = "catalog"
 		if subscription.FreeTrial != nil && *subscription.FreeTrial {
@@ -137,11 +136,16 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 			}
 		}
 	}
-	if policy.EffectiveMode == "argon_only" {
-		policy.AllowedModels = []string{ArgonModel, CarbonModel}
-	}
-	if policy.EffectiveMode == "exclude_argon" {
-		policy.ExcludedModels = append(policy.ExcludedModels, ArgonModel, CarbonModel)
+	if policy.EffectiveMode == "argon_only" || policy.EffectiveMode == "exclude_argon" {
+		group := []string{ArgonModel, CarbonModel}
+		if paid {
+			group = append(group, HydrogenModel)
+		}
+		if policy.EffectiveMode == "argon_only" {
+			policy.AllowedModels = group
+		} else {
+			policy.ExcludedModels = append(policy.ExcludedModels, group...)
+		}
 	}
 	if policy.EffectiveMode == "custom" {
 		policy.AllowedModels = allowed
@@ -157,10 +161,12 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	if subscription.Status == "stale" {
 		policy.Status = "stale"
 	}
-	if !*subscription.FreeTrial {
+	if paid {
 		// The paid ceiling comes only from runtime license verification, never saved settings.
 		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, HydrogenModel, "gemini-3-pro-image", "veo-3.1"}
 		policy.EnforcedReason = "paid_subscription_restricted"
+	} else {
+		policy.EnforcedExcludedModels = []string{HydrogenModel}
 	}
 	if allModels {
 		policy.restrictRaw = policy.Restricted()
@@ -173,7 +179,7 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 }
 
 func (p ModelPolicy) Restricted() bool {
-	return p.EnforcedAllowedModels != nil || p.AllowedModels != nil || len(p.ExcludedModels) > 0
+	return p.EnforcedAllowedModels != nil || len(p.EnforcedExcludedModels) > 0 || p.AllowedModels != nil || len(p.ExcludedModels) > 0
 }
 
 // RestrictsRawOperations retains validation of operations outside the model switch's scope.
@@ -195,9 +201,6 @@ func (p ModelPolicy) Allows(model string) bool {
 	model = strings.TrimPrefix(strings.TrimSpace(model), "models/")
 	if model == "" {
 		return false
-	}
-	if model == HydrogenModel {
-		return p.HydrogenAllowed
 	}
 	if slices.Contains(p.EnforcedExcludedModels, model) {
 		return false

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/filelock"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
@@ -58,6 +59,9 @@ type FileTokenStore struct {
 	dirLock sync.RWMutex
 	baseDir string
 }
+
+// SupportsEnterpriseOAuthImport advertises the conditional atomic account save.
+func (s *FileTokenStore) SupportsEnterpriseOAuthImport() bool { return true }
 
 // NewFileTokenStore creates a token store that saves credentials to disk through the
 // TokenStorage implementation embedded in the token record.
@@ -112,6 +116,16 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if cliproxyauth.IsEnterpriseAccountAuth(auth) {
+		if errDirectory := os.MkdirAll(filepath.Dir(path), 0700); errDirectory != nil {
+			return "", errDirectory
+		}
+		_, release, errLock := filelock.Try(path + ".write-lock")
+		if errLock != nil {
+			return "", fmt.Errorf("auth filestore: enterprise account is being persisted by another process")
+		}
+		defer release()
+	}
 	if expected, hasExpected := cliproxyauth.EnterpriseAccountStoreRevision(ctx); hasExpected && cliproxyauth.IsEnterpriseAccountAuth(auth) && !cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
 		if data, errRead := os.ReadFile(path); errRead == nil {
 			var metadata map[string]any
@@ -132,20 +146,26 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 			if json.Unmarshal(data, &currentMetadata) != nil {
 				return "", fmt.Errorf("auth filestore: existing enterprise account is invalid")
 			}
+			current := auth.Clone()
+			current.Metadata = currentMetadata
+			current.Disabled, _ = currentMetadata["disabled"].(bool)
+			if errImport := cliproxyauth.CheckEnterpriseOAuthImport(ctx, current); errImport != nil {
+				return "", errImport
+			}
 			if graph, errAccount := ge.ReadAccount(currentMetadata); errAccount != nil {
 				return "", errAccount
 			} else if graph != nil {
-				current := auth.Clone()
-				current.Metadata = currentMetadata
-				current.Disabled, _ = currentMetadata["disabled"].(bool)
 				rebased, errRebase := cliproxyauth.RebaseEnterpriseAuthorization(current, auth)
 				if errRebase != nil {
 					return "", errRebase
 				}
 				*auth = *rebased
+				cliproxyauth.ApplyEnterpriseOAuthImport(ctx, auth)
 			}
 		} else if !os.IsNotExist(errRead) {
 			return "", fmt.Errorf("auth filestore: read enterprise account for authorization failed: %w", errRead)
+		} else if errImport := cliproxyauth.CheckEnterpriseOAuthImport(ctx, nil); errImport != nil {
+			return "", errImport
 		}
 	}
 

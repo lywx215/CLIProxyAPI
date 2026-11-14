@@ -224,6 +224,71 @@ func ValidateFinal(body []byte) error {
 	return nil
 }
 
+// RawAssistModels reads the model selectors without rewriting a raw management
+// request. Protobuf JSON spellings must identify a single value for each field.
+func RawAssistModels(body []byte) ([]string, error) {
+	object, err := decodeRequestObject(body, false)
+	if err != nil {
+		return nil, err
+	}
+	generation, err := rawAssistObject(object, "generationSpec", "generation_spec")
+	if err != nil {
+		return nil, err
+	}
+	modelID, err := rawAssistField(generation, "modelId", "model_id")
+	if err != nil {
+		return nil, err
+	}
+	var models []string
+	if modelID != nil {
+		model, ok := modelID.(string)
+		if !ok || strings.TrimSpace(model) == "" {
+			return nil, Invalid("the upstream model must be a nonempty string")
+		}
+		models = append(models, model)
+	}
+	tools, err := rawAssistObject(object, "toolsSpec", "tools_spec")
+	if err != nil {
+		return nil, err
+	}
+	for _, tool := range []struct{ camel, snake, model string }{
+		{"imageGenerationSpec", "image_generation_spec", "gemini-3-pro-image"},
+		{"videoGenerationSpec", "video_generation_spec", "veo-3.1"},
+	} {
+		spec, errTool := rawAssistObject(tools, tool.camel, tool.snake)
+		if errTool != nil {
+			return nil, errTool
+		}
+		if spec != nil {
+			models = append(models, tool.model)
+		}
+	}
+	return models, nil
+}
+
+func rawAssistField(object map[string]any, camel, snake string) (any, error) {
+	value, present := object[camel]
+	if alternative, exists := object[snake]; exists {
+		if present {
+			return nil, Invalid("use one JSON spelling for each generation field")
+		}
+		return alternative, nil
+	}
+	return value, nil
+}
+
+func rawAssistObject(object map[string]any, camel, snake string) (map[string]any, error) {
+	value, err := rawAssistField(object, camel, snake)
+	if err != nil || value == nil {
+		return nil, err
+	}
+	fields, ok := value.(map[string]any)
+	if !ok {
+		return nil, Invalid("generation settings must be JSON objects")
+	}
+	return fields, nil
+}
+
 // UpstreamHTTPError classifies a bounded Google error body without echoing its values.
 func UpstreamHTTPError(status int, raw []byte) error {
 	code, message := "upstream_error", fmt.Sprintf("The upstream service returned HTTP %d; retry later or contact the server administrator.", status)
@@ -250,12 +315,21 @@ func UpstreamHTTPError(status int, raw []byte) error {
 		if param == "" && strings.Contains(lower, "model") && (strings.Contains(lower, "permission") || strings.Contains(lower, "not allowed") || strings.Contains(lower, "not authorized") || strings.Contains(lower, "not have access")) {
 			code, message, param = "model_access_denied", "The account cannot access the requested model; check the account's model permissions.", "model"
 		}
+		if param == "" && diagnostic != nil && diagnostic.Status == "FAILED_PRECONDITION" && strings.Contains(lower, "model") && strings.Contains(lower, "not available during the free trial") && strings.Contains(lower, "paid subscription") {
+			code, message, param = "model_subscription_required", "The requested model is unavailable with the account's current subscription; use an eligible subscription or select another model.", "model"
+		}
 	case 401:
 		code, message = "upstream_authentication_required", "The upstream service rejected the authorization; refresh or authorize the account again."
 	case 403:
 		code, message = "permission_denied", "Access to the requested resource or model was denied; check the account's resource and model permissions."
+		if diagnostic != nil && diagnostic.Reason == "SERVICE_DISABLED" {
+			code, message = "upstream_service_disabled", "A required upstream API service is disabled; ask its administrator to check API enablement."
+		}
 	case 404:
 		code, message = "resource_not_found", "The requested resource or model is unavailable; check the saved resource settings and model availability."
+		if diagnostic != nil && diagnostic.Status == "NOT_FOUND" && strings.Contains(strings.ToLower(body.Message), "method not found") {
+			code, message = "upstream_method_unavailable", "The upstream method is unavailable for the current resource; check method availability and the saved resource settings."
+		}
 	case 429:
 		code, message = "rate_limit_exceeded", "The quota or rate limit was reached; check usage and retry after the limit resets."
 	case 499:
@@ -273,6 +347,8 @@ func UpstreamHTTPError(status int, raw []byte) error {
 			code, message, param = "model_access_denied", "The upstream application has not enabled the requested model.", "model"
 		case "CUSTOMER_POLICY_VIOLATION":
 			code, message = "content_policy_violation", "The upstream service blocked the request under the application's content policy."
+		case "LLM_POLICY_CHECK_VIOLATION":
+			code, message = "upstream_policy_violation", "The upstream service blocked the request under its model policy."
 		}
 		if diagnostic.Status != "" {
 			message += " Upstream status: " + diagnostic.Status + "."
@@ -281,7 +357,7 @@ func UpstreamHTTPError(status int, raw []byte) error {
 			message += " Reason: " + diagnostic.Reason + "."
 		}
 	}
-	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param, diagnostic: diagnostic, logDiagnostic: logUpstreamDiagnostic(body, diagnostic, status), Scoped: code == "content_policy_violation"}
+	return &Error{Status: status, Kind: code, Message: message, clientMessage: message, param: param, diagnostic: diagnostic, logDiagnostic: logUpstreamDiagnostic(body, diagnostic, status), Scoped: code == "content_policy_violation" || code == "upstream_policy_violation"}
 }
 
 // UpstreamStreamError never describes an HTTP 200 error frame as an HTTP 502 response.

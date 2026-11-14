@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "repository": "G:/code/gemini30/CLIProxyAPI",
+  "repository_url": "https://github.com/lywx215/CLIProxyAPI.git",
+  "zeabur_client": "G:/code/gemini30/zeaburcli/zeaburctl.py",
+  "go": "F:/Program Files/Go/bin/go.exe",
+  "targets": {
+    "p1": {"kind": "zeabur", "origin": "https://cpa-p1.zeabur.app", "alias": "p08/cliproxyapi", "branch": "main", "retired": true, "retirement_reason": "user_confirmed_offline"},
+    "c05": {"kind": "zeabur", "origin": "https://c05.zeabur.app", "alias": "p05/cliproxyapi", "branch": "dev-c05"},
+    "p3": {"kind": "zeabur", "origin": "https://cpa-p3.zeabur.app", "alias": "p07/cliproxyapi", "branch": "dev-p3"},
+    "ultra": {"kind": "zeabur", "origin": "https://ultra-cli2.zeabur.app", "alias": "u01/cliproxyapi", "branch": "dev"},
+    "c03": {"kind": "zeabur", "origin": "https://c03.zeabur.app", "alias": "c03", "branch": "dev1"},
+    "cpa01": {"kind": "vps", "origin": "http://43.162.97.128", "host": "43.162.97.128", "ssh": "cpa01", "base": "/opt/cliproxyapi", "project": "cliproxyapi-vps", "addresses": ["cpa01.gemini30.pro"], "authorization": "explicit_named_target_each_run"},
+    "nc73": {"kind": "vps", "origin": "http://152.53.208.73:8317", "host": "152.53.208.73", "ssh": "nc73", "base": "/opt/cliproxyapi", "project": "cliproxyapi-vps"},
+    "nc243": {"kind": "vps", "origin": "http://159.195.235.243:8317", "host": "159.195.235.243", "ssh": "nc243", "base": "/opt/cliproxyapi", "project": "cliproxyapi-vps"},
+    "nc239": {"kind": "vps", "origin": "http://159.195.239.153:8317", "host": "159.195.239.153", "ssh": "nc239", "base": "/opt/cliproxyapi", "project": "cliproxyapi-vps"},
+    "A": {"host": "152.53.208.245", "retired": true, "role": "new-api-only"},
+    "B": {"host": "159.195.16.180", "retired": true, "role": "new-api-only"}
+  },
+  "connections": {
+    "cpa01": {"host": "43.162.97.128", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/cpa01.dpapi", "host": "43.162.97.128"}},
+    "nc73": {"host": "152.53.208.73", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/nc73.dpapi", "host": "152.53.208.73"}},
+    "nc243": {"host": "159.195.235.243", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/nc243.dpapi", "host": "159.195.235.243"}},
+    "nc239": {"host": "159.195.239.153", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/nc239.dpapi", "host": "159.195.239.153"}},
+    "newapi-main": {"host": "43.162.127.208", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/newapi-main.dpapi", "host": "43.162.127.208"}},
+    "newapi-vip-a": {"host": "152.53.208.245", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/newapi-vip-a.dpapi", "host": "152.53.208.245"}},
+    "newapi-vip-b": {"host": "159.195.16.180", "user": "root", "port": 22, "known_hosts": "~/.ssh/known_hosts", "credential": {"path": "~/.codex/private/cliproxy-ops-input/newapi-vip-b.dpapi", "host": "159.195.16.180"}}
+  },
+  "sites": {
+    "main": {
+      "origin": "https://gemini30.pro", "user_id": 1,
+      "credential": {"path": "~/.codex/private/cliproxy-ops-input/main-management.dpapi", "origin": "https://gemini30.pro"},
+      "entry_addresses": ["43.162.127.208"], "propagation": "upstream",
+      "observers": {"newapi-main": {"nginx": "/www/server/nginx/sbin/nginx", "upstream": "new_api_backend", "apps": ["newapi_doubao-new-api-b-1", "newapi_doubao-new-api-1", "newapi-slave1-shadow"], "extra_active_backends": ["127.0.0.1:3003"], "shadow_admin_relay": true}}
+    },
+    "vip": {
+      "origin": "https://vip.gemini30.pro", "user_id": 1,
+      "credential": {"path": "~/.codex/private/cliproxy-ops-input/vip-management.dpapi", "origin": "https://vip.gemini30.pro"},
+      "entry_addresses": ["152.53.208.245", "159.195.16.180"], "propagation": "app",
+      "observers": {
+        "newapi-vip-a": {"nginx": "/www/server/nginx/sbin/nginx", "upstream": "newapi_vip_apps", "apps": ["newapi-vip-app"]},
+        "newapi-vip-b": {"nginx": "/www/server/nginx/sbin/nginx", "upstream": "newapi_vip_apps", "apps": ["newapi-vip-app"]}
+      }
+    }
+  }
+}

@@ -211,12 +211,6 @@ func (h *BaseAPIHandler) getRequestDetailsWithOptions(modelName string, allowIma
 	if h != nil && h.AuthManager != nil && h.AuthManager.HomeEnabled() {
 		return []string{"home"}, resolvedModelName, nil
 	}
-	// Closed Carbon applications remain addressable for an explicit 503 after
-	// the manager's existing media-to-Web routing. They never fall across providers.
-	if h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseHydrogenRoute(baseModel) {
-		return []string{"gemini-enterprise"}, resolvedModelName, nil
-	}
-
 	providers = util.GetProviderName(baseModel)
 	// Fallback: if baseModel has no provider but differs from resolvedModelName,
 	// try using the full model name. This handles edge cases where custom models

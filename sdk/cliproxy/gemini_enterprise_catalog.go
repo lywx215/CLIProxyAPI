@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Service) restoreEnterpriseCatalog(auth *coreauth.Auth) {
-	if auth == nil || !s.enterpriseActive(auth, s.enterpriseKey(auth)) {
+	if auth == nil {
 		return
 	}
 	d := s.enterpriseState()
@@ -14,10 +14,10 @@ func (s *Service) restoreEnterpriseCatalog(auth *coreauth.Auth) {
 	d.mu.Lock()
 	_, exists := d.catalogs[key]
 	d.mu.Unlock()
-	if exists {
+	if exists || !s.enterpriseActive(auth, key) {
 		return
 	}
-	snapshot, ok := s.coreManager.StoredEnterpriseCatalog(auth)
+	snapshot, ok := s.coreManager.CachedEnterpriseCatalog(auth)
 	if !ok {
 		return
 	}

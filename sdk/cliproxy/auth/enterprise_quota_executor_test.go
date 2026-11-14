@@ -24,13 +24,14 @@ func TestEnterpriseStreamRejectionPublishedBeforeForwarding(t *testing.T) {
 	m.enterpriseQuota.nowFunc = func() time.Time { return now }
 	a := sharedQuotaAuth(t, m, "stream-source", "12345", "us", "enterprise_plus", "alice")
 	b := sharedQuotaAuth(t, m, "stream-sibling", "12345", "us", "enterprise_plus", "bob")
+	m.PublishEnterprisePolicyCatalog(a, []ge.Model{{ID: ge.ArgonModel}})
 	rejection := quotaRejection(now, "edition", "enterprise_plus").(*ge.GenerationError)
 	rejection.Started = true
 	source := make(chan exec.StreamChunk, 1)
 	source <- exec.StreamChunk{Err: rejection}
 	close(source)
 	e := &enterpriseQuotaExecutor{ProviderExecutor: &sharedQuotaStreamExecutor{chunks: source}}
-	stream, err := e.ExecuteStream(context.Background(), a, exec.Request{}, exec.Options{})
+	stream, err := e.ExecuteStream(context.Background(), a, exec.Request{Model: ge.ArgonModel}, exec.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +61,7 @@ func TestEnterpriseStreamProbeRequiresTerminalSuccessAndReleasesOnCancel(t *test
 			now := time.Now().UTC()
 			m.enterpriseQuota.nowFunc = func() time.Time { return now }
 			a := sharedQuotaAuth(t, m, "stream-probe", "12345", "us", "enterprise_plus", "alice")
+			m.PublishEnterprisePolicyCatalog(a, []ge.Model{{ID: ge.ArgonModel}})
 			rejectSharedQuota(t, a, now, "edition")
 			now = now.Add(2 * time.Hour)
 			source := make(chan exec.StreamChunk, 1)
@@ -67,7 +69,7 @@ func TestEnterpriseStreamProbeRequiresTerminalSuccessAndReleasesOnCancel(t *test
 			e := &enterpriseQuotaExecutor{ProviderExecutor: &sharedQuotaStreamExecutor{chunks: source}}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			stream, err := e.ExecuteStream(ctx, a, exec.Request{}, exec.Options{})
+			stream, err := e.ExecuteStream(ctx, a, exec.Request{Model: ge.ArgonModel}, exec.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}

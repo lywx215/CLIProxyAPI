@@ -148,7 +148,7 @@ func TestEnterprisePaidPolicyV8ReadOnlyStateAndProbe(t *testing.T) {
 					t.Fatalf("paid state was not enforced: %s", w.Body.String())
 				}
 			case "trial":
-				if enforced.Raw != "null" || reason != "" || len(gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_excluded_models").Array()) != 0 || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.can_test").Bool() || gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
+				if enforced.Raw != "null" || reason != "" || gjson.GetBytes(w.Body.Bytes(), "model_policy_state.enforced_excluded_models").Raw != `["gemini-4-hydrogen"]` || !gjson.GetBytes(w.Body.Bytes(), "carbon_admission.can_test").Bool() || gjson.GetBytes(w.Body.Bytes(), "carbon_admission.available").Bool() {
 					t.Fatalf("trial Carbon should remain closed but independently testable: %s", w.Body.String())
 				}
 			case "blocked":

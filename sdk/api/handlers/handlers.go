@@ -244,7 +244,7 @@ func BuildErrorResponseBodyWithError(status int, errText string, err error) []by
 		if message, enterpriseCode, field := enterprise.PublicErrorDetail(err, status); message != "" {
 			fixedMessage, code, param = message, enterpriseCode, safeErrorParam(field)
 			errType, retryable = "invalid_request_error", nil
-			if enterpriseCode == "content_policy_violation" {
+			if enterpriseCode == "content_policy_violation" || enterpriseCode == "upstream_policy_violation" {
 				value := false
 				retryable = &value
 			}

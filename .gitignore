@@ -35,6 +35,7 @@ docs/*
 !docs/management-api-v8.md
 !docs/enterprise-shared-quota-validation.md
 !docs/enterprise-model-policy.md
+!docs/enterprise-oauth-import.md
 !docs/gemini-enterprise-carbon-admission.md
 !docs/gemini-enterprise-hydrogen-admission.md
 !docs/gemini-enterprise-carbon-verification.md
@@ -72,6 +73,7 @@ _bmad-output/*
 .gitnexus/
 
 # Deploy and local test files
+/scripts/**/__pycache__/
 zeaburcli/
 UnitTest/
 test/
@@ -96,3 +98,4 @@ docker-compose.override.yml
 !/test/gemini_enterprise_model_policy_test.go
 !/test/gemini_enterprise_reasoning_contract_test.go
 !/test/gemini_enterprise_carbon_test.go
+!/test/gemini_enterprise_502_test.go

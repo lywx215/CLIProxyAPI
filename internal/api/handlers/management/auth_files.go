@@ -441,14 +441,14 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 		if auth, found := h.authManager.GetByID(authID); found && auth.Provider == ge.Provider {
 			view := h.authManager.EnterpriseModelPolicyView(auth)
 			carbon := h.authManager.EnterpriseCarbonAdmissionView(auth)
-			hydrogen := h.authManager.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel)
-			carbonRegistered, hydrogenRegistered := false, false
+			carbonRegistered := false
 			visible := make([]gin.H, 0, len(result))
 			for i, model := range models {
 				actual := model.MetadataModelID
 				if actual == "" {
 					actual = strings.TrimPrefix(model.ID, strings.TrimSpace(auth.Prefix)+"/")
 				}
+				actual = strings.TrimPrefix(actual, "models/")
 				allowed := view.Allows(actual)
 				if view.CatalogKnown {
 					allowed = false
@@ -459,17 +459,14 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 						}
 					}
 				}
-				if actual == ge.HydrogenModel {
-					allowed = hydrogen.Available
+				if actual == ge.HydrogenModel && !view.CatalogKnown {
+					allowed = false
 				}
 				if !allowed {
 					continue
 				}
 				if actual == ge.CarbonModel {
 					carbonRegistered = true
-				}
-				if actual == ge.HydrogenModel {
-					hydrogenRegistered = true
 				}
 				result[i]["upstream_model"], result[i]["policy_allowed"] = actual, true
 				result[i]["catalog_source"] = view.CatalogState.Source
@@ -480,7 +477,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 						break
 					}
 				}
-				if (actual == ge.CarbonModel || actual == ge.HydrogenModel) && !view.CatalogKnown {
+				if actual == ge.CarbonModel && !view.CatalogKnown {
 					result[i]["catalog_source"], result[i]["upstream_listed"] = "manual", false
 				}
 				visible = append(visible, result[i])
@@ -492,8 +489,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 			response["model_policy_state"] = view
 			response["catalog_models"] = view.CatalogModels
 			response["carbon_admission_supported"], response["carbon_admission"] = true, carbon
-			response["hydrogen_admission_supported"], response["hydrogen_admission"] = true, hydrogen
-			response["test_candidates"] = []gin.H{{"id": ge.CarbonModel, "display_name": ge.CarbonModel, "type": "gemini", "upstream_model": ge.CarbonModel, "test_candidate": true, "business_registered": carbonRegistered}, {"id": ge.HydrogenModel, "display_name": ge.HydrogenModel, "type": "gemini", "upstream_model": ge.HydrogenModel, "test_candidate": true, "business_registered": hydrogenRegistered}}
+			response["test_candidates"] = []gin.H{{"id": ge.CarbonModel, "display_name": ge.CarbonModel, "type": "gemini", "upstream_model": ge.CarbonModel, "test_candidate": true, "business_registered": carbonRegistered}}
 		}
 	}
 	c.JSON(200, response)

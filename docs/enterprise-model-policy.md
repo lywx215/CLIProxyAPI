@@ -5,10 +5,10 @@ The default, including legacy credentials without the field, is `auto`.
 
 | Policy | Allowed upstream models |
 | --- | --- |
-| `auto` | Trial Plus excludes Argon and Carbon; trial Business allows the Argon and Carbon group; other confirmed active subscriptions use the catalog. Hydrogen uses its own application switch. |
+| `auto` | Trial Plus excludes Argon and Carbon. Trial Business allows the Argon and Carbon group. Other confirmed active subscriptions use the catalog. |
 | `catalog` | Use the upstream catalog with existing exclusions. |
-| `argon_only` | Allow Argon and Carbon under the same subscription and catalog rules. |
-| `exclude_argon` | Exclude both Argon and Carbon from the effective catalog. |
+| `argon_only` | Allow the subscription's model group, subject to catalog and policy. |
+| `exclude_argon` | Exclude the subscription's model group from the effective catalog. |
 | `custom` | Intersect the catalog with `allowed_models` when supplied. |
 
 An absent or null `allowed_models` does not add a whitelist. An empty array blocks
@@ -16,26 +16,24 @@ every model in custom mode. Entries are exact upstream IDs. Existing
 `excluded_models` apply in every mode, including provider-wide exclusions.
 Switching modes preserves the dormant whitelist and existing exclusions.
 
-Confirmed paid subscriptions admit Argon, Carbon, Gemini 3 Pro Image and Veo 3.1 through the normal catalog and policy path. Hydrogen is additionally eligible through its independent application switch, an active assigned subscription, explicit custom allowlists, exclusions and the existing execution checks. Tests are optional diagnostics.
+The paid group contains Argon, Carbon and Hydrogen. Gemini 3 Pro Image and Veo 3.1 are also eligible under the default paid catalog policy. The trial group contains Argon and Carbon. Hydrogen requires a confirmed paid subscription in every mode, including with `all_models_enabled` and a custom whitelist.
 
-The existing application setting `argon_force_enabled` now force-enables both `gemini-4-argon` and `gemini-4-carbon` with the existing Argon precedence. Both models are supplemented when missing from the catalog. The stored keys `argon_only` and `exclude_argon` control the same pair. All existing applications use these rules immediately. A previous `carbon_enabled=true` may supplement Carbon in the local catalog but cannot bypass the new group policy. In particular, an existing exclude-Argon application loses Carbon routing unless the shared force switch overrides the policy.
+The historical application setting `argon_force_enabled` retains its priority and supplements Argon and Carbon when missing from the catalog. A previous `carbon_enabled=true` may supplement Carbon in the local catalog, subject to the effective group policy. The management UI shows the effective policy and the All Models setting.
 
 Carbon remains available through the normal catalog even when the legacy Carbon switch is closed. Existing Carbon configuration and diagnostic APIs remain available for older clients. Carbon diagnostics are stored separately from Hydrogen evidence.
 
-Hydrogen defaults to closed for both paid and trial applications. Once manually admitted it is registered as `catalog_source=manual` and `upstream_listed=false` when absent from Google's catalog. A configured Google Engine state, a successful diagnostic or a group force switch does not open the local Hydrogen switch. See [Hydrogen application admission](gemini-enterprise-hydrogen-admission.md).
+The existing `hydrogen_enabled` preference and verification records remain stored for rollback. Ordinary model registration and generation use the subscription, catalog and effective policy. See [Hydrogen application admission](gemini-enterprise-hydrogen-admission.md).
 
-Default fallback catalogs include both Argon and Carbon wherever the prior fallback supplied Argon. Raw successful catalogs, including empty catalogs, remain authoritative. The explicit manual model supplements are applied only to the local effective view.
+Successful catalogs, including empty catalogs, take precedence. A failed read uses a retained catalog before applying the application's fallback settings. The default paid fallback includes Hydrogen. The custom fallback uses the configured IDs. Explicit Argon and Carbon supplements apply to the local effective view.
 
 Use the existing v8 collection PATCH endpoint, its `fields` object, and the current
 `binding_id`, `auth_index` and `expected_revision`. Subscription observations and
 `model_policy_state` in credential responses are read-only runtime data.
-Its `enforced_allowed_models` field contains the five IDs, including independently admitted Hydrogen, for paid subscriptions,
-null for confirmed trials, or an empty array when subscription verification blocks
-generation. `enforced_reason` explains the mandatory restriction. Clients distinguish
+Its `enforced_allowed_models` field contains the five default paid IDs, null for confirmed trials or the All Models setting, and an empty array when subscription verification blocks generation. The trial ceiling is expressed by `enforced_excluded_models`, which includes Hydrogen.
+`enforced_reason` explains a paid limit or blocked subscription. Clients distinguish
 an absent field on older backends from null and an empty array; these observations
 are never accepted as persisted collection settings.
-Hydrogen remains independent from the Argon/Carbon trial policy templates. Frontends retain
-compatibility with older backends lacking optional policy fields.
+Frontends retain compatibility with older backends lacking optional policy fields.
 
 Every policy mode requires a verified assigned subscription. Observations refresh
 in the background every five minutes. A temporary failure retains the last
@@ -61,8 +59,9 @@ including streaming, media, pinned model tests and raw management streamAssist
 requests. Local refusals do not invoke Google generation or establish quota
 cooldowns. No subscription lookup is added to an inference request.
 Public Auto requests may resolve to an allowed explicit text model; they cannot
-implicitly start image or video generation. Media generation requires an explicit
-media model ID.
+implicitly start image or video generation. Trial applications require an
+explicit resolved model because upstream Auto cannot enforce the Hydrogen
+restriction. Media generation requires an explicit media model ID.
 
 These restrictions follow the OAuth principal's assigned license, rather than the
 mere presence of a paid license configuration in the project. A paid principal's

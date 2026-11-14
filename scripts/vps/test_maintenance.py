@@ -37,14 +37,15 @@ class DrainDecisionTests(unittest.TestCase):
         result = evaluate_drain(channels_stopped=True, elapsed_seconds=120, log_quiet_seconds=3)
         self.assertFalse(result.ready)
 
-    def test_failed_log_observation_uses_the_300_second_limit(self):
-        self.assertFalse(evaluate_drain(channels_stopped=True, elapsed_seconds=299).ready)
-        result = evaluate_drain(channels_stopped=True, elapsed_seconds=300)
+    def test_failed_log_observation_uses_the_180_second_limit(self):
+        self.assertFalse(evaluate_drain(channels_stopped=True, elapsed_seconds=179).ready)
+        result = evaluate_drain(channels_stopped=True, elapsed_seconds=180)
         self.assertTrue(result.ready)
         self.assertFalse(result.completion_verified)
+        self.assertEqual(result.criterion, 'fallback_wait_limit_180_seconds')
 
-    def test_busy_logs_cannot_extend_fallback_past_five_minutes(self):
-        result = evaluate_drain(channels_stopped=True, elapsed_seconds=300, log_quiet_seconds=0)
+    def test_busy_logs_cannot_extend_fallback_past_three_minutes(self):
+        result = evaluate_drain(channels_stopped=True, elapsed_seconds=180, log_quiet_seconds=0)
         self.assertTrue(result.ready)
 
     def test_reliable_incomplete_count_does_not_use_unavailable_count_fallback(self):

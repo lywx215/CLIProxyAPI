@@ -2,6 +2,7 @@ package geminienterprise
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -74,7 +75,7 @@ func (n *normalizer) historicalChatFunctions(m map[string]any, role, path string
 			if id, exists := call["id"]; exists {
 				n.text(id, prefix+".id")
 			}
-			text.WriteString("\n" + string(marshal(call)) + "\n")
+			text.WriteString("\n" + string(marshal(n.historicalChatCallContext(call, prefix))) + "\n")
 		}
 	}
 	if call, exists := m["function_call"]; exists && call != nil {
@@ -88,6 +89,21 @@ func (n *normalizer) historicalChatFunctions(m map[string]any, role, path string
 		text.WriteString("\n" + string(marshal(function)) + "\n")
 	}
 	return text.String()
+}
+
+// Strip only the Gemini protocol signature on the tool-call envelope.
+func (n *normalizer) historicalChatCallContext(call map[string]any, path string) map[string]any {
+	extra, _ := call["extra_content"].(map[string]any)
+	google, _ := extra["google"].(map[string]any)
+	if _, exists := google["thought_signature"]; !exists {
+		return call
+	}
+	n.ignored[path+".extra_content.google.thought_signature"] = true
+	call, extra, google = maps.Clone(call), maps.Clone(extra), maps.Clone(google)
+	delete(google, "thought_signature")
+	extra["google"] = google
+	call["extra_content"] = extra
+	return call
 }
 
 func (n *normalizer) historicalChatResult(m map[string]any, content, path string) string {

@@ -83,12 +83,14 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	summary := geminiEnterpriseCredentialSummary(root.Metadata)
 	summary["account_id"], summary["revision"] = account.ID, account.Revision
 	summary["account_management_supported"] = true
+	summary["oauth_authorization_revision"] = coreauth.EnterpriseOAuthAuthorizationRevision(root)
+	summary["oauth_subject"] = ge.String(root.Metadata, coreauth.EnterpriseOAuthSubjectKey)
+	summary["oauth_client_id"] = ge.String(root.Metadata, "client_id")
 	summary["model_policy_supported"] = true
 	summary["catalog_fallback_supported"] = true
 	summary["argon_force_supported"] = true
 	summary["all_models_supported"] = true
 	summary["carbon_admission_supported"] = true
-	summary["hydrogen_admission_supported"] = true
 	summary["google_hydrogen_configure_supported"] = true
 	summary["hydrogen_authorization_revision"] = h.authManager.EnterpriseCarbonAuthorizationSnapshotRevision(root.ID)
 	summary["hydrogen_registration_epoch"] = root.RegistrationEpoch
@@ -105,7 +107,6 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	now := time.Now().UTC()
 	collections := make([]gin.H, 0, len(account.Collections))
 	carbonEnabled, carbonAvailable := 0, 0
-	hydrogenEnabled, hydrogenAvailable := 0, 0
 	for _, collection := range account.Collections {
 		child := children[collection.ID]
 		if child == nil && !coreauth.IsEnterpriseAccountAuth(root) {
@@ -124,14 +125,6 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			entry["quota_balancing"] = h.authManager.EnterpriseQuotaBalance(child)
 			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
 			carbon := h.authManager.EnterpriseCarbonAdmissionView(child)
-			hydrogen := h.authManager.EnterpriseModelAdmissionView(child, ge.HydrogenAdmissionModel)
-			entry["hydrogen_admission_supported"], entry["hydrogen_admission"] = true, hydrogen
-			if hydrogen.Enabled {
-				hydrogenEnabled++
-			}
-			if hydrogen.Available {
-				hydrogenAvailable++
-			}
 			entry["carbon_admission_supported"], entry["carbon_admission"] = true, carbon
 			if carbon.Enabled {
 				carbonEnabled++
@@ -141,7 +134,6 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			}
 			if len(account.Collections) == 1 {
 				summary["carbon_admission"] = carbon
-				summary["hydrogen_admission"] = hydrogen
 			}
 			unavailable, status, message, _ := reconcileAuthFileCooldownState(child, now)
 			entry["auth_index"], entry["status"], entry["status_message"] = lockedAuthIndex(child), status, message
@@ -157,7 +149,6 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	}
 	summary["collections"] = collections
 	summary["carbon_enabled_count"], summary["carbon_available_count"] = carbonEnabled, carbonAvailable
-	summary["hydrogen_enabled_count"], summary["hydrogen_available_count"] = hydrogenEnabled, hydrogenAvailable
 	return summary
 }
 
@@ -415,11 +406,12 @@ func (h *Handler) PatchGeminiEnterpriseCollection(c *gin.Context) {
 		return
 	}
 	coreauth.NormalizeCredentialMetadata(req.Fields)
-	for _, model := range ge.AdmissionModels() {
-		value, changing := req.Fields[model.EnabledKey]
-		if !changing {
-			continue
-		}
+	if containsHydrogenSwitch(req.Fields) {
+		enterpriseManagementFailure(c, http.StatusConflict, "hydrogen_managed_by_policy", "Hydrogen is managed by the paid subscription and the application model policy")
+		return
+	}
+	if value, changing := req.Fields[ge.CarbonEnabledKey]; changing {
+		model := ge.CarbonAdmissionModel
 		enabled, valid := value.(bool)
 		if !valid || len(req.Fields) != 1 || req.Disabled != nil || req.Resources != nil {
 			enterpriseManagementFailure(c, 400, "invalid_"+strings.ToLower(model.Label)+"_change", model.EnabledKey+" must be a boolean changed separately from other application settings")

@@ -1691,7 +1691,7 @@ func resultErrorFromError(err error) *Error {
 		return &Error{Code: enterpriseModelNotEnabledCode, Message: "Google has not enabled this model for the application", HTTPStatus: 400}
 	}
 	var modelGate *enterpriseModelGateError
-	if errors.As(err, &modelGate) {
+	if errors.As(err, &modelGate) || IsEnterpriseApplicationPolicyRejection(err) {
 		return &Error{Code: "enterprise_model_gate", Message: "Enterprise model dispatch blocked locally", HTTPStatus: statusCodeFromError(err)}
 	}
 	if errors.As(err, &enterpriseErr) && enterpriseErr.Restriction != nil {
@@ -2401,6 +2401,9 @@ func isMissingModelPhrase(value string) bool {
 // errors remain eligible for alternate routing and keep their model-level state.
 func isRequestInvalidError(err error) bool {
 	if err == nil {
+		return false
+	}
+	if IsEnterpriseApplicationPolicyRejection(err) {
 		return false
 	}
 	if isRequestScopedError(err) {

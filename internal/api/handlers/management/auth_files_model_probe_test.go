@@ -258,6 +258,91 @@ func TestEnterpriseModelProbeUsesNormalExecutorUsage(t *testing.T) {
 	}
 }
 
+func TestEnterpriseHydrogenDirectProbeRechecksRevisionBeforeSending(t *testing.T) {
+	for _, change := range []string{"settings", "reauthorize", "account-reenabled", "access-renewed"} {
+		t.Run(change, func(t *testing.T) {
+			h, root, children := enterpriseAccountFixture(t)
+			child := children[0]
+			trial := false
+			publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{
+				Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial,
+			}, ge.Model{ID: ge.HydrogenModel})
+			reg := registry.GetGlobalRegistry()
+			reg.RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel, Type: "gemini"}})
+			t.Cleanup(func() { reg.UnregisterClient(child.ID) })
+			h.authManager.RegisterExecutor(runtimeexec.NewGeminiEnterpriseExecutor(h.cfg))
+			upstreamCalls := 0
+			changed := false
+			transport := enterpriseTestTransport(func(*http.Request) (*http.Response, error) {
+				upstreamCalls++
+				if change == "access-renewed" {
+					changed = true
+					current, _, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
+					refreshed := current.Clone()
+					refreshed.Metadata["access_token"] = "synthetic-renewed-access"
+					if _, err := h.authManager.UpdateRefreshedAuth(t.Context(), current, refreshed); err != nil {
+						t.Fatal(err)
+					}
+				}
+				const reply = `[{"answer":{"state":"SUCCEEDED","replies":[{"content":{"text":"OK"}}]}}]`
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(reply))}, nil
+			})
+			// The transport is selected after the handler resolves its test target and
+			// before the executor validates the final model and submits to Google.
+			h.authManager.SetRoundTripperProvider(enterpriseProbeRoundTripperProvider(func(auth *coreauth.Auth) http.RoundTripper {
+				if auth.ID == child.ID && !changed && change != "access-renewed" {
+					changed = true
+					current, _, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
+					var err error
+					switch change {
+					case "settings":
+						_, err = h.authManager.UpdateEnterpriseAccount(t.Context(), current, 0, func(account *ge.Account) error {
+							account.Collections[0].Settings["note"] = "changed while preparing the probe"
+							return nil
+						})
+					case "reauthorize":
+						_, err = h.authManager.ReauthorizeEnterpriseAccount(t.Context(), current)
+					case "account-reenabled":
+						current.Disabled = true
+						current, err = h.authManager.Update(t.Context(), current)
+						if err == nil {
+							current.Disabled, current.Status = false, coreauth.StatusActive
+							_, err = h.authManager.Update(t.Context(), current)
+							reg.RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel, Type: "gemini"}})
+						}
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				return transport
+			}))
+			response := enterpriseManagementRequest(t, h.TestGeminiEnterpriseModel, http.MethodPost, map[string]any{
+				"name": root.FileName, "auth_index": child.Index, "binding_id": coreauth.EnterpriseBindingID(child),
+				"expected_revision": 1, "model": ge.HydrogenModel, "expected": ge.Resources(ge.FromMetadata(child.Metadata)),
+				"hydrogen_direct": true,
+			})
+			if change == "access-renewed" {
+				if !changed || upstreamCalls != 1 || response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"ok"`) {
+					t.Fatalf("normal OAuth access-token refresh invalidated the probe: changed=%t calls=%d reply=%d %s",
+						changed, upstreamCalls, response.Code, response.Body.String())
+				}
+				return
+			}
+			if !changed || response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "credential_changed") || upstreamCalls != 0 {
+				t.Fatalf("stale probe was not stopped before generation: changed=%t calls=%d reply=%d %s",
+					changed, upstreamCalls, response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+type enterpriseProbeRoundTripperProvider func(*coreauth.Auth) http.RoundTripper
+
+func (f enterpriseProbeRoundTripperProvider) RoundTripperFor(auth *coreauth.Auth) http.RoundTripper {
+	return f(auth)
+}
+
 func testEnterpriseProbeExecutorUsage(t *testing.T, accountMode bool) {
 	const modelID = "enterprise-probe-usage-integration"
 	manager := coreauth.NewManager(nil, nil, nil)

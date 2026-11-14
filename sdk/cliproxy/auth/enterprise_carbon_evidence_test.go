@@ -26,7 +26,37 @@ func carbonEvidenceFixture(t *testing.T, legacy bool) (*Manager, *Auth, *Auth, *
 		target = m.EnterpriseCollections(root.ID)[0]
 	}
 	publishSubscription(t, m, target, "enterprise_plus", false)
+	publishHydrogenTestCatalog(m, target)
 	return m, root, target, store
+}
+
+func publishHydrogenTestCatalog(m *Manager, auth *Auth) {
+	m.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: ge.ArgonModel}, {ID: ge.CarbonModel}, {ID: ge.HydrogenModel}})
+}
+
+// Seed a switch from a trusted credential store to cover upgrade and rollback.
+func seedLegacyHydrogenSwitch(t *testing.T, m *Manager, target *Auth, revision uint64, enabled bool) {
+	t.Helper()
+	owner, _, ok := m.EnterpriseAccountSnapshot(target.ID)
+	if !ok {
+		t.Fatal("missing saved account")
+	}
+	_, err := m.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error {
+		for i := range account.Collections {
+			collection := &account.Collections[i]
+			if collection.ID == EnterpriseBindingID(target) && collection.Revision == revision {
+				if collection.Settings == nil {
+					collection.Settings = map[string]any{}
+				}
+				collection.Settings[ge.HydrogenEnabledKey] = enabled
+				return nil
+			}
+		}
+		return errors.New("legacy fixture collection changed")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestEnterpriseCarbonAndHydrogenEvidenceAndSwitchesAreIndependent(t *testing.T) {
@@ -54,9 +84,7 @@ func TestEnterpriseCarbonAndHydrogenEvidenceAndSwitchesAreIndependent(t *testing
 			}
 			current = m.EnterpriseCollections(root.ID)[0]
 			revision, _ := carbonCollectionRevision(updated, EnterpriseBindingID(current))
-			if _, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision, true, ""); err != nil {
-				t.Fatal(err)
-			}
+			seedLegacyHydrogenSwitch(t, m, current, revision, true)
 			current, _ = m.GetByID(current.ID)
 			carbonSettings, errCarbon := ge.ReadCarbonSettings(current.Metadata)
 			hydrogenSettings, errHydrogen := ge.HydrogenAdmissionModel.ReadSettings(current.Metadata)
@@ -100,6 +128,7 @@ func TestCarbonEvidenceConcurrentApplicationsPreserveEachOtherAndLeaseOrdering(t
 	children := m.EnterpriseCollections(root.ID)
 	for _, child := range children {
 		publishSubscription(t, m, child, "enterprise_plus", false)
+		publishHydrogenTestCatalog(m, child)
 	}
 	first, err := m.BeginEnterpriseHydrogenTest(children[0], 1)
 	if err != nil {
@@ -144,11 +173,9 @@ func TestCarbonEvidenceConcurrentApplicationsPreserveEachOtherAndLeaseOrdering(t
 
 func TestCarbonRebindSaveFailureRetainsThePreviouslyPublishedApplication(t *testing.T) {
 	m, root, target, store := carbonEvidenceFixture(t, false)
-	_, snapshot := recordCarbonVerified(t, m, target)
+	recordCarbonVerified(t, m, target)
 	current, _ := m.GetByID(target.ID)
-	if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, snapshot.TestID); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyHydrogenSwitch(t, m, current, 1, true)
 	owner, _, _ := m.EnterpriseAccountSnapshot(root.ID)
 	store.failID = root.ID
 	_, err := m.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error { account.Collections[0].EngineID = "unsaved-rebind"; return nil })
@@ -236,11 +263,10 @@ func TestCarbonMergePreservesManualIntentAndScopesDiagnosticProofToItsGrant(t *t
 			}
 			source = registerEnterpriseFixture(t, m, source)
 			publishSubscription(t, m, source, "enterprise_plus", false)
-			_, proof := recordCarbonVerified(t, m, source)
+			publishHydrogenTestCatalog(m, source)
+			recordCarbonVerified(t, m, source)
 			current, _ := m.GetByID(source.ID)
-			if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, proof.TestID); err != nil {
-				t.Fatal(err)
-			}
+			seedLegacyHydrogenSwitch(t, m, current, 1, true)
 			if _, _, err := m.MergeEnterpriseAccounts(t.Context(), target.ID, []string{source.ID}); err != nil {
 				t.Fatal(err)
 			}
@@ -262,11 +288,9 @@ func TestCarbonMergePreservesManualIntentAndScopesDiagnosticProofToItsGrant(t *t
 
 func TestCarbonResourceAliasMigrationResetsOpeningAndOldProof(t *testing.T) {
 	m, root, target, _ := carbonEvidenceFixture(t, false)
-	_, proof := recordCarbonVerified(t, m, target)
+	recordCarbonVerified(t, m, target)
 	current, _ := m.GetByID(target.ID)
-	if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, proof.TestID); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyHydrogenSwitch(t, m, current, 1, true)
 	owner, _, _ := m.EnterpriseAccountSnapshot(root.ID)
 	if _, err := m.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error {
 		collection := &account.Collections[0]
@@ -303,69 +327,39 @@ func recordCarbonVerified(t *testing.T, m *Manager, target *Auth) (*Auth, *Enter
 	return updated, snapshot
 }
 
-func TestCarbonEvidencePersistsWithoutAutoEnableAndSurvivesToggleRestart(t *testing.T) {
+func TestHydrogenEvidenceAndHistoricalSwitchSurviveRestart(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "account", true: "legacy"}[legacy], func(t *testing.T) {
 			m, root, target, store := carbonEvidenceFixture(t, legacy)
-			original := target.Clone()
-			updated, snapshot := recordCarbonVerified(t, m, target)
-			current, _ := m.GetByID(target.ID)
-			if state := m.EnterpriseHydrogenEvidenceState(current); !state.Valid || state.Test.TestID != snapshot.TestID {
-				t.Fatalf("missing verified evidence: %+v", state)
-			}
-			settings, _ := ge.HydrogenAdmissionModel.ReadSettings(current.Metadata)
-			if settings.Enabled || !reflect.DeepEqual(original.Metadata, target.Metadata) {
-				t.Fatal("test enabled the application or mutated its input snapshot")
-			}
-			revision, _ := carbonCollectionRevision(updated, EnterpriseBindingID(current))
-			if revision != 1 {
-				t.Fatal("evidence invalidated its own collection edit revision")
-			}
-			updated, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision, true, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			current = m.EnterpriseCollections(root.ID)[0]
-			if !m.EnterpriseHydrogenAdmissionView(current).Available {
-				t.Fatalf("manual activation unavailable: %+v", m.EnterpriseHydrogenAdmissionView(current))
-			}
-			revision, _ = carbonCollectionRevision(updated, EnterpriseBindingID(current))
-			if revision != 2 {
-				t.Fatal("manual activation did not advance collection revision")
-			}
-			updated, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision, false, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			current, _ = m.GetByID(current.ID)
-			if m.EnterpriseHydrogenAdmissionView(current).Enabled || !m.EnterpriseHydrogenEvidenceState(current).Valid {
-				t.Fatal("manual close destroyed evidence")
-			}
-			revision, _ = carbonCollectionRevision(updated, EnterpriseBindingID(current))
-			if _, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision-1, true, snapshot.TestID); err == nil {
-				t.Fatal("stale edit revision enabled Carbon")
-			}
-			if _, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision, true, snapshot.TestID); err != nil {
-				t.Fatal(err)
+			seedLegacyHydrogenSwitch(t, m, target, 1, false)
+			current := m.EnterpriseCollections(root.ID)[0]
+			owner, _, _ := m.EnterpriseAccountSnapshot(current.ID)
+			revision, _ := carbonCollectionRevision(owner, EnterpriseBindingID(current))
+			original := current.Clone()
+			updated, snapshot := recordCarbonVerified(t, m, current)
+			if got, _ := carbonCollectionRevision(updated, EnterpriseBindingID(current)); got != revision || !reflect.DeepEqual(original.Metadata, current.Metadata) {
+				t.Fatal("a diagnostic changed the edit revision or source snapshot")
 			}
 			store.mu.Lock()
 			saved := store.records[root.ID].Clone()
 			store.mu.Unlock()
 			restarted := NewManager(nil, nil, nil)
 			restarted.SetConfig(&config.Config{})
-			if _, err = restarted.Register(t.Context(), saved); err != nil {
+			if _, err := restarted.Register(t.Context(), saved); err != nil {
 				t.Fatal(err)
 			}
 			restored := restarted.EnterpriseCollections(root.ID)[0]
-			if !restarted.EnterpriseHydrogenEvidenceState(restored).Valid {
-				t.Fatal("restart invalidated persisted evidence")
+			state := restarted.EnterpriseHydrogenEvidenceState(restored)
+			if !state.Valid || state.Test.TestID != snapshot.TestID || restored.Metadata[ge.HydrogenEnabledKey] != false {
+				t.Fatal("restart lost diagnostic history or the rollback setting")
 			}
+			publishHydrogenTestCatalog(restarted, restored)
 			if restarted.EnterpriseHydrogenAdmissionView(restored).Available {
 				t.Fatal("restart skipped fresh subscription verification")
 			}
 			publishSubscription(t, restarted, restored, "enterprise_plus", false)
 			if !restarted.EnterpriseHydrogenAdmissionView(restored).Available {
-				t.Fatal("verified restart did not restore manual activation")
+				t.Fatal("verified paid application was blocked by the old switch")
 			}
 		})
 	}
@@ -373,12 +367,10 @@ func TestCarbonEvidencePersistsWithoutAutoEnableAndSurvivesToggleRestart(t *test
 
 func TestCarbonEvidenceRefreshVersusAuthorizationReplacement(t *testing.T) {
 	m, root, target, _ := carbonEvidenceFixture(t, false)
-	_, first := recordCarbonVerified(t, m, target)
+	recordCarbonVerified(t, m, target)
 	current, _ := m.GetByID(target.ID)
 	owner, _, _ := m.EnterpriseAccountSnapshot(target.ID)
-	if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, first.TestID); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyHydrogenSwitch(t, m, current, 1, true)
 	for _, rotation := range []bool{false, true} {
 		owner, _, _ = m.EnterpriseAccountSnapshot(target.ID)
 		current, _ = m.GetByID(target.ID)
@@ -401,6 +393,7 @@ func TestCarbonEvidenceRefreshVersusAuthorizationReplacement(t *testing.T) {
 		}
 		// Subscription verification belongs to its own bounded runtime cache.
 		publishSubscription(t, m, current, "enterprise_plus", false)
+		publishHydrogenTestCatalog(m, current)
 		if _, err = m.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.HydrogenModel, HTTPStatus: 200}}); err != nil {
 			t.Fatalf("OAuth refresh invalidated an in-flight fixed application test: %v", err)
 		}
@@ -417,6 +410,7 @@ func TestCarbonEvidenceRefreshVersusAuthorizationReplacement(t *testing.T) {
 		t.Fatal("same-account reauthorization lost manual intent or retained old diagnostic proof")
 	}
 	publishSubscription(t, m, current, "enterprise_plus", false)
+	publishHydrogenTestCatalog(m, current)
 	if !m.EnterpriseHydrogenAdmissionView(current).Available {
 		t.Fatal("same-account reauthorization required a model test after subscription confirmation")
 	}
@@ -531,11 +525,9 @@ func TestCarbonIncompleteVerificationDoesNotReuseAnOlderSuccessfulTest(t *testin
 
 func TestCarbonEvidenceRebindAndPersistenceFailureDoNotLeakState(t *testing.T) {
 	m, root, target, store := carbonEvidenceFixture(t, false)
-	_, test := recordCarbonVerified(t, m, target)
+	recordCarbonVerified(t, m, target)
 	current, _ := m.GetByID(target.ID)
-	if _, err := m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, 1, true, test.TestID); err != nil {
-		t.Fatal(err)
-	}
+	seedLegacyHydrogenSwitch(t, m, current, 1, true)
 	owner, _, _ := m.EnterpriseAccountSnapshot(root.ID)
 	if _, err := m.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error { account.Collections[0].EngineID = "replacement-app"; return nil }); err != nil {
 		t.Fatal(err)
@@ -546,6 +538,7 @@ func TestCarbonEvidenceRebindAndPersistenceFailureDoNotLeakState(t *testing.T) {
 		t.Fatal("new application inherited Carbon state")
 	}
 	publishSubscription(t, m, current, "enterprise_plus", false)
+	publishHydrogenTestCatalog(m, current)
 	owner, _, _ = m.EnterpriseAccountSnapshot(root.ID)
 	revision, _ := carbonCollectionRevision(owner, EnterpriseBindingID(current))
 	pending, err := m.BeginEnterpriseHydrogenTest(current, revision)

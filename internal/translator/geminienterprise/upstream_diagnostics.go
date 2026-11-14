@@ -101,6 +101,10 @@ func upstreamDiagnostic(body upstreamErrorBody, status int) *UpstreamDiagnostic 
 				if diagnostic.Reason == "" {
 					diagnostic.Reason = detail.Reason
 				}
+			case "LLM_POLICY_CHECK_VIOLATION":
+				if diagnostic.Reason == "" && (status == 400 || status == 422) && (body.Code != 0 || body.Status != "") {
+					diagnostic.Reason = detail.Reason
+				}
 			}
 		}
 		if detail.Type != "type.googleapis.com/google.rpc.BadRequest" || status != 400 && status != 422 {
@@ -132,6 +136,10 @@ func safeUpstreamFieldPath(path string) string {
 	const fields = "|model|contents|parts|role|text|functionCall|functionResponse|function_call|function_response|name|args|response|query|generationSpec|modelId|generationConfig|thinkingConfig|thinkingLevel|thinkingBudget|includeThoughts|responseMimeType|temperature|topP|topK|maxOutputTokens|stopSequences|responseSchema|systemInstruction|tools|functionDeclarations|toolConfig|functionCallingConfig|mode|allowedFunctionNames|toolsSpec|webGroundingSpec|vertexAiSearchSpec|disabled|filter|userMetadata|timeZone|preferredLanguageCode|actionSpec|actionDisabled|isSessionLess|languageCode|googleSearchGroundingEnabled|webGroundingEnabled|answerGenerationMode|assistSkippingMode|"
 	for _, part := range strings.Split(path, ".") {
 		name, _, _ := strings.Cut(part, "[")
+		// Protobuf diagnostics can use the snake-case spelling of generationSpec.
+		if name == "generation_spec" {
+			name = "generationSpec"
+		}
 		if !strings.Contains(fields, "|"+name+"|") {
 			return ""
 		}

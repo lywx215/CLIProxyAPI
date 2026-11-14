@@ -21,7 +21,7 @@ func TestEnterpriseCatalogFallbackSettingsAndDefaults(t *testing.T) {
 		first   string
 	}{
 		{"enterprise_plus", &trial, "ok", 6, "gemini-3.8-flash"}, {"enterprise_standard", &trial, "stale", 6, "gemini-3.8-flash"},
-		{"business_standard", &trial, "ok", 2, ArgonModel}, {"enterprise_plus", &paid, "ok", 2, ArgonModel}, {"business_standard", &paid, "stale", 2, ArgonModel},
+		{"business_standard", &trial, "ok", 2, ArgonModel}, {"enterprise_plus", &paid, "ok", 3, ArgonModel}, {"business_standard", &paid, "stale", 3, ArgonModel},
 		{"enterprise_plus", nil, "unknown", 0, ""}, {"enterprise_plus", &trial, "expired", 0, ""},
 	} {
 		models, _ := FallbackCatalog(CatalogFallback{Mode: "default"}, SubscriptionObservation{Edition: tc.edition, FreeTrial: tc.trial, Status: tc.status}, false)
@@ -52,7 +52,7 @@ func TestEnterpriseCatalogFallbackSettingsAndDefaults(t *testing.T) {
 	}
 }
 
-func TestAllModelsFallbackUsesTheSameCatalogAcrossEditions(t *testing.T) {
+func TestAllModelsFallbackReservesHydrogenForPaidSubscriptions(t *testing.T) {
 	trial, paid := true, false
 	for _, observation := range []SubscriptionObservation{
 		{Status: "ok", Edition: "business_standard", FreeTrial: &trial},
@@ -60,8 +60,12 @@ func TestAllModelsFallbackUsesTheSameCatalogAcrossEditions(t *testing.T) {
 		{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid},
 	} {
 		models, source := FallbackCatalog(CatalogFallback{Mode: "default"}, observation, true)
-		if source != "default" || len(models) != 8 || models[0].ID != "gemini-3.8-flash" || models[6].ID != ArgonModel {
-			t.Fatalf("fallback depended on the subscription edition: %+v", models)
+		want := 8
+		if !*observation.FreeTrial {
+			want++
+		}
+		if source != "default" || len(models) != want || models[0].ID != "gemini-3.8-flash" || models[6].ID != ArgonModel || (models[want-1].ID == HydrogenModel) == *observation.FreeTrial {
+			t.Fatalf("unexpected fallback for subscription %+v: %+v", observation, models)
 		}
 	}
 }

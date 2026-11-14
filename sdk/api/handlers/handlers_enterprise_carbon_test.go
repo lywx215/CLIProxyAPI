@@ -14,52 +14,12 @@ import (
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
-func TestEnterpriseCarbonUnavailableDoesNotFallBackToOtherProviders(t *testing.T) {
-	for _, alias := range []bool{false, true} {
-		for _, stream := range []bool{false, true} {
-			name := ge.HydrogenModel
-			if alias {
-				name = "enterprise-carbon-handler-alias"
-			}
-			t.Run(name+map[bool]string{false: "/nonstream", true: "/stream"}[stream], func(t *testing.T) {
-				calls := 0
-				executor := &modelExecutionCaptureExecutor{
-					execute: func(context.Context, *coreauth.Auth, coreexecutor.Request, coreexecutor.Options) (coreexecutor.Response, error) {
-						calls++
-						return coreexecutor.Response{Payload: []byte("wrong provider")}, nil
-					},
-					stream: func(context.Context, *coreauth.Auth, coreexecutor.Request, coreexecutor.Options) (*coreexecutor.StreamResult, error) {
-						calls++
-						chunks := make(chan coreexecutor.StreamChunk)
-						close(chunks)
-						return &coreexecutor.StreamResult{Chunks: chunks}, nil
-					},
-				}
-				handler := newModelExecutionHandler(t, name, executor, nil)
-				if alias {
-					handler.AuthManager.SetOAuthModelAlias(map[string][]config.OAuthModelAlias{ge.Provider: {{Name: ge.HydrogenModel, Alias: name}}})
-				}
-				payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"OK"}]}]}`)
-				if stream {
-					data, _, failures := handler.executeStreamWithAuthManagerFormats(t.Context(), "gemini", "gemini", name, payload, "", false, modelExecutionOptions{Operation: "generate_content"})
-					if data != nil {
-						t.Fatal("closed Carbon returned a business stream")
-					}
-					failure := <-failures
-					if failure == nil || failure.StatusCode != http.StatusServiceUnavailable {
-						t.Fatalf("closed Carbon stream error = %#v", failure)
-					}
-				} else {
-					_, _, failure := handler.executeWithAuthManagerFormats(t.Context(), "gemini", "gemini", name, payload, "", false, modelExecutionOptions{Operation: "generate_content"})
-					if failure == nil || failure.StatusCode != http.StatusServiceUnavailable {
-						t.Fatalf("closed Carbon error = %#v", failure)
-					}
-				}
-				if calls != 0 {
-					t.Fatalf("closed Carbon was sent to another provider %d times", calls)
-				}
-			})
-		}
+func TestUnregisteredHydrogenUsesNormalModelLookup(t *testing.T) {
+	handler := NewBaseAPIHandlers(nil, coreauth.NewManager(nil, nil, nil))
+	payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"OK"}]}]}`)
+	_, _, failure := handler.executeWithAuthManagerFormats(t.Context(), "gemini", "gemini", ge.HydrogenModel, payload, "", false, modelExecutionOptions{Operation: "generate_content"})
+	if failure == nil || failure.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unregistered Hydrogen lookup = %#v", failure)
 	}
 }
 

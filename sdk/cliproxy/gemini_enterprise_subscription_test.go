@@ -83,7 +83,7 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 	s, auth := enterpriseTestService(t, "paid-manual-policy-transitions")
 	d := s.enterpriseState()
 	models := []ge.Model{
-		{ID: ge.ArgonModel}, {ID: "gemini-3-pro-image", MediaKind: "image"},
+		{ID: ge.ArgonModel}, {ID: ge.HydrogenModel}, {ID: "gemini-3-pro-image", MediaKind: "image"},
 		{ID: "veo-3.1", MediaKind: "video"}, {ID: "gemini-3.8-flash"},
 		{ID: "gemini-3.1-pro-preview"}, {ID: "gemini-4-future"}, {ID: "auto", DisplayName: "Auto"},
 	}
@@ -106,11 +106,11 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 		trial       bool
 		want        int
 	}{
-		{"paid", "ok", false, 3},
-		{"trial", "ok", true, len(models)},
-		{"paid-again", "ok", false, 3},
+		{"paid", "ok", false, 4},
+		{"trial", "ok", true, len(models) - 2},
+		{"paid-again", "ok", false, 4},
 		{"revoked", "unassigned", false, 0},
-		{"restored", "ok", false, 3},
+		{"restored", "ok", false, 4},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			trial, state = step.trial, step.state
@@ -127,12 +127,15 @@ func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing
 			if view.Mode != "catalog" || len(view.CatalogModels) != wantCatalog {
 				t.Fatalf("subscription refresh rewrote manual settings or lost raw catalog: %+v", view)
 			}
-			if paid {
-				for _, entry := range published {
-					if !ge.IsArgonFamilyModel(entry.ID) && entry.ID != ge.CarbonModel && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
-						t.Fatalf("forbidden paid model published: %s", entry.ID)
-					}
+			hydrogen := false
+			for _, entry := range published {
+				hydrogen = hydrogen || entry.ID == ge.HydrogenModel
+				if entry.ID == "auto" || paid && !ge.IsArgonFamilyModel(entry.ID) && entry.ID != ge.HydrogenModel && entry.ID != "gemini-3-pro-image" && entry.ID != "veo-3.1" {
+					t.Fatalf("forbidden model published: %s", entry.ID)
 				}
+			}
+			if hydrogen != paid {
+				t.Fatalf("Hydrogen publication did not follow the subscription: %v", published)
 			}
 		})
 	}

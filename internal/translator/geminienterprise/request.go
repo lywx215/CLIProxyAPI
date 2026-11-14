@@ -41,12 +41,17 @@ func (e *Error) Error() string {
 	if e.clientMessage != "" && e.diagnostic != nil {
 		detail["upstream"] = e.diagnostic
 	}
+	if e.Kind == "upstream_policy_violation" {
+		detail["retryable"] = false
+	}
 	data, _ := json.Marshal(map[string]any{"error": detail})
 	return string(data)
 }
 func (e *Error) StatusCode() int       { return e.Status }
 func (e *Error) IsRequestScoped() bool { return e.Scoped }
-func (e *Error) IsRequestStop() bool   { return e.stop || e.Kind == "content_policy_violation" }
+func (e *Error) IsRequestStop() bool {
+	return e.stop || e.Kind == "content_policy_violation" || e.Kind == "upstream_policy_violation"
+}
 func (e *Error) PublicDiagnostic(status int) string {
 	if e.Status != status {
 		return ""

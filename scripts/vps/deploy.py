@@ -119,9 +119,9 @@ def validate_arguments(args: argparse.Namespace) -> None:
     maintenance = getattr(args, 'maintenance', None)
     if maintenance and args.action in {'deploy', 'update', 'restart'}:
         raise ValueError(
-            'Production maintenance is locked until the channel-stop, drain, and restore controller is integrated. '
+            'Use cpa-update.ps1 for production maintenance with channel stop, drain, and restore. '
             'The policy requires confirmed channel stoppage, then 95% completion when measurable; '
-            'otherwise it permits 60 seconds of quiet New API request logs or a 300-second wait limit. '
+            'otherwise it permits 60 seconds of quiet New API request logs or a 180-second wait limit. '
             'Read-only status, logs, probe, and package actions remain available.'
         )
 

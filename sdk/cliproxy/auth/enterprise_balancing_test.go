@@ -426,6 +426,7 @@ func TestEnterpriseBalanceStreamLifetimeAndAdmissionHandoff(t *testing.T) {
 		t.Run(ending, func(t *testing.T) {
 			m, _, now := balanceTestManager(t)
 			a := sharedQuotaAuth(t, m, "stream-balance-"+ending, "111", "us", "enterprise_plus", "a")
+			m.PublishEnterprisePolicyCatalog(a, []ge.Model{{ID: ge.ArgonModel}})
 			observeBalance(t, m, a, *now, 100)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -435,7 +436,7 @@ func TestEnterpriseBalanceStreamLifetimeAndAdmissionHandoff(t *testing.T) {
 			}
 			source := make(chan exec.StreamChunk)
 			e := &enterpriseQuotaExecutor{ProviderExecutor: &sharedQuotaStreamExecutor{chunks: source}}
-			stream, err := e.ExecuteStream(ctx, a, exec.Request{}, exec.Options{})
+			stream, err := e.ExecuteStream(ctx, a, exec.Request{Model: ge.ArgonModel}, exec.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}

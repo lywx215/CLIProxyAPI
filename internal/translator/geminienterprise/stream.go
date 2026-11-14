@@ -180,6 +180,9 @@ func (p *Parser) sse(r io.Reader) error {
 	}
 	for s.Scan() {
 		line := s.Text()
+		if !utf8.ValidString(line) {
+			return p.wrap("invalid_upstream_stream", "invalid UTF-8")
+		}
 		if line == "" {
 			if err := flush(); err != nil {
 				return err

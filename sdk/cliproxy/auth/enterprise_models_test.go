@@ -200,11 +200,14 @@ func TestEnterpriseModelAvailabilityBindingIsolationAndExpiry(t *testing.T) {
 	otherRegion := registerEnterpriseModelTestAuth(t, m, "availability-other-region", "us", "engine-a", "model-a")
 	otherEngine := registerEnterpriseModelTestAuth(t, m, "availability-other-engine", "global", "engine-b", "model-a")
 	ctx := withEnterpriseModelAttempts(context.Background())
-	m.observeEnterpriseModelError(ctx, a, "model-a", enterpriseModelTestRejection("model-a", false))
+	m.observeEnterpriseModelError(ctx, a, "models/model-a", enterpriseModelTestRejection("models/model-a", false))
 	wantUntil := now.Add(time.Minute)
 	for _, auth := range []*Auth{a, b} {
 		if got := m.enterpriseModels.retryAt(auth, "model-a"); !got.Equal(wantUntil) {
 			t.Fatalf("credential %s did not share application rejection: %v", auth.ID, got)
+		}
+		if got := m.enterpriseModels.retryAt(auth, "models/model-a"); !got.Equal(wantUntil) {
+			t.Fatalf("credential %s did not normalize the model resource name: %v", auth.ID, got)
 		}
 		if got := m.enterpriseModels.retryAt(auth, "model-b"); !got.IsZero() {
 			t.Fatal("one model rejection affected a sibling model")

@@ -142,25 +142,18 @@ func (e *GeminiEnterpriseExecutor) HttpRequest(ctx context.Context, auth *coreau
 			return nil, enterprise.Invalid("cannot validate the generation payload")
 		}
 		req.Body = io.NopCloser(bytes.NewReader(body))
-		if !gjson.ValidBytes(body) {
-			return nil, enterprise.Invalid("the generation payload must be valid JSON")
-		}
-		if model := gjson.GetBytes(body, "generationSpec.modelId").String(); model != "" {
-			models = append(models, model)
-		}
-		if gjson.GetBytes(body, "toolsSpec.imageGenerationSpec").Exists() {
-			if e.cfg != nil && e.cfg.DisableImageGeneration == config.DisableImageGenerationAll {
-				return nil, enterprise.Invalid("image generation is disabled for this endpoint")
-			}
-			models = append(models, "gemini-3-pro-image")
-		}
-		if gjson.GetBytes(body, "toolsSpec.videoGenerationSpec").Exists() {
-			models = append(models, "veo-3.1")
+		var errModels error
+		models, errModels = enterprise.RawAssistModels(body)
+		if errModels != nil {
+			return nil, &coreauth.EnterpriseModelPolicyError{Code: "invalid_generation_payload", Message: "The generation payload must specify models unambiguously in a JSON object", HTTPStatus: http.StatusBadRequest}
 		}
 		if len(models) == 0 {
 			return nil, enterprise.Invalid("an explicit upstream model is required")
 		}
 		for _, model := range models {
+			if model == "gemini-3-pro-image" && e.cfg != nil && e.cfg.DisableImageGeneration == config.DisableImageGenerationAll {
+				return nil, enterprise.Invalid("image generation is disabled for this endpoint")
+			}
 			if errPolicy := coreauth.ValidateEnterpriseModelRequest(ctx, auth, model); errPolicy != nil {
 				return nil, errPolicy
 			}
@@ -255,9 +248,6 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	if err := e.PrepareRequest(request, auth); err != nil {
 		return nil, input, err
 	}
-	if err := coreauth.RecordEnterpriseGenerationModel(ctx, finalModel); err != nil {
-		return nil, input, err
-	}
 	// Never record bearer credentials or raw upstream assistToken/sessionInfo in request logs.
 	headers := request.Header.Clone()
 	headers.Del("Authorization")
@@ -272,6 +262,9 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 	request = helps.ObserveEnterpriseRequest(ctx, request, finalModel)
 	if errCommit := coreauth.CommitEnterpriseModelSubmission(ctx, auth, finalModel); errCommit != nil {
 		return nil, input, errCommit
+	}
+	if err := coreauth.RecordEnterpriseGenerationModel(ctx, finalModel); err != nil {
+		return nil, input, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -311,7 +304,7 @@ func (e *GeminiEnterpriseExecutor) Execute(ctx context.Context, auth *coreauth.A
 	reporter := helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
 	reporter.SetStream(opts.Stream)
 	defer func() {
-		if err != nil {
+		if err != nil && !coreauth.IsEnterpriseApplicationPolicyRejection(err) {
 			reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
 		}
 	}()
@@ -449,7 +442,9 @@ func (e *GeminiEnterpriseExecutor) ExecuteStream(ctx context.Context, auth *core
 	response, input, err := e.open(ctx, auth, req, opts, reporter)
 	if err != nil {
 		attempt.Finish(ctx, e.cfg, err)
-		reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
+		if !coreauth.IsEnterpriseApplicationPolicyRejection(err) {
+			reporter.PublishFailureWithDetail(ctx, usage.Detail{TokenPresence: &usage.TokenPresence{}}, err)
+		}
 		return nil, err
 	}
 	chunks := make(chan coreexec.StreamChunk)

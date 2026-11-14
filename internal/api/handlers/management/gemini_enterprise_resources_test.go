@@ -119,10 +119,18 @@ func TestEnterpriseAuthorizationIsSavedBeforeOptionalDiscovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(files) != 1 {
+			credentials := files[:0]
+			for _, file := range files {
+				if strings.HasSuffix(file.Name(), ".json") {
+					credentials = append(credentials, file)
+				} else if !strings.HasSuffix(file.Name(), ".json.write-lock") {
+					t.Fatal("unexpected persistence artifact")
+				}
+			}
+			if len(credentials) != 1 {
 				t.Fatal("authorization was not retained independently of discovery")
 			}
-			data, _ := os.ReadFile(filepath.Join(h.cfg.AuthDir, files[0].Name()))
+			data, _ := os.ReadFile(filepath.Join(h.cfg.AuthDir, credentials[0].Name()))
 			var record map[string]any
 			if json.Unmarshal(data, &record) != nil || ge.String(record, "refresh_token") != "synthetic-refresh" {
 				t.Fatal("saved authorization missing")

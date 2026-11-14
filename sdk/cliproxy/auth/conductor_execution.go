@@ -149,11 +149,6 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 		defer func() { m.WebRuntime().RecordPreflight(ctx, resultErr) }()
 	}
 	if web.ExistingLease(ctx) == nil {
-		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
-		if carbonErr != nil {
-			return cliproxyexecutor.Response{}, carbonErr
-		}
 		req, opts = cliproxysession.Enrich(req, opts)
 	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
@@ -239,11 +234,6 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 	}
 	defer webDone()
 	if web.ExistingLease(ctx) == nil {
-		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
-		if carbonErr != nil {
-			return cliproxyexecutor.Response{}, carbonErr
-		}
 		req, opts = cliproxysession.Enrich(req, opts)
 	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, true, m.HomeEnabled())
@@ -335,13 +325,6 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 			webDone()
 		}
 	}()
-	if web.ExistingLease(ctx) == nil {
-		var carbonErr error
-		normalized, carbonErr = m.routeEnterpriseHydrogen(ctx, normalized, req.Model)
-		if carbonErr != nil {
-			return nil, carbonErr
-		}
-	}
 	normalized, errOperation := filterEnterpriseProviders(normalized, opts, false, m.HomeEnabled())
 	if errOperation != nil {
 		return nil, errOperation
@@ -2143,7 +2126,7 @@ func warnLogUpstreamFailure(ctx context.Context, entry *log.Entry, provider, mod
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	if isRequestInvalidError(err) {
+	if isRequestInvalidError(err) || IsEnterpriseApplicationPolicyRejection(err) {
 		return
 	}
 	if entry == nil {

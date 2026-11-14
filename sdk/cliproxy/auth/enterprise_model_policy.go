@@ -86,6 +86,31 @@ func (c *enterprisePolicyCoordinator) subscriptionKey(auth *Auth) string {
 	return key
 }
 
+func (c *enterprisePolicyCoordinator) carrySubscriptionRotationLocked(previous, current *Auth) {
+	entry, ok := c.subscriptions[c.subscriptionKey(previous)]
+	if !ok || entry.lastSuccess.IsZero() {
+		return
+	}
+	key := EnterpriseSubscriptionKey(current)
+	if project := entry.observation.ProjectNumber; project != "" {
+		canonical := current.Clone()
+		canonical.Metadata["project_id"] = project
+		numberKey := EnterpriseSubscriptionKey(canonical)
+		if key != numberKey {
+			if c.aliases == nil {
+				c.aliases = map[string]string{}
+			}
+			c.aliases[key] = numberKey
+			key = numberKey
+		}
+	}
+	if other := c.subscriptions[key]; other.revision >= entry.revision {
+		return
+	}
+	entry.pending, entry.next = 0, time.Time{}
+	c.subscriptions[key] = entry
+}
+
 func (m *Manager) BeginEnterpriseSubscriptionRefresh(auth *Auth) *EnterpriseSubscriptionRefresh {
 	rawKey := EnterpriseSubscriptionKey(auth)
 	if rawKey == "" || IsEnterpriseAccountAuth(auth) {
@@ -249,17 +274,15 @@ type EnterprisePolicyModel struct {
 
 type EnterpriseModelPolicyView struct {
 	ge.ModelPolicy
-	CarbonAdmissionSupported   bool                       `json:"carbon_admission_supported"`
-	CarbonAdmission            ge.CarbonAdmission         `json:"carbon_admission"`
-	HydrogenAdmissionSupported bool                       `json:"hydrogen_admission_supported"`
-	HydrogenAdmission          ge.CarbonAdmission         `json:"hydrogen_admission"`
-	GlobalExcludedModels       []string                   `json:"global_excluded_models"`
-	Subscription               ge.SubscriptionObservation `json:"subscription"`
-	ImageGenerationDisabled    bool                       `json:"image_generation_disabled"`
-	CatalogState               ge.CatalogState            `json:"catalog_state"`
-	CatalogKnown               bool                       `json:"catalog_known"`
-	CatalogModels              []EnterprisePolicyModel    `json:"catalog_models"`
-	EffectiveModels            []string                   `json:"effective_models"`
+	CarbonAdmissionSupported bool                       `json:"carbon_admission_supported"`
+	CarbonAdmission          ge.CarbonAdmission         `json:"carbon_admission"`
+	GlobalExcludedModels     []string                   `json:"global_excluded_models"`
+	Subscription             ge.SubscriptionObservation `json:"subscription"`
+	ImageGenerationDisabled  bool                       `json:"image_generation_disabled"`
+	CatalogState             ge.CatalogState            `json:"catalog_state"`
+	CatalogKnown             bool                       `json:"catalog_known"`
+	CatalogModels            []EnterprisePolicyModel    `json:"catalog_models"`
+	EffectiveModels          []string                   `json:"effective_models"`
 }
 
 func (m *Manager) PublishEnterprisePolicyCatalog(auth *Auth, models []ge.Model) {
@@ -302,14 +325,12 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 			policy.ExcludedModels = append(policy.ExcludedModels, pattern)
 		}
 	}
-	var admission, hydrogen ge.CarbonAdmission
+	var admission ge.CarbonAdmission
 	if includeCarbon {
 		admission = m.enterpriseCarbonAdmissionView(auth, subscription)
-		hydrogen = m.enterpriseAdmissionView(auth, subscription, ge.HydrogenAdmissionModel)
 	}
 	policy.CarbonAllowed = admission.Available
-	policy.HydrogenAllowed = hydrogen.Available
-	view := EnterpriseModelPolicyView{ModelPolicy: policy, CarbonAdmissionSupported: includeCarbon, CarbonAdmission: admission, HydrogenAdmissionSupported: includeCarbon, HydrogenAdmission: hydrogen, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
+	view := EnterpriseModelPolicyView{ModelPolicy: policy, CarbonAdmissionSupported: includeCarbon, CarbonAdmission: admission, GlobalExcludedModels: globalExcluded, Subscription: subscription, CatalogModels: []EnterprisePolicyModel{}, EffectiveModels: []string{}}
 	c := &m.enterprisePolicies
 	c.mu.Lock()
 	models, known := c.catalogs[enterprisePolicyCatalogKey(auth)]
@@ -349,17 +370,14 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 	if enabled, err := ge.ReadCarbonEnabled(auth.Metadata); err == nil && enabled {
 		supplement(ge.CarbonModel)
 	}
-	if hydrogen.Available {
-		supplement(ge.HydrogenModel)
-	}
 	view.ImageGenerationDisabled = cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 	for _, model := range models {
 		automatic := strings.EqualFold(strings.TrimSpace(model.DisplayName), "auto")
 		allowed := policy.Allows(model.ID) && !(policy.Restricted() && automatic)
-		if model.ID == ge.HydrogenModel {
-			allowed = hydrogen.Available
-			model.MediaKind = ""
-		} else if policy.ForcesArgon(model.ID) {
+		if model.ID == ge.HydrogenModel && (IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == StatusDisabled || enterpriseRetired(auth)) {
+			allowed = false
+		}
+		if policy.ForcesArgon(model.ID) {
 			allowed = true
 			model.MediaKind = ""
 		}
@@ -369,9 +387,6 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		}
 		reason := ""
 		if !allowed {
-			if model.ID == ge.HydrogenModel {
-				reason = hydrogen.Reason
-			}
 			if mediaDisabled {
 				reason = "image_generation_disabled"
 			}
@@ -403,12 +418,11 @@ func (m *Manager) EnterpriseModelPolicySignature(auth *Auth) string {
 
 func (view EnterpriseModelPolicyView) Signature() string {
 	data, _ := json.Marshal(struct {
-		Policy   ge.ModelPolicy
-		Source   string
-		Models   []EnterprisePolicyModel
-		Carbon   ge.CarbonAdmission
-		Hydrogen ge.CarbonAdmission
-	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels, view.CarbonAdmission, view.HydrogenAdmission})
+		Policy ge.ModelPolicy
+		Source string
+		Models []EnterprisePolicyModel
+		Carbon ge.CarbonAdmission
+	}{view.ModelPolicy, view.CatalogState.Source, view.CatalogModels, view.CarbonAdmission})
 	return string(data)
 }
 
@@ -443,25 +457,34 @@ func policyError(policy ge.ModelPolicy, model string) error {
 		return &EnterpriseModelPolicyError{"subscription_unverified", "The Enterprise collection is paused until the current user's assigned subscription is verified", 503}
 	}
 	if policy.EnforcedReason == "paid_subscription_restricted" {
-		return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, manually enabled gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
+		return &EnterpriseModelPolicyError{"model_not_allowed", "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models", 400}
 	}
 	return &EnterpriseModelPolicyError{"model_not_allowed", "The Enterprise collection model policy does not allow this upstream model", 400}
 }
 
-func (m *Manager) validateEnterprisePolicy(auth *Auth, model string, catalog bool) error {
-	return m.validateEnterprisePolicyForRequest(context.Background(), auth, model, catalog)
+// ValidateEnterpriseModelCatalog checks whether a bound model is eligible for a pinned test.
+func (m *Manager) ValidateEnterpriseModelCatalog(auth *Auth, model string) error {
+	if auth == nil || auth.Provider != ge.Provider || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+		return &EnterpriseModelPolicyError{"credential_not_found", "Select a current Gemini Enterprise application", 409}
+	}
+	if auth.Disabled || auth.Status == StatusDisabled {
+		return &EnterpriseModelPolicyError{"credential_disabled", "Enable the Enterprise application before testing a model", 409}
+	}
+	return m.validateEnterpriseCatalogPolicy(auth, m.enterpriseModelPolicyView(auth, false), model, true)
 }
 
 func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *Auth, model string, catalog bool) error {
 	if scope := enterpriseCarbonTestScope(ctx); scope != nil && enterpriseCarbonTestMatches(ctx, auth, model) {
 		return m.EnterpriseAdmissionTestEligibility(auth, scope.model)
 	}
-	if canonicalModelKey(model) == ge.HydrogenModel {
-		return m.validateEnterpriseAdmissionPolicy(ctx, auth, ge.HydrogenAdmissionModel)
-	}
 	view := m.enterpriseModelPolicyView(auth, false)
+	return m.validateEnterpriseCatalogPolicy(auth, view, model, catalog)
+}
+
+func (m *Manager) validateEnterpriseCatalogPolicy(auth *Auth, view EnterpriseModelPolicyView, model string, catalog bool) error {
+	model = strings.TrimPrefix(canonicalModelKey(model), "models/")
 	// A deferred model is checked again after payload rules resolve its final ID.
-	if view.ForcesArgon(canonicalModelKey(model)) || model == "" && !catalog && view.ArgonForceEnabled {
+	if view.ForcesArgon(model) || model == "" && !catalog && view.ArgonForceEnabled {
 		return nil
 	}
 	if model == "" && view.Status != "blocked" && (!catalog || !view.Restricted()) {
@@ -473,21 +496,30 @@ func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *
 	if !catalog {
 		return nil
 	}
-	model = canonicalModelKey(model)
 	if view.CatalogKnown {
 		for _, entry := range view.CatalogModels {
 			if entry.ID == model && entry.Allowed {
 				return nil
 			}
 		}
+	}
+	if view.CatalogKnown || model == ge.HydrogenModel && view.CatalogState.LastError != nil {
 		return &EnterpriseModelPolicyError{"model_not_in_catalog", "The upstream model is not allowed by this collection's current catalog", 400}
 	}
-	// Embedders can publish their own registry entries instead of using Service discovery.
+	// Hydrogen requires a catalog for the current application, including for tests.
+	if model == ge.HydrogenModel {
+		return &EnterpriseModelPolicyError{"model_catalog_unavailable", "The Enterprise collection model catalog is not available yet", 503}
+	}
+	// Keep the legacy registry fallback for embedders that do not publish a catalog.
 	for _, entry := range registry.GetGlobalRegistry().GetModelsForClient(auth.ID) {
 		if entry == nil || view.Restricted() && strings.EqualFold(strings.TrimSpace(entry.DisplayName), "auto") {
 			continue
 		}
-		if canonicalModelKey(entry.ID) == model || canonicalModelKey(entry.MetadataModelID) == model || canonicalModelKey(m.selectionModelForAuth(auth, entry.ID)) == model {
+		actual := strings.TrimSpace(entry.MetadataModelID)
+		if actual == "" {
+			actual = m.selectionModelForAuth(auth, entry.ID)
+		}
+		if strings.TrimPrefix(canonicalModelKey(actual), "models/") == model {
 			return nil
 		}
 	}

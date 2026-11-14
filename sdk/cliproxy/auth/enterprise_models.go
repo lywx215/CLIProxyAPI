@@ -44,6 +44,17 @@ type enterpriseModelProbe struct {
 	authID   string
 	expected ge.ResourceBinding
 	model    string
+	version  *enterpriseModelProbeVersion
+}
+
+type enterpriseModelProbeVersion struct {
+	ownerID               string
+	registrationEpoch     uint64
+	ownerEpoch            uint64
+	collectionRevision    uint64
+	authorizationRevision uint64
+	applicationWindow     uint64
+	fingerprint           string
 }
 type enterpriseModelAttempts struct {
 	mu              sync.Mutex
@@ -91,7 +102,75 @@ func enterpriseAttempts(ctx context.Context) *enterpriseModelAttempts {
 // WithEnterpriseModelProbe fixes an administrative probe to one credential and binding.
 // It does not bypass disablement, cooldown, payload rules or normal token refresh.
 func WithEnterpriseModelProbe(ctx context.Context, authID string, expected ge.ResourceBinding, model string) context.Context {
-	return context.WithValue(ctx, enterpriseModelContextKey{}, &enterpriseModelAttempts{probe: &enterpriseModelProbe{authID: authID, expected: expected, model: canonicalModelKey(model)}})
+	return withEnterpriseModelProbe(ctx, &enterpriseModelProbe{authID: authID, expected: expected, model: canonicalModelKey(model)})
+}
+
+func withEnterpriseModelProbe(ctx context.Context, probe *enterpriseModelProbe) context.Context {
+	return context.WithValue(ctx, enterpriseModelContextKey{}, &enterpriseModelAttempts{probe: probe})
+}
+
+// BeginEnterpriseModelProbe pins a versioned test to the current collection and
+// authorization while allowing an ordinary refresh of the same OAuth grant.
+func (m *Manager) BeginEnterpriseModelProbe(ctx context.Context, selected *Auth, model string, revision uint64) (context.Context, error) {
+	if selected == nil {
+		return nil, enterpriseModelProbeChanged()
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	current := m.auths[selected.ID]
+	owner := m.auths[EnterpriseOwnerID(selected)]
+	if owner == nil || owner.Provider != ge.Provider || owner.Disabled || owner.Status == StatusDisabled || enterpriseRetired(owner) ||
+		current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled ||
+		current.RegistrationEpoch != selected.RegistrationEpoch || EnterpriseSubscriptionKey(current) != EnterpriseSubscriptionKey(selected) ||
+		ge.Resources(ge.FromMetadata(current.Metadata)) != ge.Resources(ge.FromMetadata(selected.Metadata)) {
+		return nil, enterpriseModelProbeChanged()
+	}
+	bindingID := EnterpriseBindingID(current)
+	if currentRevision, ok := carbonCollectionRevision(owner, bindingID); !ok || currentRevision != revision {
+		return nil, enterpriseModelProbeChanged()
+	}
+	probe := &enterpriseModelProbe{
+		authID: current.ID, expected: ge.Resources(ge.FromMetadata(current.Metadata)), model: canonicalModelKey(model),
+		version: &enterpriseModelProbeVersion{
+			ownerID: owner.ID, registrationEpoch: current.RegistrationEpoch, ownerEpoch: owner.RegistrationEpoch,
+			collectionRevision: revision, authorizationRevision: m.EnterpriseCarbonAuthorizationSnapshotRevision(owner.ID),
+			applicationWindow: current.enterpriseHydrogenWindow,
+			fingerprint:       ge.CarbonAuthorizationFingerprint(owner.Metadata),
+		},
+	}
+	return withEnterpriseModelProbe(ctx, probe), nil
+}
+
+// EnterpriseModelProbeMatches checks whether the versioned probe still belongs to
+// the same collection and grant when a result is ready to be published.
+func (m *Manager) EnterpriseModelProbeMatches(ctx context.Context) bool {
+	s := enterpriseAttempts(ctx)
+	if s == nil || s.probe == nil || s.probe.version == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.enterpriseModelProbeMatchesLocked(s.probe, m.auths[s.probe.authID])
+}
+
+func (m *Manager) enterpriseModelProbeMatchesLocked(probe *enterpriseModelProbe, current *Auth) bool {
+	version := probe.version
+	owner := m.auths[version.ownerID]
+	if current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled ||
+		current.RegistrationEpoch != version.registrationEpoch || current.enterpriseHydrogenWindow != version.applicationWindow ||
+		EnterpriseOwnerID(current) != version.ownerID ||
+		ge.Resources(ge.FromMetadata(current.Metadata)) != probe.expected ||
+		owner == nil || owner.Provider != ge.Provider || owner.Disabled || owner.Status == StatusDisabled || enterpriseRetired(owner) ||
+		owner.RegistrationEpoch != version.ownerEpoch ||
+		m.EnterpriseCarbonAuthorizationSnapshotRevision(owner.ID) != version.authorizationRevision {
+		return false
+	}
+	currentFingerprint := ge.CarbonAuthorizationFingerprint(owner.Metadata)
+	if currentFingerprint != version.fingerprint && !m.sameCarbonAuthorizationLocked(owner.ID, version.fingerprint, currentFingerprint) {
+		return false
+	}
+	revision, ok := carbonCollectionRevision(owner, EnterpriseBindingID(current))
+	return ok && revision == version.collectionRevision
 }
 
 // EnterpriseModelProbeError carries only fixed public diagnostics.
@@ -105,10 +184,26 @@ func (e *EnterpriseModelProbeError) Error() string       { return e.Message }
 func (e *EnterpriseModelProbeError) StatusCode() int     { return e.HTTPStatus }
 func (*EnterpriseModelProbeError) IsRequestScoped() bool { return true }
 
+func enterpriseModelProbeChanged() *EnterpriseModelProbeError {
+	return &EnterpriseModelProbeError{Code: "credential_changed", Message: "The credential or application changed; reload the model list.", HTTPStatus: http.StatusConflict}
+}
+
 type enterpriseModelGateError struct{ error }
 
 func (e *enterpriseModelGateError) Unwrap() error   { return e.error }
 func (e *enterpriseModelGateError) StatusCode() int { return statusCodeFromError(e.error) }
+
+// An application's policy can reject a model before sending without failing the
+// request for other eligible applications or updating the rejecting application's health.
+type enterpriseApplicationPolicyError struct{ *EnterpriseModelPolicyError }
+
+func (e *enterpriseApplicationPolicyError) Unwrap() error { return e.EnterpriseModelPolicyError }
+
+// IsEnterpriseApplicationPolicyRejection reports a local skip before upstream submission.
+func IsEnterpriseApplicationPolicyRejection(err error) bool {
+	var rejection *enterpriseApplicationPolicyError
+	return errors.As(err, &rejection)
+}
 
 type enterpriseProbeStopError struct{ error }
 
@@ -184,12 +279,9 @@ func ValidateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 	return validateEnterpriseModelRequest(ctx, auth, model, true)
 }
 
-// CommitEnterpriseModelSubmission checks manual admission again just before sending.
+// CommitEnterpriseModelSubmission rechecks policy at the last local step before sending.
 func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model string) error {
-	modelKey := canonicalModelKey(model)
-	if modelKey == ge.HydrogenModel {
-		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, ge.HydrogenAdmissionModel)
-	}
+	modelKey := strings.TrimPrefix(canonicalModelKey(model), "models/")
 	if scope := enterpriseCarbonTestScope(ctx); scope != nil {
 		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, scope.model)
 	}
@@ -197,7 +289,7 @@ func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model stri
 		return nil
 	}
 	allModels, _ := ge.ReadAllModelsEnabled(auth.Metadata)
-	if allModels || ge.IsArgonFamilyModel(strings.TrimPrefix(modelKey, "models/")) {
+	if allModels || ge.IsArgonFamilyModel(modelKey) || modelKey == ge.HydrogenModel {
 		return ValidateEnterpriseModelRequest(ctx, auth, model)
 	}
 	return nil
@@ -207,22 +299,24 @@ func validateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 	if auth == nil || auth.Provider != ge.Provider {
 		return nil
 	}
-	model = canonicalModelKey(model)
+	model = strings.TrimPrefix(canonicalModelKey(model), "models/")
 	binding := ge.FromMetadata(auth.Metadata)
 	s := enterpriseAttempts(ctx)
+	var probe *enterpriseModelProbe
 	if s != nil {
 		s.mu.Lock()
-		probe, location, requiredModel := s.probe, s.location, s.model
+		probe = s.probe
+		location, requiredModel := s.location, s.model
 		s.mu.Unlock()
 		if probe != nil {
 			if auth.ID != probe.authID || ge.Resources(binding) != probe.expected {
-				return &EnterpriseModelProbeError{Code: "credential_changed", Message: "The credential application binding changed; reload the model list.", HTTPStatus: http.StatusConflict}
+				return enterpriseModelProbeChanged()
 			}
-			if final && model != probe.model {
+			if final && model != strings.TrimPrefix(probe.model, "models/") {
 				return &EnterpriseModelProbeError{Code: "model_changed", Message: "Request configuration changed the model being tested.", HTTPStatus: http.StatusConflict}
 			}
 		}
-		if location != "" && (binding.Location != location || final && model != requiredModel) {
+		if location != "" && (binding.Location != location || final && model != strings.TrimPrefix(requiredModel, "models/")) {
 			return &enterpriseModelGateError{&Error{Code: "enterprise_model_gate", Message: "Enterprise retry requires the same region and upstream model", HTTPStatus: http.StatusConflict}}
 		}
 	}
@@ -238,16 +332,23 @@ func validateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 	m.mu.RLock()
 	current := m.auths[auth.ID]
 	changed := current == nil || current.Provider != ge.Provider || current.Disabled || current.Status == StatusDisabled || current.RegistrationEpoch != auth.RegistrationEpoch || EnterpriseSubscriptionKey(current) != EnterpriseSubscriptionKey(auth) || ge.ApplicationBinding(ge.FromMetadata(current.Metadata)) != ge.ApplicationBinding(binding)
+	if !changed && probe != nil && probe.version != nil {
+		changed = !m.enterpriseModelProbeMatchesLocked(probe, current)
+	}
 	disabledCooling := m.cooldownDisabledForAuth(current)
 	if current != nil {
 		current = current.Clone()
 	}
 	m.mu.RUnlock()
 	if changed {
-		return &EnterpriseModelProbeError{Code: "credential_changed", Message: "The credential application binding changed; reload the model list.", HTTPStatus: http.StatusConflict}
+		return enterpriseModelProbeChanged()
 	}
 	if final {
 		if err := m.validateEnterprisePolicyForRequest(ctx, current, model, true); err != nil {
+			var policy *EnterpriseModelPolicyError
+			if s != nil && !enterpriseProbeActive(ctx) && enterpriseCarbonTestScope(ctx) == nil && errors.As(err, &policy) {
+				return &enterpriseApplicationPolicyError{policy}
+			}
 			return err
 		}
 	}
@@ -266,7 +367,7 @@ func (c *enterpriseModelCoordinator) retryAt(auth *Auth, model string) time.Time
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	key := ge.ApplicationBinding(ge.FromMetadata(auth.Metadata))
-	until := c.records[key][canonicalModelKey(model)]
+	until := c.records[key][strings.TrimPrefix(canonicalModelKey(model), "models/")]
 	if !until.After(c.now()) {
 		return time.Time{}
 	}
@@ -281,7 +382,7 @@ func (m *Manager) observeEnterpriseModelError(ctx context.Context, auth *Auth, m
 	if rejection.Model != "" {
 		model = rejection.Model
 	}
-	model = canonicalModelKey(model)
+	model = strings.TrimPrefix(canonicalModelKey(model), "models/")
 	if model == "" {
 		return
 	}
@@ -325,11 +426,11 @@ func (m *Manager) observeEnterpriseModelError(ctx context.Context, auth *Auth, m
 	c.records[key][model] = now.Add(time.Minute)
 	c.mu.Unlock()
 	m.mu.RUnlock()
-	if admissionModel, exists := ge.AdmissionModelForID(model); exists {
+	if model == ge.CarbonModel {
 		// The request lease is already released from all coordinator locks before
 		// persisting a model-specific review state. A newer proof must be fenced by
 		// its original test identity in the evidence store.
-		_ = m.MarkEnterpriseAdmissionNeedsReview(ctx, auth, "model_not_enabled", rejection.HTTPStatus, admissionModel)
+		_ = m.MarkEnterpriseCarbonNeedsReview(ctx, auth, "model_not_enabled", rejection.HTTPStatus)
 	}
 }
 

@@ -5,6 +5,9 @@ import json
 import math
 
 
+FALLBACK_WAIT_SECONDS = 180
+
+
 @dataclass(frozen=True)
 class DrainDecision:
     ready: bool
@@ -30,7 +33,7 @@ def request_log_marker(record, total_count):
 
 def evaluate_drain(*, channels_stopped, elapsed_seconds, counts_reliable=False,
                    baseline=None, remaining=None, log_quiet_seconds=None):
-    """Evaluate the user's 95% rule and authorized 60s/300s fallback.
+    """Evaluate the user's 95% rule and authorized 60s/180s fallback.
 
     Log quiet time must describe observations after confirmed channel stoppage;
     historical timestamps alone are not a continuous observation window. Callers
@@ -54,6 +57,6 @@ def evaluate_drain(*, channels_stopped, elapsed_seconds, counts_reliable=False,
             raise ValueError('Log quiet time must be observed after channel stoppage.')
         if log_quiet_seconds >= 60:
             return DrainDecision(True, 'newapi_logs_quiet_60_seconds')
-    if elapsed_seconds >= 300:
-        return DrainDecision(True, 'fallback_wait_limit_300_seconds')
+    if elapsed_seconds >= FALLBACK_WAIT_SECONDS:
+        return DrainDecision(True, 'fallback_wait_limit_180_seconds')
     return DrainDecision(False, 'waiting_for_log_or_time_fallback')

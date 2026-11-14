@@ -68,6 +68,7 @@ func installEnterpriseAuthorization(current, incoming *Auth) (*Auth, error) {
 		return nil, ErrEnterpriseAccountChanged
 	}
 	updated := current.Clone()
+	updated.Metadata[EnterpriseOAuthRevisionKey] = EnterpriseOAuthAuthorizationRevision(current) + 1
 	for _, key := range []string{"expired", "expire", "expires_at", "expiresAt", "expiry", "expires", "expires_in", "timestamp"} {
 		delete(updated.Metadata, key)
 	}

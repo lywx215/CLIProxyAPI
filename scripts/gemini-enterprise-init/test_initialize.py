@@ -149,14 +149,18 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual(tool.run_region(PROJECT, LOCATION)["status"], "complete")
         assistant = next(iter(api.assistant_items.values()))
         assistant["generationConfig"]["allowedModelIds"] = ["custom-model"]
+        engine = next(iter(api.engine_items.values()))
+        engine["features"]["model-selector"] = "FEATURE_STATE_OFF"
+        engine["modelConfigs"][init.CARBON] = "MODEL_DISABLED"
         result = tool.run_region(PROJECT, LOCATION)
         self.assertEqual(result["status"], "complete")
         generation = assistant["generationConfig"]
         self.assertEqual(generation["defaultModelId"], "keep-model")
         self.assertEqual(generation["systemInstruction"]["additionalSystemInstruction"], "keep")
         self.assertTrue({"custom-model", init.CARBON} <= set(generation["allowedModelIds"]))
-        engine = next(iter(api.engine_items.values()))
         self.assertEqual(engine["features"]["keep"], "FEATURE_STATE_ON")
+        self.assertEqual(engine["features"]["model-selector"], "FEATURE_STATE_OFF")
+        self.assertFalse(result["applications"][0]["model_selector"])
 
     def test_absent_and_empty_ranges_stay_implicit(self):
         for empty in (False, True):

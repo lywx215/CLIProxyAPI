@@ -202,8 +202,6 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		log.Warn("gemini-enterprise is not supported in CLIProxyAPIHome mode")
 		return
 	}
-	s.queueEnterpriseSubscription(ctx, auth)
-	s.queueEnterpriseQuota(ctx, auth)
 	s.restoreEnterpriseCatalog(auth)
 	key := s.enterpriseKey(auth)
 	if !s.enterpriseActive(auth, key) {
@@ -216,7 +214,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	expectedEpoch := reg.ClientRegistrationEpoch(auth.ID)
 	d.mu.Unlock()
 	forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
-	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available || s.coreManager.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel).Available {
+	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while
@@ -235,6 +233,10 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 		}
 		s.cfgMu.RUnlock()
 	}
+	// Publish saved routes before a new subscription observation can invalidate
+	// the policy signature used by this synchronous registry update.
+	s.queueEnterpriseSubscription(ctx, auth)
+	s.queueEnterpriseQuota(ctx, auth)
 	s.queueEnterpriseDiscovery(ctx, auth)
 }
 
@@ -431,6 +433,7 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 		if auth.Disabled || auth.Status == coreauth.StatusDisabled {
 			continue
 		}
+		s.restoreEnterpriseCatalog(auth)
 		key := s.enterpriseKey(auth)
 		d.mu.Lock()
 		catalog := d.catalogs[key]

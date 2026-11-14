@@ -30,7 +30,8 @@ func reconcileEnterpriseCarbonAdmissionWindow(previous, next *Auth) {
 			window = max(enterpriseAdmissionWindow(previous, model), window)
 			oldEnabled, oldExplicit := previous.Metadata[model.EnabledKey].(bool)
 			newEnabled, newExplicit := next.Metadata[model.EnabledKey].(bool)
-			if oldEnabled != newEnabled || oldExplicit != newExplicit || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
+			changedSwitch := model.ID == ge.CarbonModel && (oldEnabled != newEnabled || oldExplicit != newExplicit)
+			if changedSwitch || previous.Disabled != next.Disabled || (previous.Status == StatusDisabled) != (next.Status == StatusDisabled) {
 				window++
 			}
 		}
@@ -70,7 +71,7 @@ func EnterpriseCarbonModelTestActive(ctx context.Context) bool {
 func enterpriseCarbonTestMatches(ctx context.Context, auth *Auth, model string) bool {
 	scope := enterpriseCarbonTestScope(ctx)
 	return scope != nil && auth != nil && auth.Provider == ge.Provider && auth.ID == scope.authID &&
-		(model == "" || canonicalModelKey(model) == scope.model.ID) &&
+		(model == "" || strings.TrimPrefix(canonicalModelKey(model), "models/") == scope.model.ID) &&
 		ge.Resources(ge.FromMetadata(auth.Metadata)) == scope.expected
 }
 
@@ -99,6 +100,10 @@ func (m *Manager) enterpriseAdmissionEligibility(auth *Auth, subscription ge.Sub
 	if (subscription.Status != "ok" && subscription.Status != "stale") || subscription.FreeTrial == nil {
 		return carbonPolicyError("subscription_unverified", strings.ReplaceAll("Carbon requires the current user's verified and assigned Enterprise subscription", "Carbon", model.Label), http.StatusServiceUnavailable)
 	}
+	if model.ID == ge.HydrogenModel {
+		view := m.enterpriseModelPolicyView(auth, false)
+		return m.validateEnterpriseCatalogPolicy(auth, view, model.ID, true)
+	}
 	policy := ge.ModelPolicyFor(auth.Metadata, subscription)
 	if policy.Reason == "invalid_model_policy" {
 		return carbonPolicyError("invalid_model_policy", "The saved Enterprise model policy is not valid", http.StatusBadRequest)
@@ -106,8 +111,7 @@ func (m *Manager) enterpriseAdmissionEligibility(auth *Auth, subscription ge.Sub
 	if policy.EffectiveMode == "custom" && policy.AllowedModels != nil && !slices.Contains(policy.AllowedModels, model.ID) {
 		return carbonPolicyError("model_not_allowed", strings.ReplaceAll("The application's custom whitelist does not allow Carbon", "Carbon", model.Label), http.StatusBadRequest)
 	}
-	// Hydrogen uses independent admission; Carbon follows the shared group policy.
-	if model.ID == ge.CarbonModel && !policy.Allows(model.ID) {
+	if !policy.Allows(model.ID) {
 		return policyError(policy, model.ID)
 	}
 	for _, pattern := range policy.ExcludedModels {
@@ -176,23 +180,6 @@ func (m *Manager) enterpriseAdmissionRoute(model string, target string) bool {
 	return false
 }
 
-func (m *Manager) routeEnterpriseHydrogen(ctx context.Context, providers []string, model string) ([]string, error) {
-	if m.HomeEnabled() || !m.EnterpriseHydrogenRoute(model) {
-		return providers, nil
-	}
-	if EnterpriseCarbonModelTestActive(ctx) {
-		return []string{ge.Provider}, nil
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for _, auth := range m.auths {
-		if auth != nil && auth.Provider == ge.Provider && !IsEnterpriseAccountAuth(auth) && canonicalModelKey(m.selectionModelForAuth(auth, model)) == ge.HydrogenModel && m.EnterpriseModelAdmissionView(auth, ge.HydrogenAdmissionModel).Available {
-			return []string{ge.Provider}, nil
-		}
-	}
-	return nil, EnterpriseHydrogenUnavailableError()
-}
-
 // EnterpriseModelAdmissionView is read-only and never acquires Manager.mu. It
 // can be evaluated from the existing selection and account transaction locks.
 func (m *Manager) EnterpriseModelAdmissionView(auth *Auth, model ge.AdmissionModel) ge.CarbonAdmission {
@@ -209,7 +196,9 @@ func (m *Manager) enterpriseAdmissionView(auth *Auth, subscription ge.Subscripti
 		return out
 	}
 	enabled, err := model.ReadEnabled(auth.Metadata)
-	if err != nil {
+	if model.ID == ge.HydrogenModel {
+		enabled = (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil && !*subscription.FreeTrial
+	} else if err != nil {
 		out.Reason = "invalid_" + strings.ToLower(model.Label) + "_settings"
 		return out
 	}
@@ -230,7 +219,7 @@ func (m *Manager) enterpriseAdmissionView(auth *Auth, subscription ge.Subscripti
 		return out
 	}
 	out.CanTest = ge.CarbonAuthorizationFingerprint(auth.Metadata) != ""
-	out.CanEnable = true
+	out.CanEnable = model.ID == ge.CarbonModel
 	if !enabled {
 		out.Reason = strings.ToLower(model.Label) + "_disabled"
 		return out
@@ -259,7 +248,7 @@ func (m *Manager) validateEnterpriseAdmissionPolicy(ctx context.Context, auth *A
 // committed send. No manager lock is held across network I/O, and existing quota
 // and concurrency leases retain their normal lifetime.
 func CommitEnterpriseAdmissionSubmission(ctx context.Context, auth *Auth, requested string, model ge.AdmissionModel) error {
-	if canonicalModelKey(requested) != model.ID {
+	if strings.TrimPrefix(canonicalModelKey(requested), "models/") != model.ID {
 		return nil
 	}
 	if ctx != nil && ctx.Err() != nil {
@@ -334,5 +323,8 @@ func (m *Manager) EnterpriseHydrogenTestEligibility(auth *Auth) error {
 	return m.EnterpriseAdmissionTestEligibility(auth, ge.HydrogenAdmissionModel)
 }
 func CommitEnterpriseHydrogenSubmission(ctx context.Context, auth *Auth, model string) error {
-	return CommitEnterpriseAdmissionSubmission(ctx, auth, model, ge.HydrogenAdmissionModel)
+	if strings.TrimPrefix(canonicalModelKey(model), "models/") != ge.HydrogenModel {
+		return nil
+	}
+	return CommitEnterpriseModelSubmission(ctx, auth, model)
 }

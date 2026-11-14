@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -448,6 +449,9 @@ func (m *Manager) mutateEnterpriseAdmissionMetadata(ctx context.Context, model g
 
 // The legacy test ID is accepted for older clients but is not an enablement gate.
 func (m *Manager) UpdateEnterpriseAdmissionEnabled(ctx context.Context, auth *Auth, expectedRevision uint64, enabled bool, model ge.AdmissionModel) (*Auth, error) {
+	if model.ID == ge.HydrogenModel {
+		return nil, carbonPolicyError("hydrogen_managed_by_policy", "Hydrogen is managed by the paid subscription and the application model policy", http.StatusConflict)
+	}
 	if m == nil || auth == nil || expectedRevision == 0 {
 		return nil, carbonEvidenceChanged()
 	}

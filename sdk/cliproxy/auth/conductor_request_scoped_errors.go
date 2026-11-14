@@ -204,6 +204,9 @@ func matchRequestScopedErrorAction(auth *Auth, err error, cfg *internalconfig.Co
 	if coreexecutor.GenerationHasStarted(err) {
 		return RequestScopedActionStop, true
 	}
+	if IsEnterpriseApplicationPolicyRejection(err) {
+		return "", false
+	}
 	if err == nil {
 		return "", false
 	}

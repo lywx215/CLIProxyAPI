@@ -34,8 +34,7 @@ func enterpriseCarbonManagementFailure(c *gin.Context, err error) {
 	enterpriseManagementFailure(c, http.StatusInternalServerError, "carbon_save_failed", "Could not save Carbon application state; reload and try again")
 }
 
-// testGeminiEnterpriseCarbonModel is the only HTTP entry that creates the
-// internal closed-application test context. Ordinary request headers cannot do so.
+// testGeminiEnterpriseAdmissionModel creates the internal legacy diagnostic scope.
 func (h *Handler) testGeminiEnterpriseAdmissionModel(c *gin.Context, auth *coreauth.Auth, req enterpriseModelTestRequest, revision uint64, model ge.AdmissionModel) {
 	if revision == 0 {
 		if account, err := ge.AccountFromLegacy(auth.Metadata); err == nil {

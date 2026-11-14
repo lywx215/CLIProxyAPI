@@ -131,6 +131,10 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	auth.EnsureIndex()
 	m.mu.Lock()
+	if errImport := CheckEnterpriseOAuthImport(ctx, m.auths[auth.ID]); errImport != nil {
+		m.mu.Unlock()
+		return nil, errImport
+	}
 	if existing := m.auths[auth.ID]; IsBoundAccountAuth(auth) && IsBoundAccountAuth(existing) {
 		var errAuthorization error
 		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
@@ -139,6 +143,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 			return nil, errAuthorization
 		}
 	}
+	ApplyEnterpriseOAuthImport(ctx, auth)
 	m.reconcileEnterpriseCarbonMutationLocked(m.auths[auth.ID], auth, updateModeReplace)
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
@@ -292,6 +297,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	m.mu.Lock()
 	existing, ok := m.auths[auth.ID]
+	if errImport := CheckEnterpriseOAuthImport(ctx, existing); errImport != nil {
+		m.mu.Unlock()
+		return nil, errImport
+	}
 	if !ok || existing == nil {
 		m.mu.Unlock()
 		if mode == updateModeEnterpriseResources {
@@ -348,6 +357,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			return nil, errAuthorization
 		}
 	}
+	ApplyEnterpriseOAuthImport(ctx, auth)
 	if mode == updateModeEnterpriseResources {
 		if !sameEnterpriseResourceSnapshot(base, existing) {
 			m.mu.Unlock()
@@ -465,6 +475,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	// Save before publication, including the transactional Meta mint path.
 	m.applyEnterpriseRetirementLocked(auth)
 	reconcileEnterpriseCarbonAdmissionWindow(existing, auth)
+	rotatedApplications := m.prepareEnterpriseCatalogRotationLocked(existing, auth, mode)
 	// Runtime-only changes made during I/O are merged below, never overwritten.
 	existingBeforeSave := existing.Clone()
 	persistMetaMint := (mode == updateModePrepare || mode == updateModeRefresh) && strings.EqualFold(strings.TrimSpace(auth.Provider), "meta")
@@ -517,6 +528,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	m.auths[auth.ID] = authClone
 	m.notifyAuthChangeLocked(auth.ID)
 	enterpriseSnapshots := m.reconcileEnterpriseAccountLocked(authClone)
+	m.carryEnterprisePolicyRotationLocked(rotatedApplications)
 	if IsEnterpriseAccountAuth(authClone) && !IsEnterpriseAccountAuth(existing) {
 		m.transferEnterpriseLegacyStateLocked(existing, authClone, &enterpriseSnapshots)
 		authClone.Success, authClone.Failed, authClone.recentRequests = 0, 0, recentRequestRing{}

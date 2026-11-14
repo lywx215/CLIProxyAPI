@@ -4,85 +4,73 @@ import (
 	"context"
 	"slices"
 	"testing"
-	"time"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
 
-func TestEnterpriseCarbonRegistrationFollowsManualApplicationAdmission(t *testing.T) {
-	for _, trial := range []bool{false, true} {
-		t.Run(map[bool]string{false: "paid", true: "trial"}[trial], func(t *testing.T) {
-			testEnterpriseCarbonRegistration(t, trial)
+func TestEnterpriseHydrogenRegistrationUsesSubscriptionAndCatalog(t *testing.T) {
+	for _, scenario := range []struct {
+		name          string
+		trial, listed bool
+	}{
+		{"paid-listed", false, true},
+		{"paid-unlisted", false, false},
+		{"trial-listed", true, true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			s, auth := enterpriseTestService(t, "hydrogen-policy-registration")
+			d := s.enterpriseState()
+			catalogCalls := 0
+			d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+				catalogCalls++
+				models := []ge.Model{{ID: ge.ArgonModel}}
+				if scenario.listed {
+					models = append(models, ge.Model{ID: ge.HydrogenModel})
+				}
+				return models, nil
+			}
+			auth.Prefix = "team"
+			auth.Attributes = map[string]string{"model_aliases": `[{"name":"gemini-4-hydrogen","alias":"hydrogen-public","fork":true}]`}
+			var err error
+			auth, err = s.coreManager.Update(t.Context(), auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flight := s.coreManager.BeginEnterpriseSubscriptionRefresh(auth)
+			if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &scenario.trial}) {
+				t.Fatal("verified fixture subscription was not published")
+			}
+			for _, legacy := range []any{nil, false, true} {
+				if legacy == nil {
+					delete(auth.Metadata, ge.HydrogenEnabledKey)
+				} else {
+					auth.Metadata[ge.HydrogenEnabledKey] = legacy
+				}
+				auth, err = s.coreManager.Update(t.Context(), auth)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.registerEnterpriseModels(t.Context(), auth)
+				d.wg.Wait()
+				var ids []string
+				for _, model := range GlobalModelRegistry().GetModelsForClient(auth.ID) {
+					ids = append(ids, model.ID)
+				}
+				want := scenario.listed && !scenario.trial
+				if !slices.Contains(ids, "team/"+ge.ArgonModel) || slices.Contains(ids, "team/"+ge.HydrogenModel) != want || slices.Contains(ids, "team/hydrogen-public") != want {
+					t.Fatalf("unexpected publication with historical flag %v: %v", legacy, ids)
+				}
+				if want {
+					view := s.coreManager.EnterpriseModelPolicyView(auth)
+					if len(view.CatalogModels) != 2 || view.CatalogModels[1].CatalogSource != "upstream" || !view.CatalogModels[1].UpstreamListed {
+						t.Fatalf("listed Hydrogen lost upstream catalog attribution: %+v", view.CatalogModels)
+					}
+				}
+			}
+			if catalogCalls != 1 {
+				t.Fatalf("historical flags caused %d discoveries, want one", catalogCalls)
+			}
 		})
-	}
-}
-
-func testEnterpriseCarbonRegistration(t *testing.T, trial bool) {
-	s, auth := enterpriseTestService(t, "carbon-manual-registration")
-	d := s.enterpriseState()
-	catalogCalls := 0
-	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
-		catalogCalls++
-		return []ge.Model{{ID: ge.ArgonModel}}, nil
-	}
-	auth.Prefix = "carbon-team"
-	auth.Attributes = map[string]string{"model_aliases": `[{"name":"gemini-4-hydrogen","alias":"carbon-public","fork":true}]`}
-	var err error
-	auth, err = s.coreManager.Update(t.Context(), auth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	flight := s.coreManager.BeginEnterpriseSubscriptionRefresh(auth)
-	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}) {
-		t.Fatal("verified fixture subscription was not published")
-	}
-	check := func(wantCarbon bool) {
-		t.Helper()
-		s.registerEnterpriseModels(t.Context(), auth)
-		d.wg.Wait()
-		ids := []string{}
-		for _, model := range GlobalModelRegistry().GetModelsForClient(auth.ID) {
-			ids = append(ids, model.ID)
-		}
-		if !slices.Contains(ids, "carbon-team/"+ge.ArgonModel) || slices.Contains(ids, "carbon-team/"+ge.HydrogenModel) != wantCarbon || slices.Contains(ids, "carbon-team/carbon-public") != wantCarbon {
-			t.Fatalf("unexpected publication with Carbon available=%v: %v", wantCarbon, ids)
-		}
-	}
-	check(false)
-	auth.Metadata[ge.HydrogenEnabledKey] = false
-	auth, err = s.coreManager.Update(t.Context(), auth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(false)
-	fingerprint := s.coreManager.EnterpriseHydrogenEvidenceFingerprint(auth)
-	auth.Metadata[ge.HydrogenEvidenceKey] = ge.CarbonTestEvidence{
-		CarbonTestSummary: ge.CarbonTestSummary{TestID: "synthetic-registration-proof", Status: "verified", CheckedAt: time.Now().UTC(), UpstreamModel: ge.HydrogenModel, HTTPStatus: 200},
-		Version:           1, AuthorizationFingerprint: fingerprint.Authorization, BindingFingerprint: fingerprint.Binding, ConfigFingerprint: fingerprint.Configuration,
-	}
-	auth, err = s.coreManager.Update(t.Context(), auth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(false)
-	auth.Metadata[ge.HydrogenEnabledKey] = true
-	auth, err = s.coreManager.Update(t.Context(), auth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(true)
-	view := s.coreManager.EnterpriseModelPolicyView(auth)
-	if len(view.CatalogModels) != 2 || view.CatalogModels[1].CatalogSource != "manual" || view.CatalogModels[1].UpstreamListed {
-		t.Fatalf("manual admission was confused with the raw catalog: %+v", view.CatalogModels)
-	}
-	auth.Metadata[ge.HydrogenEnabledKey] = false
-	auth, err = s.coreManager.Update(t.Context(), auth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(false)
-	if catalogCalls != 1 {
-		t.Fatalf("application admission caused %d catalog network operations, want 1 initial discovery", catalogCalls)
 	}
 }

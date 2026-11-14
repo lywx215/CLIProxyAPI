@@ -1,6 +1,6 @@
 # Legacy Gemini Enterprise Carbon management APIs
 
-The current management UI uses [Hydrogen application admission](gemini-enterprise-hydrogen-admission.md). Carbon business routing follows the shared Argon/Carbon group policy documented in [Enterprise model policies](enterprise-model-policy.md). The historical API contract below remains available for older clients. Its switch may supplement a missing Carbon catalog entry, while the effective group policy determines business admission. Existing exclusions and subscription checks apply according to that policy.
+The management UI lists Carbon in each application's ordinary model list when eligible. Carbon business routing follows the group policy documented in [Enterprise model policies](enterprise-model-policy.md). The historical API contract below remains available for older clients. Its switch may supplement a missing Carbon catalog entry, while the effective group policy determines business admission. Existing exclusions and subscription checks apply according to that policy.
 
 The sections below describe the retained legacy configuration, test and switch interfaces.
 

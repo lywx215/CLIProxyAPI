@@ -94,6 +94,7 @@ func enterprisePolicyAPICallRequest(t *testing.T, router *gin.Engine, path strin
 
 func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 	const validBody = `{"query":{"text":"hi"},"generationSpec":{"modelId":"gemini-4-argon"}}`
+	const hydrogenBody = `{"query":{"text":"hi"},"generationSpec":{"modelId":"gemini-4-hydrogen"}}`
 	for _, scenario := range []struct {
 		name, mode, body, suffix, project, endpoint, code, region string
 		headers                                                   map[string]string
@@ -102,6 +103,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		wantStatus, wantCalls, upstreamStatus                     int
 	}{
 		{name: "allowed argon", body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "explicit snake-case model", body: `{"query":{"text":"hi"},"generation_spec":{"model_id":"gemini-4-argon"}}`, wantStatus: 200, wantCalls: 1},
+		{name: "duplicate generation field", body: `{"generationSpec":{"modelId":"gemini-4-argon","modelId":"gemini-4-argon"}}`, code: "invalid_generation_payload", wantStatus: 400},
+		{name: "mixed model field spellings", body: `{"generationSpec":{"modelId":"gemini-4-argon","model_id":"gemini-4-argon"}}`, code: "invalid_generation_payload", wantStatus: 400},
 		{name: "ca allowed argon", region: "ca", body: validBody, wantStatus: 200, wantCalls: 1},
 		{name: "au allowed argon", region: "au", body: validBody, wantStatus: 200, wantCalls: 1},
 		{name: "in allowed argon", region: "in", body: validBody, wantStatus: 200, wantCalls: 1},
@@ -133,6 +137,9 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 		{name: "paid exclude-argon cannot widen", mode: "exclude_argon", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid custom cannot widen", mode: "custom", paid: true, body: `{"generationSpec":{"modelId":"gemini-3.8-flash"}}`, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid argon allowed", mode: "catalog", paid: true, body: validBody, wantStatus: 200, wantCalls: 1},
+		{name: "paid Hydrogen allowed", paid: true, body: hydrogenBody, wantStatus: 200, wantCalls: 1},
+		{name: "paid group exclusion denies Hydrogen", mode: "exclude_argon", paid: true, body: hydrogenBody, code: "model_not_allowed", wantStatus: 400},
+		{name: "trial all models denies Hydrogen", allModels: true, body: hydrogenBody, code: "model_not_allowed", wantStatus: 400},
 		{name: "paid image allowed", mode: "catalog", paid: true, body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
 		{name: "paid video allowed", mode: "catalog", paid: true, body: `{"query":{"text":"video"},"toolsSpec":{"videoGenerationSpec":{}}}`, wantStatus: 200, wantCalls: 1},
 		{name: "paid image feature disabled", mode: "catalog", paid: true, imageDisabled: true, body: `{"query":{"text":"image"},"toolsSpec":{"imageGenerationSpec":{}}}`, wantStatus: 502},
@@ -182,7 +189,7 @@ func TestEnterprisePolicyV8APICallUsesCheckedExecutor(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{
-				{ID: ge.ArgonModel}, {ID: "gemini-3.8-flash"}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"},
+				{ID: ge.ArgonModel}, {ID: ge.HydrogenModel}, {ID: "gemini-3.8-flash"}, {ID: "gemini-3-pro-image", MediaKind: "image"}, {ID: "veo-3.1", MediaKind: "video"},
 			})
 			if scenario.forceArgon {
 				manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{})

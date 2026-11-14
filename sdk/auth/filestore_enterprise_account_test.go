@@ -70,8 +70,13 @@ func TestFileStoreEnterpriseAccountRoundTripProjectsEveryChild(t *testing.T) {
 		t.Fatal("runtime child could overwrite its parent file")
 	}
 	files, err := os.ReadDir(filepath.Dir(path))
-	if err != nil || len(files) != 1 {
+	if err != nil || len(files) != 2 {
 		t.Fatal("account transaction left a second credential or temporary file")
+	}
+	for _, file := range files {
+		if file.Name() != filepath.Base(path) && file.Name() != filepath.Base(path)+".write-lock" {
+			t.Fatal("account transaction left an unexpected file")
+		}
 	}
 }
 

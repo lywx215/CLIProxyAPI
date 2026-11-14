@@ -10,6 +10,7 @@ import (
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 )
 
 func catalogFixture(t *testing.T, edition string, trial bool) (*Manager, *Auth) {
@@ -43,7 +44,7 @@ func TestEnterpriseFallbackPolicyAdmissionAndMedia(t *testing.T) {
 					if !view.CatalogKnown || view.CatalogState.Source != "custom" || len(view.CatalogModels) != wantCatalog {
 						t.Fatalf("%+v", view)
 					}
-					for _, id := range []string{ge.ArgonModel, ge.CarbonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1", "gemini-4-future", "auto"} {
+					for _, id := range []string{ge.ArgonModel, ge.CarbonModel, ge.HydrogenModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1", "gemini-4-future", "auto"} {
 						err = ValidateEnterpriseModelRequest(t.Context(), a, id)
 						want := slices.Contains(view.EffectiveModels, id)
 						if (err == nil) != want || (!trial && id == "gemini-3.8-flash" && err == nil) {
@@ -72,7 +73,7 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "enterprise_plus", false)
-	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel, ge.CarbonModel}) {
+	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel, ge.CarbonModel, ge.HydrogenModel}) {
 		t.Fatal(v)
 	}
 	m.InvalidateEnterpriseSubscription(a)
@@ -94,6 +95,50 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 	m.enterprisePolicies.nowFunc = func() time.Time { return now.Add(31 * time.Minute) }
 	if v := m.EnterpriseModelPolicyView(a); len(v.EffectiveModels) != 0 || v.Status != "blocked" {
 		t.Fatal(v)
+	}
+}
+
+func TestEnterpriseHydrogenCatalogFallbackAndCache(t *testing.T) {
+	for _, scenario := range []struct {
+		name, fallback, source string
+		cache                  []ge.Model
+		trial, allowed         bool
+		pending                bool
+	}{
+		{name: "default", fallback: "default", source: "default", allowed: true},
+		{name: "custom paid", fallback: "custom", source: "custom", allowed: true},
+		{name: "custom trial", fallback: "custom", source: "custom", trial: true},
+		{name: "disabled", fallback: "disabled", source: "none"},
+		{name: "pending despite registry", fallback: "default", source: "none", pending: true},
+		{name: "cached Hydrogen", fallback: "disabled", source: "cached", cache: []ge.Model{{ID: ge.HydrogenModel}}, allowed: true},
+		{name: "cached without Hydrogen", fallback: "custom", source: "cached", cache: []ge.Model{{ID: ge.ArgonModel}}},
+		{name: "cached empty", fallback: "default", source: "cached", cache: []ge.Model{}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			m, a := catalogFixture(t, "enterprise_plus", scenario.trial)
+			a.Metadata["model_policy"] = "catalog"
+			a.Metadata["catalog_fallback"] = map[string]any{"mode": scenario.fallback, "models": []string{ge.HydrogenModel}}
+			a, err := m.Update(t.Context(), a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lastError := &ge.MetadataError{Code: "catalog_unavailable"}
+			if scenario.pending {
+				m.PublishEnterpriseCatalogState(a, ge.CatalogState{Source: "none", Status: "pending"})
+			}
+			if scenario.cache != nil {
+				m.PublishEnterprisePolicyCatalog(a, scenario.cache)
+				m.PublishEnterpriseCatalogState(a, ge.CatalogState{Source: "cached", Status: "stale", LastError: lastError})
+			}
+			reg := registry.GetGlobalRegistry()
+			reg.RegisterClient(a.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel}})
+			t.Cleanup(func() { reg.UnregisterClient(a.ID) })
+			view := m.EnterpriseModelPolicyView(a)
+			err = ValidateEnterpriseModelRequest(t.Context(), a, ge.HydrogenModel)
+			if view.CatalogState.Source != scenario.source || slices.Contains(view.EffectiveModels, ge.HydrogenModel) != scenario.allowed || (err == nil) != scenario.allowed {
+				t.Fatalf("source=%s models=%v admission=%v", view.CatalogState.Source, view.EffectiveModels, err)
+			}
+		})
 	}
 }
 
@@ -196,7 +241,7 @@ func TestEnterpriseCatalogCorruptionAndFailedRefreshDoNotForgeSuccess(t *testing
 		}
 	}
 	var err *EnterpriseModelPolicyError
-	if !errors.As(m.validateEnterprisePolicy(a, "gemini-3.8-flash", true), &err) {
+	if !errors.As(m.ValidateEnterpriseModelCatalog(a, "gemini-3.8-flash"), &err) {
 		t.Fatal("empty custom fallback admitted generation")
 	}
 }

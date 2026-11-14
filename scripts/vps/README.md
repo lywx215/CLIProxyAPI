@@ -21,15 +21,15 @@ For a baseline N, no more than floor(0.05*N) baseline requests may remain.
 
 When the completion count cannot be measured reliably, the user authorizes an
 alternative after confirmed channel stoppage: observe 60 continuous seconds with
-no new New API request logs, or wait 300 seconds from confirmed stoppage,
+no new New API request logs, or wait 180 seconds from confirmed stoppage,
 whichever occurs first. Use global New API request logs unless the user specifies
 another scope. Failed log observations do not establish silence. This fallback
 must be reported as log/time admission, not verified 95% completion.
 
-The decision logic is implemented and tested in `maintenance.py`. It is not yet
-an integrated channel-stop/drain/restore controller. A nonempty `maintenance`
-policy therefore still blocks `deploy`, `update`, and `restart` before snapshots
-or SSH activity. `probe`, `status`, `logs`, and offline `package` remain available.
+The decision logic is shared with the [fleet update controller](../ops/README_CN.md).
+A nonempty `maintenance` policy blocks `deploy`, `update`, and `restart` in this
+standalone entry point. Use the fleet controller for production updates. `probe`,
+`status`, `logs`, and offline `package` remain available here.
 Do not remove the policy or use raw Docker/SSH/Zeabur commands to bypass the
 controlled workflow.
 

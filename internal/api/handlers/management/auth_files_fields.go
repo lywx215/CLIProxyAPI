@@ -353,6 +353,10 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 		return
 	}
 	if targetAuth.Provider == ge.Provider && containsCarbonManagedFields(req) {
+		if c.GetBool(ConfigV8ContextKey) && containsHydrogenSwitch(req) {
+			enterpriseManagementFailure(c, http.StatusConflict, "hydrogen_managed_by_policy", "Hydrogen is managed by the paid subscription and the application model policy")
+			return
+		}
 		enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Manage Carbon through the selected application's dedicated switch and test")
 		return
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +27,7 @@ func carbonVerifiedFixture(t *testing.T, m *Manager, auth *Auth, enabled bool) *
 		t.Fatal(err)
 	}
 	publishSubscription(t, m, auth, "enterprise_plus", false)
+	m.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: ge.ArgonModel}, {ID: ge.CarbonModel}, {ID: ge.HydrogenModel}})
 	fingerprint := m.EnterpriseHydrogenEvidenceFingerprint(auth)
 	auth.Metadata[ge.HydrogenEnabledKey] = enabled
 	auth.Metadata[ge.HydrogenEvidenceKey] = ge.CarbonTestEvidence{
@@ -41,63 +41,49 @@ func carbonVerifiedFixture(t *testing.T, m *Manager, auth *Auth, enabled bool) *
 	return auth
 }
 
-func TestEnterpriseCarbonAdmissionDefaultsPaidAndHonorsManualSwitch(t *testing.T) {
+func TestEnterpriseHydrogenUsesPaidCatalogRegardlessOfLegacySwitch(t *testing.T) {
 	m, auth, now := policyFixture(t)
 	publishSubscription(t, m, auth, "enterprise_plus", false)
-	original := m.EnterpriseModelPolicyView(auth)
-	if original.HydrogenAdmission.Enabled || original.HydrogenAdmission.Available || !original.HydrogenAdmission.CanEnable || original.HydrogenAdmission.VerificationRequired || !original.HydrogenAdmission.CanTest || slices.Contains(original.EffectiveModels, ge.HydrogenModel) {
-		t.Fatalf("default Hydrogen admission: %+v", original.HydrogenAdmission)
-	}
 	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.HydrogenModel); err == nil {
-		t.Fatal("Hydrogen required an explicit manual opening")
+		t.Fatal("Hydrogen was absent from the successful catalog")
 	}
-	auth = carbonVerifiedFixture(t, m, auth, false)
-	ctx := WithEnterpriseHydrogenModelTest(t.Context(), auth.ID, ge.Resources(ge.FromMetadata(auth.Metadata)))
-	if err := ValidateEnterpriseModelRequest(ctx, auth, ge.HydrogenModel); err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.HydrogenModel); err == nil {
-		t.Fatal("a closed candidate was callable")
-	}
-	if view := m.EnterpriseHydrogenAdmissionView(auth); !view.CanEnable || view.Enabled || view.Available {
-		t.Fatalf("a proof enabled business routing: %+v", view)
-	}
-	for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon"} {
+	m.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: ge.ArgonModel}, {ID: ge.CarbonModel}, {ID: ge.HydrogenModel}})
+	for _, legacy := range []any{nil, false, true} {
 		next := auth.Clone()
-		next.Metadata["model_policy"] = mode
-		next.Metadata[ge.HydrogenEnabledKey] = true
+		if legacy == nil {
+			delete(next.Metadata, ge.HydrogenEnabledKey)
+		} else {
+			next.Metadata[ge.HydrogenEnabledKey] = legacy
+		}
 		var err error
 		auth, err = m.Update(t.Context(), next)
 		if err != nil {
 			t.Fatal(err)
 		}
-		view := m.EnterpriseModelPolicyView(auth)
-		if !view.HydrogenAdmission.Available || !slices.Contains(view.EffectiveModels, ge.HydrogenModel) {
-			t.Fatalf("Argon template %q controlled Carbon: %+v", mode, view)
-		}
-		if mode == "argon_only" && !view.Allows(ge.ArgonModel) || mode == "exclude_argon" && view.Allows(ge.ArgonModel) {
-			t.Fatal("Carbon changed Argon policy")
+		if view := m.EnterpriseModelPolicyView(auth); !slices.Contains(view.EffectiveModels, ge.HydrogenModel) {
+			t.Fatalf("legacy flag %v changed the model list: %+v", legacy, view)
 		}
 		if err = ValidateEnterpriseModelRequest(t.Context(), auth, ge.HydrogenModel+"(high)"); err != nil {
-			t.Fatal(err)
+			t.Fatalf("legacy flag %v blocked the listed model: %v", legacy, err)
 		}
 	}
-	key := enterprisePolicyCatalogKey(auth)
-	if slices.ContainsFunc(m.enterprisePolicies.catalogs[key], func(model ge.Model) bool { return model.ID == ge.HydrogenModel }) {
-		t.Fatal("admission overwrote the raw observed catalog")
+	*now = now.Add(6 * time.Minute)
+	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.HydrogenModel); err != nil {
+		t.Fatalf("bounded stale paid subscription was rejected: %v", err)
 	}
+	*now = now.Add(25 * time.Minute)
+	if err := ValidateEnterpriseModelRequest(t.Context(), auth, ge.HydrogenModel); err == nil {
+		t.Fatal("expired subscription cache admitted Hydrogen")
+	}
+	publishSubscription(t, m, auth, "enterprise_plus", false)
 	m.PublishEnterprisePolicyCatalog(auth, []ge.Model{})
-	if view := m.EnterpriseModelPolicyView(auth); !slices.Equal(view.EffectiveModels, []string{ge.HydrogenModel}) {
-		t.Fatalf("verified Carbon depended on the raw catalog: %+v", view)
-	}
-	*now = now.Add(31 * time.Minute)
-	if view := m.EnterpriseHydrogenAdmissionView(auth); view.Available || view.CanEnable || view.CanTest || view.Reason != "subscription_unverified" {
-		t.Fatalf("expired entitlement: %+v", view)
+	if view := m.EnterpriseModelPolicyView(auth); !view.CatalogKnown || len(view.EffectiveModels) != 0 {
+		t.Fatalf("successful empty catalog was supplemented: %+v", view)
 	}
 }
 
 func TestEnterpriseCarbonProbeCannotBypassVerifiedSubscriptionUserPolicyOrBinding(t *testing.T) {
-	for _, scenario := range []string{"unverified", "disabled", "whitelist", "excluded", "binding", "authorization"} {
+	for _, scenario := range []string{"unverified", "disabled", "whitelist", "excluded", "binding", "authorization", "trial", "missing_catalog"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, auth, _ := policyFixture(t)
 			auth = carbonVerifiedFixture(t, m, auth, false)
@@ -118,6 +104,10 @@ func TestEnterpriseCarbonProbeCannotBypassVerifiedSubscriptionUserPolicyOrBindin
 				expected.EngineID = "another-app"
 			case "authorization":
 				delete(next.Metadata, "refresh_token")
+			case "trial":
+				publishSubscription(t, m, auth, "enterprise_plus", true)
+			case "missing_catalog":
+				m.PublishEnterprisePolicyCatalog(auth, []ge.Model{{ID: ge.ArgonModel}})
 			}
 			var err error
 			auth, err = m.Update(t.Context(), next)
@@ -132,102 +122,30 @@ func TestEnterpriseCarbonProbeCannotBypassVerifiedSubscriptionUserPolicyOrBindin
 	}
 }
 
-func TestEnterpriseCarbonTrialManualApplicationAdmissionAndOptionalDiagnostics(t *testing.T) {
+func TestEnterpriseHydrogenDowngradeAppliesToOldRegistrationsAndDiagnostics(t *testing.T) {
 	m, _, target, _ := carbonEvidenceFixture(t, false)
+	seedLegacyHydrogenSwitch(t, m, target, 1, true)
+	target, _ = m.GetByID(target.ID)
+	registry.GetGlobalRegistry().RegisterClient(target.ID, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(target.ID) })
+	if err := ValidateEnterpriseModelRequest(t.Context(), target, ge.HydrogenModel); err != nil {
+		t.Fatal(err)
+	}
 	publishSubscription(t, m, target, "enterprise_plus", true)
-	m.PublishEnterprisePolicyCatalog(target, []ge.Model{{ID: ge.ArgonModel}, {ID: ge.HydrogenModel}})
-	view := m.EnterpriseModelPolicyView(target)
-	if !view.HydrogenAdmission.CanTest || view.HydrogenAdmission.Enabled || view.HydrogenAdmission.Available || !view.HydrogenAdmission.CanEnable {
-		t.Fatalf("trial Carbon was automatically opened or refused testing: %+v", view.HydrogenAdmission)
-	}
 	ctx := WithEnterpriseHydrogenModelTest(t.Context(), target.ID, ge.Resources(ge.FromMetadata(target.Metadata)))
-	if err := ValidateEnterpriseModelRequest(ctx, target, ge.HydrogenModel); err != nil {
-		t.Fatalf("verified assigned trial could not use the fixed management test: %v", err)
+	if err := ValidateEnterpriseModelRequest(ctx, target, ge.HydrogenModel); err == nil {
+		t.Fatal("legacy diagnostics bypassed the trial restriction")
 	}
-	pending, err := m.BeginEnterpriseHydrogenTest(target, 1)
-	if err != nil {
-		t.Fatal(err)
+	if err := CommitEnterpriseHydrogenSubmission(t.Context(), target, ge.HydrogenModel); err == nil {
+		t.Fatal("a previously selected application submitted after downgrading")
 	}
-	if _, err = m.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "incomplete", HTTPStatus: 502, Reason: "model_verification_incomplete"}}); err != nil {
-		t.Fatal(err)
-	}
-	current, _ := m.GetByID(target.ID)
-	if view := m.EnterpriseHydrogenAdmissionView(current); !view.CanEnable || view.Enabled {
-		t.Fatal("an incomplete diagnostic blocked manual admission or opened it automatically")
-	}
-	updated, _ := recordCarbonVerified(t, m, current)
-	current, _ = m.GetByID(target.ID)
-	view = m.EnterpriseModelPolicyView(current)
-	if !view.HydrogenAdmission.CanEnable || view.HydrogenAdmission.Enabled || view.HydrogenAdmission.Available {
-		t.Fatalf("a successful trial test did not remain manually closed: %+v", view.HydrogenAdmission)
-	}
-	if err = ValidateEnterpriseModelRequest(t.Context(), current, ge.HydrogenModel); err == nil {
-		t.Fatal("a successful trial test bypassed the manual switch")
-	}
-	revision, _ := carbonCollectionRevision(updated, EnterpriseBindingID(current))
-	if _, err = m.UpdateEnterpriseHydrogenEnabled(t.Context(), current, revision, true, ""); err != nil {
-		t.Fatal(err)
-	}
-	current, _ = m.GetByID(target.ID)
-	view = m.EnterpriseModelPolicyView(current)
-	if !view.HydrogenAdmission.Available || !view.Allows(ge.HydrogenModel) || slices.Contains(view.EnforcedExcludedModels, ge.HydrogenModel) {
-		t.Fatalf("manually verified trial Carbon remained unavailable: %+v", view)
-	}
-	if err = ValidateEnterpriseModelRequest(t.Context(), current, ge.HydrogenModel+"(high)"); err != nil {
-		t.Fatal(err)
-	}
-	if err = CommitEnterpriseHydrogenSubmission(withEnterpriseModelAttempts(t.Context()), current, ge.HydrogenModel); err != nil {
-		t.Fatal(err)
-	}
-	for _, model := range view.CatalogModels {
-		if model.ID == ge.HydrogenModel && (!model.Allowed || model.Reason != "") {
-			t.Fatalf("the trial catalog still described a paid-only hard block: %+v", model)
-		}
-	}
-	// Temporary verification failures retain the existing bounded stale-license
-	// behavior; this change does not create a second license-refresh path.
-	m.InvalidateEnterpriseSubscription(current)
-	flight := m.BeginEnterpriseSubscriptionRefresh(current)
-	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}) {
-		t.Fatal("temporary subscription failure was not published")
-	}
-	if state := m.EnterpriseModelPolicyView(current); state.Subscription.Status != "stale" || !state.HydrogenAdmission.Available {
-		t.Fatalf("a bounded stale trial license lost existing cache semantics: %+v", state.HydrogenAdmission)
-	}
-	owner, _, _ := m.EnterpriseAccountSnapshot(current.ID)
-	for _, scenario := range []string{"unknown", "unassigned", "inactive", "conflict", "missing_trial_classification"} {
-		t.Run(scenario, func(t *testing.T) {
-			restarted := NewManager(nil, nil, nil)
-			restarted.SetConfig(&config.Config{})
-			if _, err := restarted.Register(t.Context(), owner); err != nil {
-				t.Fatal(err)
-			}
-			credential, _ := restarted.GetByID(current.ID)
-			trial := true
-			observation := ge.SubscriptionObservation{Status: scenario, FreeTrial: &trial, State: "ACTIVE"}
-			if scenario == "missing_trial_classification" {
-				observation.Status, observation.FreeTrial = "ok", nil
-			}
-			if scenario == "inactive" {
-				observation.State = "SUSPENDED"
-			}
-			flight := restarted.BeginEnterpriseSubscriptionRefresh(credential)
-			if flight == nil || !flight.Complete(observation) {
-				t.Fatal("invalid subscription fixture was not published")
-			}
-			view := restarted.EnterpriseHydrogenAdmissionView(credential)
-			if !view.Enabled || view.Available || view.CanTest || view.CanEnable || view.Reason != "subscription_unverified" {
-				t.Fatalf("%s subscription retained Carbon admission: %+v", scenario, view)
-			}
-			ctx := WithEnterpriseHydrogenModelTest(t.Context(), credential.ID, ge.Resources(ge.FromMetadata(credential.Metadata)))
-			if err := ValidateEnterpriseModelRequest(ctx, credential, ge.HydrogenModel); err == nil {
-				t.Fatal("a fixed test bypassed unavailable trial subscription state")
-			}
-		})
+	state := m.EnterpriseModelPolicyView(target)
+	if slices.Contains(state.EffectiveModels, ge.HydrogenModel) || !slices.Contains(state.EnforcedExcludedModels, ge.HydrogenModel) {
+		t.Fatalf("trial model list differs from the execution gate: %+v", state)
 	}
 }
 
-func TestEnterpriseCarbonClosedManagementCandidateUsesNormalExecutionWithoutRegistration(t *testing.T) {
+func TestEnterpriseHydrogenLegacyDiagnosticsUseAnEligibleCatalogWithoutPublicRegistration(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			m, auth, _ := policyFixture(t)
@@ -274,83 +192,47 @@ func TestEnterpriseCarbonClosedManagementCandidateUsesNormalExecutionWithoutRegi
 				return err
 			}
 			if err := invoke(t.Context()); err == nil || calls != 0 {
-				t.Fatalf("a pinned ordinary request bypassed the switch: %v", err)
+				t.Fatalf("a pinned ordinary request bypassed registration: %v", err)
 			}
 			ordinaryProbe := WithEnterpriseModelProbe(t.Context(), auth.ID, ge.Resources(ge.FromMetadata(auth.Metadata)), ge.HydrogenModel)
 			if err := invoke(ordinaryProbe); err == nil || calls != 0 {
-				t.Fatalf("a generic probe bypassed the switch: %v", err)
+				t.Fatalf("a generic probe bypassed registration: %v", err)
 			}
 			dedicated := WithEnterpriseHydrogenModelTest(t.Context(), auth.ID, ge.Resources(ge.FromMetadata(auth.Metadata)))
 			if err := invoke(dedicated); err != nil || calls != 1 {
-				t.Fatalf("fixed closed Carbon test failed: calls=%d err=%v", calls, err)
+				t.Fatalf("eligible legacy Hydrogen test failed: calls=%d err=%v", calls, err)
 			}
 			if len(registry.GetGlobalRegistry().GetModelsForClient(auth.ID)) != 0 {
-				t.Fatal("the probe registered a public Carbon model")
-			}
-			if m.EnterpriseHydrogenAdmissionView(auth).Enabled {
-				t.Fatal("a test enabled its application")
+				t.Fatal("the probe registered a public Hydrogen model")
 			}
 		})
 	}
 }
 
-func TestEnterpriseCarbonSubmissionOrdersCloseAndReopenWithoutResettingRequests(t *testing.T) {
+func TestEnterpriseHydrogenRechecksLivePolicyBeforeSubmission(t *testing.T) {
 	m, auth, _ := policyFixture(t)
-	auth = carbonVerifiedFixture(t, m, auth, true)
-	old := auth.Clone()
-	ctx := withEnterpriseModelAttempts(t.Context())
-	committed, complete := make(chan error, 1), make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err := CommitEnterpriseHydrogenSubmission(ctx, old, ge.HydrogenModel)
-		committed <- err
-		if err == nil {
-			<-complete
-		}
-	}()
-	if err := <-committed; err != nil {
-		t.Fatal(err)
-	}
+	auth = carbonVerifiedFixture(t, m, auth, false)
+	selected := auth.Clone()
 	next := auth.Clone()
-	next.Metadata[ge.HydrogenEnabledKey] = false
-	var err error
-	auth, err = m.Update(t.Context(), next)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = CommitEnterpriseHydrogenSubmission(withEnterpriseModelAttempts(t.Context()), old, ge.HydrogenModel); err == nil {
-		t.Fatal("close preceded a successful new commit")
-	}
-	next = auth.Clone()
 	next.Metadata[ge.HydrogenEnabledKey] = true
-	auth, err = m.Update(t.Context(), next)
+	current, err := m.Update(t.Context(), next)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if auth.RegistrationEpoch != old.RegistrationEpoch || auth.enterpriseHydrogenWindow == old.enterpriseHydrogenWindow {
-		t.Fatal("a Carbon close/open cycle changed Argon registration or reused an old admission window")
+	if err = CommitEnterpriseHydrogenSubmission(t.Context(), selected, ge.HydrogenModel); err != nil {
+		t.Fatalf("legacy switch changed submission eligibility: %v", err)
 	}
-	if err = CommitEnterpriseHydrogenSubmission(withEnterpriseModelAttempts(t.Context()), old, ge.HydrogenModel); err == nil {
-		t.Fatal("a pre-close snapshot submitted after a rapid reopen")
-	}
-	if err = CommitEnterpriseHydrogenSubmission(withEnterpriseModelAttempts(t.Context()), auth, ge.HydrogenModel); err != nil {
+	next = current.Clone()
+	next.Metadata["model_policy"] = "exclude_argon"
+	next.Metadata[ge.ArgonForceEnabledKey] = true
+	if _, err = m.Update(t.Context(), next); err != nil {
 		t.Fatal(err)
 	}
-	current := auth.Clone()
-	current.Metadata["note"] = "An unrelated edit must retain the Carbon admission window"
-	if _, err = m.Update(t.Context(), current); err != nil {
-		t.Fatal(err)
+	if err = CommitEnterpriseHydrogenSubmission(t.Context(), selected, ge.HydrogenModel); err == nil {
+		t.Fatal("an in-flight choice bypassed the current policy")
 	}
-	if err = CommitEnterpriseHydrogenSubmission(withEnterpriseModelAttempts(t.Context()), auth, ge.HydrogenModel); err != nil {
-		t.Fatalf("an unrelated edit invalidated the Carbon window: %v", err)
-	}
-	close(complete)
-	wg.Wait()
-	// An old proof remains available after an off/on cycle; no account or quota counters are reset.
-	if !m.EnterpriseHydrogenAdmissionView(auth).Available {
-		t.Fatal("reopening discarded valid evidence")
+	if err = CommitEnterpriseModelSubmission(t.Context(), selected, ge.ArgonModel); err != nil {
+		t.Fatalf("legacy Argon force was lost: %v", err)
 	}
 }
 
@@ -384,11 +266,11 @@ func registerCarbonSelectionFixture(t *testing.T, m *Manager, id, mode string, p
 	return carbonVerifiedFixture(t, m, auth, enabled)
 }
 
-func TestEnterpriseCarbonSelectorsIgnoreClosedHigherPriorityApplications(t *testing.T) {
+func TestEnterpriseHydrogenSelectorsIgnoreIneligibleHigherPriorityApplications(t *testing.T) {
 	for _, selector := range []Selector{&RoundRobinSelector{}, &FillFirstSelector{}, &WeightedRoundRobinSelector{}} {
 		t.Run(fmt.Sprintf("%T", selector), func(t *testing.T) {
 			m := NewManager(nil, selector, nil)
-			registerCarbonSelectionFixture(t, m, "carbon-priority-closed", "argon_only", 100, false)
+			registerCarbonSelectionFixture(t, m, "carbon-priority-closed", "exclude_argon", 100, true)
 			unassigned := registerCarbonSelectionFixture(t, m, "carbon-priority-unassigned", "catalog", 100, true)
 			m.InvalidateEnterpriseSubscription(unassigned)
 			flight := m.BeginEnterpriseSubscriptionRefresh(unassigned)
@@ -405,9 +287,10 @@ func TestEnterpriseCarbonSelectorsIgnoreClosedHigherPriorityApplications(t *test
 			if _, err := m.Update(t.Context(), excluded); err != nil {
 				t.Fatal(err)
 			}
-			trial := registerCarbonSelectionFixture(t, m, "carbon-priority-a", "argon_only", 1, true)
+			trial := registerCarbonSelectionFixture(t, m, "carbon-priority-trial", "catalog", 100, true)
 			publishSubscription(t, m, trial, "enterprise_plus", true)
-			registerCarbonSelectionFixture(t, m, "carbon-priority-b", "exclude_argon", 1, true)
+			registerCarbonSelectionFixture(t, m, "carbon-priority-a", "argon_only", 1, false)
+			registerCarbonSelectionFixture(t, m, "carbon-priority-b", "catalog", 1, true)
 			var seen []string
 			m.RegisterExecutor(&customStreamMockExecutor{identifier: ge.Provider, mockCustomErrorExecutor: mockCustomErrorExecutor{
 				executeFn: func(_ context.Context, auth *Auth, req exec.Request, _ exec.Options) (exec.Response, error) {
@@ -443,8 +326,8 @@ func TestEnterpriseCarbonRetryAndPinnedSelectionCannotBypassAdmission(t *testing
 				m := NewManager(nil, &enterpriseModelTestSelector{}, nil)
 				m.SetRetryConfig(3, 0, 3)
 				first := registerCarbonSelectionFixture(t, m, "carbon-retry-a", "argon_only", 1, true)
-				registerCarbonSelectionFixture(t, m, "carbon-retry-b", "catalog", 100, false)
-				last := registerCarbonSelectionFixture(t, m, "carbon-retry-c", "exclude_argon", 1, true)
+				registerCarbonSelectionFixture(t, m, "carbon-retry-b", "exclude_argon", 100, true)
+				last := registerCarbonSelectionFixture(t, m, "carbon-retry-c", "catalog", 1, true)
 				var seen []string
 				run := func(ctx context.Context, auth *Auth) error {
 					exec.MarkUpstreamAttempt(ctx)

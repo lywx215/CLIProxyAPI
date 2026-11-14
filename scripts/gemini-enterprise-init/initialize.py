@@ -107,9 +107,7 @@ class Google:
         origin = "https://" + parsed.netloc
         if origin not in {*ORIGINS.values(), "https://www.googleapis.com", "https://cloudresourcemanager.googleapis.com"}:
             raise InitError("unapproved_google_origin")
-        if method != "GET" and not self.apply:
-            raise InitError("write_requires_apply")
-        headers = {"Authorization": "Bearer " + self.credential.token(), "Accept": "application/json"}
+        project = None
         if origin in ORIGINS.values():
             pieces = parsed.path.split("/")
             if len(pieces) < 6 or pieces[1] not in ("v1", "v1alpha") or pieces[2] != "projects" or pieces[4] != "locations":
@@ -118,14 +116,21 @@ class Google:
             region_name(project, location)
             if ORIGINS[location] != origin:
                 raise InitError("region_origin_mismatch")
-            headers["X-Goog-User-Project"] = project
         elif method != "GET":
             raise InitError("metadata_origin_is_read_only")
+        return self._request_json(method, url, parsed, project, body)
+
+    def _request_json(self, method: str, url: str, parsed: urllib.parse.SplitResult, project: str | None, body: dict | None) -> dict:
+        if method != "GET" and not self.apply:
+            raise InitError("write_requires_apply")
+        headers = {"Authorization": "Bearer " + self.credential.token(), "Accept": "application/json"}
+        if project:
+            headers["X-Goog-User-Project"] = project
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"
             data = json.dumps(body).encode()
-        event = {"method": method, "origin": origin, "path": parsed.path, "http": None}
+        event = {"method": method, "origin": "https://" + parsed.netloc, "path": parsed.path, "http": None}
         self.events.append(event)
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
@@ -250,10 +255,7 @@ class Initializer:
             if "/assistants/" in resource:
                 if set(body) - {"name", "generationConfig", "webGroundingType", "defaultWebGroundingToggleOff"}:
                     raise InitError("assistant_fields_outside_scope")
-            elif set(body) == {"name", "modelConfigs"}:
-                if params != {"updateMask": ["modelConfigs"]}:
-                    raise InitError("engine_fields_outside_scope")
-            elif set(body) != {"name", "modelConfigs", "features"}:
+            elif set(body) != {"name", "modelConfigs"} or params != {"updateMask": ["modelConfigs"]}:
                 raise InitError("engine_fields_outside_scope")
         else:
             raise InitError("operation_outside_initialization_scope")
@@ -356,10 +358,8 @@ class Initializer:
             result.pop("effectiveFeatures", None)
             for model in models:
                 result.get("modelConfigs", {}).pop(model, None)
-            result.get("features", {}).pop("model-selector", None)
-            for key in ("modelConfigs", "features"):
-                if result.get(key) == {}:
-                    result.pop(key)
+            if result.get("modelConfigs") == {}:
+                result.pop("modelConfigs")
         return result
 
     @staticmethod
@@ -434,16 +434,15 @@ class Initializer:
         if allowed is not None and (not isinstance(allowed, list) or any(not isinstance(item, str) for item in allowed)):
             raise InitError("invalid_assistant_model_range")
         explicit = bool(allowed)
-        engine_payload = {"name": name, "modelConfigs": dict(engine.get("modelConfigs", {})), "features": dict(engine.get("features", {}))}
+        engine_payload = {"name": name, "modelConfigs": dict(engine.get("modelConfigs", {}))}
         engine_payload["modelConfigs"].update({model: "MODEL_ENABLED" for model in models})
-        engine_payload["features"]["model-selector"] = "FEATURE_STATE_ON"
         assistant_payload = {"name": assistant_name, "webGroundingType": SEARCH, "defaultWebGroundingToggleOff": False}
         assistant_mask = "webGroundingType,defaultWebGroundingToggleOff"
         if explicit:
             assistant_payload["generationConfig"] = {"allowedModelIds": list(dict.fromkeys(allowed + models))}
             assistant_mask += ",generationConfig.allowedModelIds"
         writes = 0
-        for is_assistant, old, payload, mask in ((False, engine, engine_payload, "modelConfigs,features"), (True, assistant, assistant_payload, assistant_mask)):
+        for is_assistant, old, payload, mask in ((False, engine, engine_payload, "modelConfigs"), (True, assistant, assistant_payload, assistant_mask)):
             url = self.url(project, location, old["name"], "v1alpha")
             latest = self.api.request("GET", url)
             if fingerprint(latest) != fingerprint(old):
@@ -460,15 +459,15 @@ class Initializer:
                 current_allowed = current.get("generationConfig", {}).get("allowedModelIds")
                 if (explicit and not set(allowed + models) <= set(current_allowed or [])) or (not explicit and current_allowed != allowed):
                     raise InitError("assistant_model_range_changed")
-            elif any(current.get("modelConfigs", {}).get(model) != "MODEL_ENABLED" for model in models) or current.get("features", {}).get("model-selector") != "FEATURE_STATE_ON":
+            elif any(current.get("modelConfigs", {}).get(model) != "MODEL_ENABLED" for model in models):
                 raise InitError("model_settings_readback_failed")
         widget = self.api.request("GET", self.url(project, location, widget_name, "v1alpha", "modelInfoView=END_USER_WEB&languageCode=en"))
         ui, settings = widget.get("uiSettings", {}), widget.get("assistantSettings", {})
-        if ui.get("features", {}).get("model-selector") != "FEATURE_STATE_ON" or settings.get("webGroundingType") != SEARCH or settings.get("defaultWebGroundingToggleOff", False):
+        if settings.get("webGroundingType") != SEARCH or settings.get("defaultWebGroundingToggleOff", False):
             raise InitError("widget_settings_readback_failed")
         visible = [item["modelId"] for item in ui.get("modelConfigInfo", {}).get("resolvedModels", []) if item.get("modelId")]
         carbon = self.configure_carbon_remote(project, location, name)
-        return {"name": name, "configured_models": models, "user_model_ids": visible, "patches": writes, "model_selector": True, "google_search": True, "default_search": True, "implicit_model_range_preserved": not explicit, "carbon_remote": carbon}
+        return {"name": name, "configured_models": models, "user_model_ids": visible, "patches": writes, "model_selector": ui.get("features", {}).get("model-selector") == "FEATURE_STATE_ON", "google_search": True, "default_search": True, "implicit_model_range_preserved": not explicit, "carbon_remote": carbon}
 
     def run_region(self, project: str, location: str) -> dict:
         result = {"project": project, "location": location, "actions": []}
@@ -483,7 +482,7 @@ class Initializer:
                 result["status"] = "no_applications"
             elif not self.api.apply:
                 result["status"] = "planned"
-                result["actions"] = ["configure_remote_carbon_existing_trial_applications"] if self.carbon_only else ["verify_or_create_trial", "reuse_and_configure_applications" if before["engines"] else "create_and_configure_application", "verify_or_assign_current_account", "verify_models_carbon_search_selector", "configure_remote_carbon"]
+                result["actions"] = ["configure_remote_carbon_existing_trial_applications"] if self.carbon_only else ["verify_or_create_trial", "reuse_and_configure_applications" if before["engines"] else "create_and_configure_application", "verify_or_assign_current_account", "verify_models_carbon_and_search", "configure_remote_carbon"]
             elif self.carbon_only:
                 active = {item["name"] for item in before["configs"] if item.get("freeTrial") is True and item.get("state") == "ACTIVE"}
                 if not any(item.get("licenseAssignmentState") == "ASSIGNED" and item.get("licenseConfig") in active for item in before["users"]):

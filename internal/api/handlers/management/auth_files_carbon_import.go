@@ -19,31 +19,47 @@ func carbonManagedKey(key string) bool {
 }
 
 func containsCarbonManagedFields(value any) bool {
+	return containsEnterpriseAdmissionField(value, carbonManagedKey)
+}
+
+func containsEnterpriseAdmissionField(value any, matches func(string) bool) bool {
 	switch data := value.(type) {
 	case map[string]json.RawMessage:
 		for key, encoded := range data {
-			if carbonManagedKey(key) {
+			if matches(key) {
 				return true
 			}
 			var child any
-			if json.Unmarshal(encoded, &child) == nil && containsCarbonManagedFields(child) {
+			if json.Unmarshal(encoded, &child) == nil && containsEnterpriseAdmissionField(child, matches) {
 				return true
 			}
 		}
 	case map[string]any:
 		for key, child := range data {
-			if carbonManagedKey(key) || containsCarbonManagedFields(child) {
+			if matches(key) || containsEnterpriseAdmissionField(child, matches) {
 				return true
 			}
 		}
 	case []any:
 		for _, child := range data {
-			if containsCarbonManagedFields(child) {
+			if containsEnterpriseAdmissionField(child, matches) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func containsHydrogenSwitch(value any) bool {
+	return containsEnterpriseAdmissionField(value, func(key string) bool {
+		key = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"))
+		for _, segment := range strings.FieldsFunc(key, func(r rune) bool { return r == '.' || r == '[' || r == ']' }) {
+			if segment == ge.HydrogenEnabledKey {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 // Imported credentials cannot grant their own successful test evidence or enable

@@ -147,14 +147,12 @@ func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 					}
 					for _, model := range append(append([]string{}, allowed...), "gemini-3.8-flash", "gemini-3-pro-image-preview", "veo-3.1-fast", "auto", "future-model") {
 						want := slices.Contains(allowed, model)
-						if model == HydrogenModel {
-							want = false
-						}
+						inGroup := IsArgonFamilyModel(model) || model == HydrogenModel
 						if mode == "argon_only" {
-							want = want && IsArgonFamilyModel(model)
+							want = want && inGroup
 						}
 						if mode == "exclude_argon" {
-							want = want && !IsArgonFamilyModel(model)
+							want = want && !inGroup
 						}
 						if policy.Allows(model) != want {
 							t.Fatalf("paid model %q allowed=%v want=%v policy=%+v", model, policy.Allows(model), want, policy)
@@ -265,7 +263,7 @@ func TestAllModelsOverridesEditionAndApplicationModelPolicy(t *testing.T) {
 			metadata[AllModelsEnabledKey] = true
 			policy := ModelPolicyFor(metadata, observation)
 			if policy.Mode != tc.mode || policy.EffectiveMode != "catalog" || !policy.AllModelsEnabled ||
-				!policy.Allows(ArgonModel) || !policy.Allows("gemini-3.8-flash") || policy.Allows(HydrogenModel) ||
+				!policy.Allows(ArgonModel) || !policy.Allows("gemini-3.8-flash") || policy.Allows(HydrogenModel) == *tc.freeTrial ||
 				policy.Allows("veo-3.1") || !policy.RestrictsRawOperations() {
 				t.Fatalf("unexpected enabled policy: %+v", policy)
 			}

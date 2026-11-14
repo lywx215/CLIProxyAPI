@@ -2,7 +2,6 @@ package management
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -13,16 +12,28 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) {
-	for _, scenario := range []string{"available", "closed", "missing-proof", "excluded", "incomplete-proof"} {
-		t.Run(scenario, func(t *testing.T) {
+func TestEnterpriseHydrogenCredentialModelsFollowEffectivePolicy(t *testing.T) {
+	for _, scenario := range []struct {
+		name, mode                            string
+		trial, listed, disabled, legacy, want bool
+	}{
+		{name: "paid-old-off", listed: true, want: true},
+		{name: "paid-old-on", listed: true, legacy: true, want: true},
+		{name: "unlisted", legacy: true},
+		{name: "trial", listed: true, trial: true, legacy: true},
+		{name: "disabled", listed: true, disabled: true},
+		{name: "policy-excluded", listed: true, mode: "exclude_argon"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
 			h, root, children := enterpriseAccountFixture(t)
 			bindingID := coreauth.EnterpriseBindingID(children[0])
-			root, err := h.authManager.UpdateEnterpriseAccount(t.Context(), root, 0, func(account *ge.Account) error {
-				account.Collections[0].Settings["model_policy"] = "exclude_argon"
-				account.Collections[0].Settings["prefix"] = "team"
-				if scenario == "missing-proof" {
-					account.Collections[0].Settings[ge.HydrogenEnabledKey] = true
+			_, err := h.authManager.UpdateEnterpriseAccount(t.Context(), root, 0, func(account *ge.Account) error {
+				collection := &account.Collections[0]
+				collection.Disabled = scenario.disabled
+				collection.Settings["prefix"] = "team"
+				collection.Settings[ge.HydrogenEnabledKey] = scenario.legacy
+				if scenario.mode != "" {
+					collection.Settings["model_policy"] = scenario.mode
 				}
 				return nil
 			})
@@ -31,59 +42,15 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 			}
 			child, _ := h.authManager.GetByID(children[0].ID)
 			catalog := []ge.Model{{ID: ge.ArgonModel}}
-			models := []*registry.ModelInfo{}
-			for i := range 8 {
-				id := fmt.Sprintf("gemini-fixture-%d", i)
-				catalog = append(catalog, ge.Model{ID: id})
-				models = append(models, &registry.ModelInfo{ID: "team/" + id, MetadataModelID: id, Type: "gemini"})
+			if scenario.listed {
+				catalog = append(catalog, ge.Model{ID: ge.HydrogenModel})
 			}
-			h.authManager.PublishEnterprisePolicyCatalog(child, catalog)
-			if scenario != "missing-proof" {
-				owner, account, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
-				revision := account.Collections[0].Revision
-				pending, err := h.authManager.BeginEnterpriseHydrogenTest(child, revision)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "verified", UpstreamModel: ge.HydrogenModel, HTTPStatus: 200}})
-				if err != nil {
-					t.Fatal(err)
-				}
-				child, _ = h.authManager.GetByID(child.ID)
-				if scenario != "closed" {
-					if _, err = h.authManager.UpdateEnterpriseHydrogenEnabled(t.Context(), child, revision, true, pending.TestID); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if scenario == "excluded" {
-					owner, _, _ = h.authManager.EnterpriseAccountSnapshot(owner.ID)
-					if _, err = h.authManager.UpdateEnterpriseAccount(t.Context(), owner, 0, func(account *ge.Account) error {
-						account.Collections[0].Settings["excluded_models"] = []string{ge.HydrogenModel}
-						return nil
-					}); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if scenario == "incomplete-proof" {
-					child, _ = h.authManager.GetByID(child.ID)
-					_, account, _ = h.authManager.EnterpriseAccountSnapshot(owner.ID)
-					pending, err = h.authManager.BeginEnterpriseHydrogenTest(child, account.Collections[0].Revision)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if _, err = h.authManager.RecordEnterpriseCarbonTestEvidence(t.Context(), pending, &ge.CarbonTestEvidence{CarbonTestSummary: ge.CarbonTestSummary{Status: "incomplete", Reason: "model_verification_incomplete", HTTPStatus: 502}}); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			child, _ = h.authManager.GetByID(child.ID)
-			// Deliberately include stale Carbon registry rows in rejected cases. The
-			// read API must never promote a test candidate into business capability.
-			models = append(models,
-				&registry.ModelInfo{ID: "team/" + ge.HydrogenModel, MetadataModelID: ge.HydrogenModel, Type: "gemini"},
-				&registry.ModelInfo{ID: "team/carbon-public", MetadataModelID: ge.HydrogenModel, Type: "gemini"},
-			)
-			registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, models)
+			publishManagementEnterpriseSubscription(t, h.authManager, child, ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &scenario.trial}, catalog...)
+			// Stale registrations cannot bypass the live policy or a missing catalog entry.
+			registry.GetGlobalRegistry().RegisterClient(child.ID, ge.Provider, []*registry.ModelInfo{
+				{ID: "team/" + ge.HydrogenModel, MetadataModelID: ge.HydrogenModel, Type: "gemini"},
+				{ID: "team/hydrogen-public", MetadataModelID: ge.HydrogenModel, Type: "gemini"},
+			})
 			t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient(child.ID) })
 			recorder := httptest.NewRecorder()
 			ctx, _ := gin.CreateTestContext(recorder)
@@ -91,26 +58,22 @@ func TestEnterpriseCarbonCredentialModelsFollowEffectiveAdmission(t *testing.T) 
 			ctx.Request = httptest.NewRequest("GET", "/?name="+root.FileName+"&auth_index="+child.Index+"&binding_id="+bindingID, nil)
 			h.GetAuthFileModels(ctx)
 			body := recorder.Body.Bytes()
-			available := scenario == "available" || scenario == "missing-proof" || scenario == "incomplete-proof"
-			wantModels := 8
-			if available {
-				wantModels = len(models)
+			models := gjson.GetBytes(body, "models").Array()
+			if recorder.Code != 200 || (len(models) == 2) != scenario.want {
+				t.Fatalf("unexpected model list: %d %s", recorder.Code, body)
 			}
-			if recorder.Code != 200 || int(gjson.GetBytes(body, "models.#").Int()) != wantModels || gjson.GetBytes(body, "hydrogen_admission.available").Bool() != available || gjson.GetBytes(body, "test_candidates.1.business_registered").Bool() != available {
-				t.Fatalf("credential models diverged from effective Carbon capability: %d %s", recorder.Code, recorder.Body.String())
-			}
-			carbonRows := 0
-			for _, model := range gjson.GetBytes(body, "models").Array() {
-				if model.Get("upstream_model").String() != ge.HydrogenModel {
-					continue
-				}
-				carbonRows++
-				if !model.Get("policy_allowed").Bool() || model.Get("catalog_source").String() != "manual" || model.Get("upstream_listed").Bool() {
-					t.Fatalf("the manually admitted Carbon model was mislabeled: %s", model.Raw)
+			for _, model := range models {
+				if model.Get("upstream_model").String() != ge.HydrogenModel || !model.Get("upstream_listed").Bool() {
+					t.Fatalf("wrong catalog provenance: %s", model.Raw)
 				}
 			}
-			if available && carbonRows != 2 || !available && carbonRows != 0 {
-				t.Fatalf("native and alias Carbon business rows=%d; available=%v", carbonRows, available)
+			for _, candidate := range gjson.GetBytes(body, "test_candidates").Array() {
+				if candidate.Get("id").String() == ge.HydrogenModel {
+					t.Fatal("obsolete Hydrogen test candidate remains exposed")
+				}
+			}
+			if gjson.GetBytes(body, "hydrogen_admission_supported").Exists() || gjson.GetBytes(body, "model_policy_state.hydrogen_admission_supported").Exists() {
+				t.Fatal("obsolete Hydrogen switch capability remains exposed")
 			}
 		})
 	}
@@ -139,6 +102,8 @@ func TestEnterpriseAccountCarbonPublicFenceTracksAuthorizationInsteadOfEvidence(
 		t.Fatal("the initial zero authorization revision or owner registration epoch was lost")
 	}
 	_, before, _ := h.authManager.EnterpriseAccountSnapshot(root.ID)
+	paid := false
+	publishManagementEnterpriseSubscription(t, h.authManager, children[0], ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}, ge.Model{ID: ge.HydrogenModel})
 	pending, err := h.authManager.BeginEnterpriseHydrogenTest(children[0], before.Collections[0].Revision)
 	if err != nil {
 		t.Fatal(err)

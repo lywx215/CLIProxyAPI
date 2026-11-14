@@ -49,6 +49,7 @@ type enterpriseModelTestRequest struct {
 	BindingID        string              `json:"binding_id"`
 	ExpectedRevision uint64              `json:"expected_revision"`
 	CarbonDirect     bool                `json:"carbon_direct"`
+	HydrogenDirect   bool                `json:"hydrogen_direct"`
 }
 
 // TestGeminiEnterpriseModel performs one credential-pinned text generation.
@@ -115,11 +116,11 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		return
 	}
 	modelID := strings.TrimSpace(req.Model)
-	if modelID == ge.HydrogenModel {
+	if modelID == ge.HydrogenModel && !req.HydrogenDirect && !req.CarbonDirect {
 		h.testGeminiEnterpriseAdmissionModel(c, auth, req, revision, ge.HydrogenAdmissionModel)
 		return
 	}
-	if modelID == ge.CarbonModel && !req.CarbonDirect {
+	if modelID == ge.CarbonModel && !req.CarbonDirect && !req.HydrogenDirect {
 		h.testGeminiEnterpriseCarbonModel(c, auth, req, revision)
 		return
 	}
@@ -134,8 +135,17 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	if model != nil && strings.TrimSpace(model.MetadataModelID) != "" {
 		actualModel = strings.TrimSpace(model.MetadataModelID)
 	}
+	actualModel = strings.TrimPrefix(actualModel, "models/")
 	if req.CarbonDirect && actualModel != ge.CarbonModel {
 		fail(http.StatusConflict, "model_changed", "The selected model no longer maps to Carbon; reload and check the model mapping")
+		return
+	}
+	if req.HydrogenDirect && actualModel != ge.HydrogenModel {
+		fail(http.StatusConflict, "model_changed", "The selected model no longer maps to Hydrogen; reload and check the model mapping")
+		return
+	}
+	if req.HydrogenDirect && (revision == 0 || req.BindingID == "" || req.ExpectedRevision != revision) {
+		fail(http.StatusConflict, "credential_changed", "Select the current application and revision before testing Hydrogen")
 		return
 	}
 	policy := h.authManager.EnterpriseModelPolicyView(auth)
@@ -150,7 +160,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	}
 	deniedMessage := "This collection's model policy does not allow the selected upstream model"
 	if policy.EnforcedReason == "paid_subscription_restricted" {
-		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, manually enabled gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
+		deniedMessage = "Paid Enterprise subscriptions permit only gemini-4-argon, gemini-4-carbon, gemini-4-hydrogen, gemini-3-pro-image and veo-3.1; collection model policies may further restrict these models"
 	}
 	for _, entry := range policy.CatalogModels {
 		if !forceArgon && entry.ID == modelID && !entry.Allowed {
@@ -162,9 +172,15 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		fail(http.StatusBadRequest, "model_not_supported", "The selected model is not registered for this credential")
 		return
 	}
-	if actualModel == ge.HydrogenModel {
+	if actualModel == ge.HydrogenModel && !req.HydrogenDirect {
 		h.testGeminiEnterpriseAdmissionModel(c, auth, req, revision, ge.HydrogenAdmissionModel)
 		return
+	}
+	if req.HydrogenDirect {
+		if err := h.authManager.ValidateEnterpriseModelCatalog(auth, actualModel); err != nil {
+			enterpriseCarbonManagementFailure(c, err)
+			return
+		}
 	}
 	if actualModel == ge.CarbonModel && !req.CarbonDirect {
 		req.Model = ge.CarbonModel
@@ -193,7 +209,16 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 	usageContext := c.Copy()
 	usageContext.Set("userApiKey", "")
 	ctx := context.WithValue(c.Request.Context(), "gin", usageContext)
-	ctx = coreauth.WithEnterpriseModelProbe(ctx, auth.ID, ge.Resources(binding), actualModel)
+	if revision != 0 {
+		var errProbe error
+		ctx, errProbe = h.authManager.BeginEnterpriseModelProbe(ctx, auth, actualModel, revision)
+		if errProbe != nil {
+			fail(http.StatusConflict, "credential_changed", "Credential or collection changed; reload and try again")
+			return
+		}
+	} else {
+		ctx = coreauth.WithEnterpriseModelProbe(ctx, auth.ID, ge.Resources(binding), actualModel)
+	}
 	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"请只回复 OK。"}]}]}`)
 	started := time.Now()
 	response, errExec := h.authManager.Execute(ctx, []string{ge.Provider}, coreexec.Request{
@@ -210,21 +235,9 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		fail(http.StatusConflict, "credential_changed", "Credential resources changed during testing; reload and try again")
 		return
 	}
-	if revision != 0 {
-		_, currentGraph, found := h.authManager.EnterpriseAccountSnapshot(current.ID)
-		currentRevision := uint64(0)
-		if found {
-			for _, collection := range currentGraph.Collections {
-				if collection.ID == coreauth.EnterpriseBindingID(current) {
-					currentRevision = collection.Revision
-					break
-				}
-			}
-		}
-		if currentRevision != revision {
-			fail(http.StatusConflict, "credential_changed", "Collection settings changed during testing; reload and try again")
-			return
-		}
+	if revision != 0 && !h.authManager.EnterpriseModelProbeMatches(ctx) {
+		fail(http.StatusConflict, "credential_changed", "Credential or collection changed during testing; reload and try again")
+		return
 	}
 	result := enterpriseModelTestResult{
 		Status: "ok", Model: modelID, AuthIndex: lockedAuthIndex(auth), Resources: ge.Resources(binding),
@@ -232,7 +245,7 @@ func (h *Handler) TestGeminiEnterpriseModel(c *gin.Context) {
 		Code: "ok", Message: "Model completed a text generation successfully",
 		BindingID: req.BindingID, Revision: revision,
 	}
-	if req.CarbonDirect {
+	if req.CarbonDirect || req.HydrogenDirect {
 		result.UpstreamModel = actualModel
 	}
 	if errExec != nil {

@@ -75,6 +75,9 @@ func FallbackCatalog(setting CatalogFallback, subscription SubscriptionObservati
 		} else if !*subscription.FreeTrial || subscription.Edition == "business_standard" {
 			ids = []string{ArgonModel, CarbonModel}
 		}
+		if !*subscription.FreeTrial {
+			ids = append(ids, HydrogenModel)
+		}
 	}
 	models := make([]Model, 0, len(ids))
 	for _, id := range ids {
