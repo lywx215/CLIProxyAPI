@@ -15,12 +15,78 @@ import yaml
 from scripts.ops.adapters import Adapter
 from scripts.ops.application import Application
 from scripts.ops.core import OpsError, digest
-from scripts.ops import remote_vps
+from scripts.ops import catalog, remote_vps
 from scripts.ops.testing import model_call
 from scripts.ops.tests.fakes import baseline
 
 
 class AdapterTests(unittest.TestCase):
+    def test_enterprise_verification_hashes_fresh_file_content_and_ignores_only_catalog_check_time(self):
+        name = 'enterprise + account.json'
+        row = {'name': name, 'type': 'gemini-enterprise', 'source': 'file', 'size': 128, 'modtime': 'first',
+               'auth_index': 'enterprise', 'last_refresh': 'first', 'gemini_enterprise': {'revision': 1}}
+        other_rows = [dict(row, name='disabled.json', disabled=True), dict(row, name='runtime.json', runtime_only=True),
+                      dict(row, name='web.json', type='gemini-enterprise-web')]
+        document = {'type': 'gemini-enterprise', 'access_token': 'synthetic-access', 'refresh_token': 'synthetic-refresh',
+                    'enterprise_catalog_cache': {'binding': {'checked_at': 'first', 'models': ['gemini-4-carbon']}}}
+        model = {'id': 'gemini-4-carbon'}
+        fixture = {'/v8/management/config': {'api-keys': ['synthetic']}, '/v8/management/config.yaml': '{}',
+                   '/v1/models': {'data': [model]}, '/healthz': {}, '/management.html': '<html>',
+                   '/v8/management/credentials/models': {'models': [model]},
+                   '/v8/management/credentials/gemini-enterprise-web/status': {'enabled': False}}
+
+        def read(path, **kwargs):
+            url = urlsplit(path)
+            if url.path == '/v8/management/credentials':
+                data = {'files': copy.deepcopy([row, *other_rows])}
+            elif url.path == '/v8/management/credentials/download':
+                self.assertEqual(parse_qs(url.query), {'name': [name]})
+                data = copy.deepcopy(document)
+            else:
+                data = fixture[url.path]
+            return {'data': data, 'http': 200, 'headers': {}}
+
+        app = Application(MagicMock())
+        app.read = MagicMock(side_effect=read)
+        first = app.snapshot(verify_credential_content=True)
+        self.assertEqual(set(first['enterprise_file_versions']), {name})
+        self.assertNotIn('synthetic-refresh', json.dumps(first))
+        row.update(modtime='second', size=129)
+        document['enterprise_catalog_cache']['binding']['checked_at'] = 'second'
+        second = app.snapshot(verify_credential_content=True, reuse=first)
+        self.assertEqual(catalog.fingerprint(first), catalog.fingerprint(second))
+        for path, value in [('access_token', 'changed-access'), ('refresh_token', 'changed-refresh'),
+                            ('checked_at', 'outside-cache'), ('enterprise_catalog_cache', {
+                                'binding': {'checked_at': 'second', 'models': ['gemini-4-argon']}})]:
+            with self.subTest(field=path), patch.dict(document, {path: value}):
+                changed = app.snapshot(verify_credential_content=True, reuse=second)
+                self.assertNotEqual(catalog.fingerprint(second), catalog.fingerprint(changed))
+        with patch.dict(document, {'type': 'wrong-provider'}):
+            with self.assertRaisesRegex(OpsError, 'credential_content_identity_unavailable'):
+                app.snapshot(verify_credential_content=True)
+
+    def test_failed_catalog_verification_never_reuses_that_catalog(self):
+        adapter = Adapter({'kind': 'zeabur'}, lambda: None, None)
+        before = baseline('one')
+        ready = baseline('one')
+        ready.update(page_sha256='new-page', platform={
+            'recent_deployments': [{'status': 'RUNNING', 'commitSHA': 'new-commit'}]})
+        missing = {**ready, 'catalogs': {before['credentials'][0]['name']: []}}
+        snapshots = iter((missing, ready))
+
+        def snapshot(**kwargs):
+            value = next(snapshots)
+            adapter.previous_snapshot = value
+            return value
+
+        adapter.snapshot = MagicMock(side_effect=snapshot)
+        verify_args = (before, {'commit': 'new-commit', 'page_sha256': 'new-page'}, {}, before['config_semantics'])
+        with self.assertRaisesRegex(OpsError, 'required_text_model_disappeared'):
+            adapter.verify(*verify_args)
+        self.assertIs(adapter.verify(*verify_args), ready)
+        self.assertEqual([call.kwargs['refresh_catalog'] for call in adapter.snapshot.call_args_list], [True, True])
+        self.assertTrue(all(call.kwargs['verify_credential_content'] for call in adapter.snapshot.call_args_list))
+
     def test_preflight_rejects_present_web_cookie_marked_for_relogin(self):
         adapter = Adapter({'kind': 'vps'}, lambda: None, None)
         before = baseline('one')

@@ -103,12 +103,17 @@ def jobs(snapshot):
 
 def fingerprint(snapshot):
     versions = []
+    file_versions = snapshot.get('enterprise_file_versions', {})
     for row in snapshot['credentials']:
-        if row.get('disabled') or provider(row) not in PROVIDERS:
+        kind = provider(row)
+        if row.get('disabled') or kind not in PROVIDERS:
             continue
         enterprise, web = row.get('gemini_enterprise') or {}, row.get('gemini_enterprise_web') or {}
+        file_version = row.get('modtime') if row.get('size') else None
+        if kind == 'gemini-enterprise' and row['name'] in file_versions:
+            file_version = ['content', file_versions[row['name']]]
         versions.append([row['name'], row.get('auth_index'), row.get('last_refresh'),
-                         row.get('modtime') if row.get('size') else None,
+                         file_version,
                          enterprise.get('revision'), web.get('revision'),
                          sorted((item['binding_id'], item.get('auth_index'), item.get('revision'))
                                 for item in enabled_bindings(row) if item.get('binding_id'))])

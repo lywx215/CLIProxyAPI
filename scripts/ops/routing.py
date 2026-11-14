@@ -238,9 +238,10 @@ class Routing:
         else:
             require(route in {'/api/channel/', '/api/log/', '/api/status'}, 'newapi_read_path_rejected')
         with READ_SLOTS if not model and body is None else contextlib.nullcontext():
+            # An idle TLS socket can be closed by the ingress before a status write.
             response = self.client(site, address).request(path, 'POST' if body is not None else 'GET', body,
                                                          timeout=timeout or (240 if model else 45),
-                                                         read_only=not model and body is None)
+                                                         read_only=not model and body is None, fresh_connection=body is not None)
         require(response['http'] == 200 and isinstance(response['data'], dict), 'newapi_response_invalid')
         data = response['data']
         if not model:

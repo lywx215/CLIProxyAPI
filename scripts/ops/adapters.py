@@ -78,12 +78,14 @@ class Adapter:
     def vps_domains(self):
         return sorted(set([urlsplit(self.target['origin']).hostname, *self.target.get('addresses', [])]))
 
-    def snapshot(self, *, quotas=False, quota_models=None, legacy_raw=False, reuse=None, on_identity=None, refresh_catalog=False):
+    def snapshot(self, *, quotas=False, quota_models=None, legacy_raw=False, reuse=None, on_identity=None,
+                 refresh_catalog=False, verify_credential_content=False):
         reuse = reuse or self.previous_snapshot
         def read(app, domains, host=None):
             return app.snapshot(quotas=quotas, quota_models=quota_models, legacy_raw=legacy_raw, reuse=reuse,
                                 on_identity=(lambda value: on_identity({**value, 'domains': domains, 'host': host}))
-                                if on_identity else None, refresh_catalog=refresh_catalog)
+                                if on_identity else None, refresh_catalog=refresh_catalog,
+                                verify_credential_content=verify_credential_content)
         if self.target['kind'] == 'vps':
             host = self.remote('snapshot')
             domains = self.vps_domains()
@@ -305,11 +307,13 @@ class Adapter:
     def verify(self, before, release, staged, expected_config, *, rollback=False, quota_models=()):
         self.guard()
         previous = self.previous_snapshot
-        refresh = previous is None or previous.get('catalog_release') != (release['commit'], rollback)
-        after = self.snapshot(quotas=bool(quota_models), quota_models=quota_models, legacy_raw=before['legacy'], refresh_catalog=refresh)
+        release_identity = (release['commit'], rollback)
+        refresh = previous is None or previous.get('catalog_release') != release_identity
+        options = {'quotas': bool(quota_models), 'quota_models': quota_models, 'legacy_raw': before['legacy'],
+                   'verify_credential_content': True}
+        after = self.snapshot(refresh_catalog=refresh, **options)
         if not refresh and deployment_identity(previous) != deployment_identity(after):
-            after = self.snapshot(quotas=bool(quota_models), quota_models=quota_models, legacy_raw=before['legacy'], refresh_catalog=True)
-        after['catalog_release'] = (release['commit'], rollback)
+            after = self.snapshot(refresh_catalog=True, **options)
         catalog.preserve(before, after, expected_config=expected_config)
         expected_page = before['page_sha256'] if rollback else release['page_sha256']
         require(after['page_sha256'] == expected_page, 'deployed_frontend_mismatch', category='regression')
@@ -330,6 +334,8 @@ class Adapter:
         else:
             require(after['runtime']['binary_sha256'] == before['runtime']['binary_sha256'],
                     'rollback_binary_mismatch', category='regression')
+        # Only a fully verified catalog can be reused by the next verification.
+        after['catalog_release'] = release_identity
         return after
 
     def postflight(self, before, release, staged, expected_config, *, rollback=False):

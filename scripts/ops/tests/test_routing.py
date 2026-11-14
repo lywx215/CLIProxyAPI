@@ -163,6 +163,24 @@ class RoutingTests(unittest.TestCase):
             self.routing.set_stopped(snapshot, initial=True)
         self.routing.propagate.assert_not_called()
 
+    def test_status_writes_request_fresh_connections_and_safe_reads_still_reuse(self):
+        self.routing.guard = MagicMock()
+        self.routing.client = MagicMock()
+        request = self.routing.client.return_value.request
+        request.return_value = {'http': 200, 'data': {'success': True}}
+        for status in (2, 1):
+            with self.subTest(status=status):
+                body = {'ids': [7], 'status': status}
+                self.routing.request('vip', '/api/channel/status/batch', address='192.0.2.10', body=body)
+                self.routing.client.assert_called_with('vip', '192.0.2.10')
+                request.assert_called_with('/api/channel/status/batch', 'POST', body,
+                                           timeout=45, read_only=False, fresh_connection=True)
+        self.assertEqual(self.routing.guard.call_count, 2)
+        self.routing.request('vip', '/api/status')
+        self.assertFalse(request.call_args.kwargs['fresh_connection'])
+        self.assertTrue(request.call_args.kwargs['read_only'])
+
+
     def test_functional_channel_failure_even_with_http_success(self):
         self.routing.confirm = MagicMock()
         self.routing.request = MagicMock(return_value={'success': False, 'message': 'RESOURCE_EXHAUSTED'})

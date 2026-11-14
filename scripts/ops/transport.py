@@ -145,15 +145,15 @@ class HTTP:
                 conn.close()
             raise OpsError('http_transport_failed', category='network') from None
 
-    def request(self, path, method='GET', body=None, *, raw=False, read_only=False, **kwargs):
+    def request(self, path, method='GET', body=None, *, raw=False, read_only=False, fresh_connection=False, **kwargs):
         with operation(urlsplit(path).path, kind='read' if read_only else 'call'):
-            return self._request(path, method, body, raw=raw, read_only=read_only, **kwargs)
+            return self._request(path, method, body, raw=raw, read_only=read_only, fresh_connection=fresh_connection, **kwargs)
 
-    def _request(self, path, method, body, *, raw, read_only, **kwargs):
+    def _request(self, path, method, body, *, raw, read_only, fresh_connection, **kwargs):
         with self.lock:
-            cached = self.pool.pop() if self.pool else None
+            cached = self.pool.pop() if self.pool and not fresh_connection else None
         try:
-            conn, response = self.open(path, method, body, connection=cached, keep_alive=True, **kwargs)
+            conn, response = self.open(path, method, body, connection=cached, keep_alive=not fresh_connection, **kwargs)
         except OpsError as error:
             if cached is not None:
                 cached.close()
@@ -175,7 +175,7 @@ class HTTP:
                     data = None
             if response.status in {401, 403}:
                 raise OpsError('management_authentication_failed', category='authorization')
-            reusable = not response.will_close
+            reusable = not fresh_connection and not response.will_close
             return {'http': response.status, 'data': data, 'headers': headers}
         except (http.client.HTTPException, OSError):
             raise OpsError('http_transport_failed', category='network') from None

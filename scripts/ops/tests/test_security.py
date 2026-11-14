@@ -51,6 +51,38 @@ class SecurityTests(unittest.TestCase):
                     fresh.request.assert_not_called()
                 client.close()
 
+    def test_fresh_status_write_bypasses_stale_socket_and_closes_its_own_connection(self):
+        old, write = self.http_connection(), self.http_connection()
+        client = HTTP('https://example.test', key='synthetic')
+        self.addCleanup(client.close)
+        client.connection = MagicMock(side_effect=[old, write])
+        client.request('/api/status', read_only=True)
+        old.request.side_effect = RemoteDisconnected()
+
+        client.request('/api/channel/status/batch', 'POST', {'ids': [7], 'status': 2}, fresh_connection=True)
+
+        self.assertEqual(client.connection.call_count, 2)
+        old.request.assert_called_once()
+        write.request.assert_called_once()
+        self.assertEqual(write.request.call_args.kwargs['headers']['Connection'], 'close')
+        write.close.assert_called_once()
+        self.assertEqual(client.pool, [old])
+
+    def test_fresh_status_write_never_replays_a_lost_response(self):
+        write = self.http_connection()
+        write.getresponse.side_effect = RemoteDisconnected()
+        client = HTTP('https://example.test')
+        self.addCleanup(client.close)
+        client.connection = MagicMock(return_value=write)
+
+        with self.assertRaisesRegex(OpsError, 'http_transport_failed'):
+            client.request('/api/channel/status/batch', 'POST', {'ids': [7], 'status': 1}, fresh_connection=True)
+
+        client.connection.assert_called_once()
+        write.request.assert_called_once()
+        write.close.assert_called_once()
+        self.assertEqual(client.pool, [])
+
     def test_ssh_http_connection_close_preserves_the_complete_chunked_response(self):
         from paramiko.channel import ChannelFile
 
@@ -97,6 +129,18 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaisesRegex(OpsError, 'authentication_circuit_open'):
                 client.request('/second')
         self.assertEqual(connection.request.call_count, 1)
+
+    def test_denied_fresh_connection_still_opens_the_shared_authentication_circuit(self):
+        connection = self.http_connection()
+        connection.getresponse.return_value.status = 403
+        client = HTTP('https://example.test')
+        self.addCleanup(client.close)
+        client.connection = MagicMock(return_value=connection)
+        with self.assertRaisesRegex(OpsError, 'management_authentication_failed'):
+            client.request('/api/channel/status/batch', 'POST', {'ids': [7], 'status': 2}, fresh_connection=True)
+        with self.assertRaisesRegex(OpsError, 'authentication_circuit_open'):
+            client.request('/api/status', read_only=True)
+        client.connection.assert_called_once()
 
     @unittest.skipUnless(os.name == 'nt', 'Windows current-user DPAPI')
     def test_real_dpapi_encrypts_authenticates_and_roundtrips(self):

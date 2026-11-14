@@ -50,7 +50,22 @@ class Application:
             require(response['http'] == 200 and response['data'] is not None, 'application_read_failed')
         return response
 
-    def snapshot(self, *, quotas=False, quota_models=None, legacy_raw=False, reuse=None, on_identity=None, refresh_catalog=False):
+    def _enterprise_file_version(self, name):
+        response = self.read('/v8/management/credentials/download?' + urlencode({'name': name}), optional=True)
+        document = response['data']
+        require(response['http'] == 200 and isinstance(document, dict) and document.get('type') == 'gemini-enterprise',
+                'credential_content_identity_unavailable')
+        cache = document.get('enterprise_catalog_cache')
+        if isinstance(cache, dict):
+            # The catalog writer advances checked_at even when its model data is unchanged.
+            document = {**document, 'enterprise_catalog_cache': {
+                key: {field: value for field, value in entry.items() if field != 'checked_at'}
+                if isinstance(entry, dict) else entry for key, entry in cache.items()
+            }}
+        return digest(document)
+
+    def snapshot(self, *, quotas=False, quota_models=None, legacy_raw=False, reuse=None, on_identity=None,
+                 refresh_catalog=False, verify_credential_content=False):
         config = self.read('/v8/management/config', optional=True)
         legacy = config['http'] == 404
         prefix = '/v0/management' if legacy else '/v8/management'
@@ -107,7 +122,15 @@ class Application:
                 note('cache_hit', scope='quota')
                 return {'http': 200, 'data': prior}
             return self.read(path, optional=True)
+        files_to_verify = []
+        if verify_credential_content and not legacy:
+            files_to_verify = [row['name'] for row in files
+                               if catalog.provider(row) == 'gemini-enterprise' and not row.get('disabled')
+                               and not row.get('runtime_only') and
+                               (row.get('source') == 'file' or (type(row.get('size')) is int and row['size'] > 0))]
+        require(len(files_to_verify) == len(set(files_to_verify)), 'ambiguous_active_credential_content')
         with ThreadPoolExecutor(max_workers=MAX_READ_WORKERS) as executor:
+            file_versions = {name: executor.submit(self._enterprise_file_version, name) for name in files_to_verify}
             for row in files:
                 if row.get('disabled') or catalog.provider(row) not in PROVIDERS:
                     continue
@@ -148,11 +171,13 @@ class Application:
                     details[binding['binding_id']] = {'models': models_for_binding, 'quota': quota}
                 elif quota:
                     observations.setdefault(row['name'], []).append(quota.get('selected_pool') or {'status': 'unknown'})
+            file_versions = {name: future.result() for name, future in file_versions.items()}
         catalogs = {name: list(entries.values()) for name, entries in catalogs.items()}
         return {'config': cfg, 'config_semantics': semantics, 'raw': raw['data'],
                 'catalog_identity': identity,
                 'catalog_observed_at': reuse['catalog_observed_at'] if reusable and not refresh_catalog else catalog_observed_at,
                 'etag': raw['headers'].get('etag'), 'legacy': legacy, 'credentials': files,
+                'enterprise_file_versions': file_versions,
                 'models': models, 'model_key': model_key, 'catalogs': catalogs, 'quotas': observations,
                 'binding_observations': binding_observations, 'credential_observed_at': credential_observed_at,
                 'health_http': health['http'], 'management_http': config['http'], 'page_sha256': digest(page['data'].encode()),

@@ -17,6 +17,8 @@ from .telemetry import PHASE, recording, operation, note
 
 
 TERMINAL = {'complete', 'complete_with_holds', 'rolled_back', 'already_current'}
+STARTUP_VERIFY_SECONDS = 180
+STARTUP_RECHECK_SECONDS = 5
 
 
 def restoration_routes(snapshot, held_channels):
@@ -344,21 +346,26 @@ class Engine:
                 continue
             if phase in {'deployed', 'rollback_deployed'}:
                 rollback = phase.startswith('rollback')
-                routing.confirm(routes)
-                # Startup probes may temporarily fail while the runtime is starting.
-                deadline = self.monotonic() + 180
+                # Health can respond before the public and credential model catalogs are populated.
+                deadline = self.monotonic() + STARTUP_VERIFY_SECONDS
                 while True:
+                    routing.confirm(routes)
                     try:
                         after = adapter.verify(before, release, staged, expected, rollback=rollback)
                         break
                     except OpsError as error:
-                        if error.code not in {'application_read_failed', 'http_transport_failed'}:
+                        catalog_pending = error.code == 'required_text_model_disappeared'
+                        if not catalog_pending and error.code not in {'application_read_failed', 'http_transport_failed'}:
                             raise
-                        if self.monotonic() >= deadline:
+                        remaining = deadline - self.monotonic()
+                        if remaining <= 0:
+                            if catalog_pending:
+                                raise
                             raise OpsError('new_runtime_health_failed', category='regression') from None
-                        note('retry', scope='runtime_startup', code=error.code)
-                        with operation('runtime_startup_wait', kind='wait'):
-                            self.sleep(5)
+                        scope = 'model_catalog_startup' if catalog_pending else 'runtime_startup'
+                        note('retry', scope=scope, code=error.code)
+                        with operation(scope + '_wait', kind='wait'):
+                            self.sleep(min(STARTUP_RECHECK_SECONDS, remaining))
                 self.seal(run, label, 'verified', after)
                 self.save(run, label, 'rollback_verified' if rollback else 'verified',
                           verified_fingerprint=catalog.fingerprint(after))

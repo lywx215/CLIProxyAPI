@@ -7,7 +7,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from scripts.ops.core import OpsError, validate_selection
+from scripts.ops import catalog
+from scripts.ops.core import OpsError, digest, validate_selection
 from scripts.ops.engine import Engine
 from scripts.ops.plans import routing_fingerprint
 from scripts.ops.report import write as report_write
@@ -53,6 +54,61 @@ class EngineTests(unittest.TestCase):
         self.assertFalse(self.lease.path.exists())
         self.assertEqual(run['targets'][0]['data']['drain']['criterion'], 'fallback_wait_limit_180_seconds')
         self.assertFalse(run['targets'][0]['data']['drain']['completion_verified'])
+
+    def test_startup_rechecks_missing_models_before_calls_with_channels_disabled(self):
+        self.driver = Driver(('one',))
+        original = Adapter.verify
+        attempts = []
+
+        def verify(adapter, before, release, staged, expected, **kwargs):
+            if self.store.target(self.run_id, adapter.label)['phase'] == 'deployed':
+                attempts.append(self.clock())
+                self.assertEqual(self.driver.channels['one'][1], 2)
+                self.assertFalse(any(call[0] in {'model', 'channel', 'restore'} for call in self.driver.calls))
+                if len(attempts) == 1:
+                    catalog.preserve(before, {**before, 'models': []}, expected_config=expected)
+            return original(adapter, before, release, staged, expected, **kwargs)
+
+        with patch.object(Adapter, 'verify', verify):
+            run = self.start(acceptance_mode='availability')
+        self.assertEqual(run['status'], 'complete')
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[1] - attempts[0], 5)
+        self.assertEqual(self.driver.deploys, {'one': 1})
+        self.assertEqual(self.driver.channels['one'], {1: 1, 2: 2, 3: 3})
+        self.assertTrue(any(event['event'] == 'retry' and event['data']['scope'] == 'model_catalog_startup'
+                            for event in self.store.events(self.run_id)))
+
+    def test_persistent_missing_model_stops_queue_without_restoring_or_rolling_back(self):
+        def verify(adapter, before, release, staged, expected, **kwargs):
+            self.assertEqual(self.driver.channels['one'][1], 2)
+            self.assertEqual(adapter.label, 'one')
+            attempts.append(self.clock())
+            catalog.preserve(before, {**before, 'models': []}, expected_config=expected)
+
+        attempts = []
+        with patch.object(Adapter, 'verify', verify):
+            run = self.start()
+        self.assertEqual(run['status'], 'blocked')
+        self.assertEqual(run['targets'][0]['phase'], 'deployed')
+        self.assertEqual(run['targets'][0]['data']['last_error'],
+                         {'code': 'required_text_model_disappeared', 'category': 'functional'})
+        self.assertEqual(attempts[-1] - attempts[0], 180)
+        self.assertFalse(any(call[0] in {'model', 'channel', 'restore'} for call in self.driver.calls))
+        self.assertTrue(self.lease.path.exists())
+        self.assertEqual(self.driver.rollbacks, {})
+        self.assertEqual(self.driver.deploys, {'one': 1})
+        self.assertEqual(run['targets'][1]['phase'], 'pending')
+
+    def test_startup_catalog_wait_does_not_retry_authorization_failure(self):
+        failure = OpsError('oauth_application_secret_missing', category='authorization')
+        with patch.object(Adapter, 'verify', side_effect=failure) as verify:
+            run = self.start()
+        verify.assert_called_once()
+        self.assertEqual(run['status'], 'blocked')
+        self.assertEqual(run['targets'][0]['data']['last_error']['category'], 'authorization')
+        self.assertEqual(self.driver.channels['one'][1], 2)
+
 
     def test_next_only_is_prepared_while_current_drains_and_is_rechecked_after_release(self):
         self.driver = Driver(('one', 'two', 'three'))
@@ -207,6 +263,36 @@ class EngineTests(unittest.TestCase):
         before = list(self.driver.calls)
         self.engine.run(self.run_id)
         self.assertEqual(self.driver.calls, before)
+
+    def test_enterprise_file_touch_keeps_results_but_token_change_retests_before_restore(self):
+        for token_changes in (False, True):
+            with self.subTest(token_changes=token_changes):
+                self.driver = Driver(('one',))
+                state = {'mtime': 'first', 'token': 'synthetic-original'}
+                original = Routes.test_channel
+
+                def with_file(label):
+                    snapshot = baseline(label)
+                    row = snapshot['credentials'][0]
+                    row.update(size=100, modtime=state['mtime'])
+                    snapshot['enterprise_file_versions'] = {row['name']: digest(state['token'])}
+                    return snapshot
+
+                def channel_test(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    state['mtime'] = 'touched'
+                    if token_changes:
+                        state['token'] = 'synthetic-rotated'
+                    return result
+
+                with patch('scripts.ops.tests.fakes.baseline', side_effect=with_file), \
+                        patch.object(Routes, 'test_channel', side_effect=channel_test, autospec=True):
+                    run = self.start(acceptance_mode='availability')
+                self.assertEqual(run['status'], 'complete')
+                self.assertEqual(self.driver.deploys, {'one': 1})
+                expected_calls = 2 if token_changes else 1
+                self.assertEqual(self.driver.calls.count(('model', 'one', 'new')), expected_calls)
+                self.assertEqual(self.driver.calls.count(('channel', 'one')), expected_calls)
 
     def test_web_revision_change_before_restore_retests_calls_without_redeployment(self):
         self.driver = Driver(('one',))
