@@ -242,13 +242,23 @@ func TestEnterpriseRebindingRevokesOldCatalogBeforeDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
-		return nil, errors.New("new resource unavailable")
+	finishDiscovery := make(chan struct{})
+	releaseDiscovery := sync.OnceFunc(func() { close(finishDiscovery) })
+	defer releaseDiscovery()
+	d.fetch = func(ctx context.Context, _ *coreauth.Auth, _ string) ([]ge.Model, error) {
+		// Keep the replacement probe pending until revocation has been checked.
+		select {
+		case <-finishDiscovery:
+			return nil, errors.New("new resource unavailable")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	svc.registerEnterpriseModels(t.Context(), updated)
 	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
 		t.Fatal("rebound account retained the old resource's models")
 	}
+	releaseDiscovery()
 	d.wg.Wait()
 	for _, model := range GlobalModelRegistry().GetModelsForClient(auth.ID) {
 		if model.ID == "old-resource-only" {
