@@ -24,6 +24,8 @@ class FakeGoogle:
         self.user_items = []
         self.engine_items = {}
         self.assistant_items = {}
+        self.admin_models = [{"modelId": "gemini-3.8-flash"}, {"modelId": "gemini-4-argon"}]
+        self.hidden_user_models = set()
         self.config_reads = 0
         self.paid_on_recheck = False
         self.fail_users = False
@@ -72,7 +74,15 @@ class FakeGoogle:
             engine = self.engine_items[engine_name]
             assistant = self.assistant_items[engine_name + "/assistants/default_assistant"]
             view = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["modelInfoView"][0]
-            models = [{"modelId": "gemini-3.8-flash"}, {"modelId": "gemini-4-argon"}]
+            models = copy.deepcopy(self.admin_models)
+            if view == "END_USER_WEB":
+                location = engine_name.split("/")[3]
+                configured = engine.get("modelConfigs", {})
+                models = [{"modelId": row["modelId"]} for row in models
+                          if row["modelId"] not in self.hidden_user_models
+                          and (not row.get("adminView", {}).get("regions") or location in row["adminView"]["regions"])
+                          and (configured.get(row["modelId"]) == "MODEL_ENABLED"
+                               or row.get("adminView", {}).get("enabledByDefault"))]
             return {"uiSettings": {"features": copy.deepcopy(engine.get("features", {})), "modelConfigInfo": {"resolvedModels": models}}, "assistantSettings": {"webGroundingType": assistant.get("webGroundingType"), "defaultWebGroundingToggleOff": assistant.get("defaultWebGroundingToggleOff", False)}}
         collection = self.assistant_items if "/assistants/" in path else self.engine_items
         if resource not in collection:
@@ -161,6 +171,44 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual(engine["features"]["keep"], "FEATURE_STATE_ON")
         self.assertEqual(engine["features"]["model-selector"], "FEATURE_STATE_OFF")
         self.assertFalse(result["applications"][0]["model_selector"])
+
+    def test_models_follow_each_regions_google_catalog_and_are_read_back(self):
+        pro = "gemini-3.1-pro-preview"
+        for location in ("eu", "us", "global"):
+            with self.subTest(location=location):
+                api = FakeGoogle()
+                api.admin_models.extend([
+                    {"modelId": pro, "adminView": {"regions": ["global", "us"], "adminOverridable": True}},
+                    {"modelId": "default-model", "adminView": {"adminOverridable": False, "enabledByDefault": True}},
+                    {"modelId": "locked-model", "adminView": {"adminOverridable": False}},
+                ])
+                name = init.region_name(PROJECT, location) + "/collections/default_collection/engines/existing"
+                assistant_name = name + "/assistants/default_assistant"
+                api.engine_items[name] = {"name": name, "modelConfigs": {"keep-model": "MODEL_DISABLED"}}
+                api.assistant_items[assistant_name] = {"name": assistant_name, "generationConfig": {"allowedModelIds": ["keep-model"]}}
+
+                report = self.initializer(api).configure(PROJECT, location, name)
+
+                available = location != "eu"
+                model_configs = api.engine_items[name]["modelConfigs"]
+                allowed = api.assistant_items[assistant_name]["generationConfig"]["allowedModelIds"]
+                self.assertEqual(model_configs.get(pro), "MODEL_ENABLED" if available else None)
+                self.assertEqual(pro in allowed, available)
+                self.assertEqual(pro in report["configured_models"], available)
+                self.assertEqual(pro in report["user_model_ids"], available)
+                self.assertEqual(report["model_restrictions"].get(pro), None if available else "region_unavailable")
+                self.assertEqual(report["model_restrictions"]["locked-model"], "admin_toggle_unavailable")
+                self.assertEqual(report["enabled_by_default"], ["default-model"])
+                self.assertFalse({"default-model", "locked-model"} & model_configs.keys())
+                self.assertEqual(model_configs["keep-model"], "MODEL_DISABLED")
+                self.assertIn("keep-model", allowed)
+                self.assertNotIn(pro, report["missing_from_user_catalog"])
+
+                if available:
+                    api.hidden_user_models.add(pro)
+                    report = self.initializer(api).configure(PROJECT, location, name)
+                    self.assertIn(pro, report["missing_from_user_catalog"])
+                    self.assertEqual(report["patches"], 0)
 
     def test_absent_and_empty_ranges_stay_implicit(self):
         for empty in (False, True):

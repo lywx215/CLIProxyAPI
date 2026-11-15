@@ -18,6 +18,7 @@ const EnterpriseOAuthReceiptsKey = "enterprise_oauth_import_receipts"
 var ErrEnterpriseOAuthImportConflict = errors.New("enterprise OAuth import target or authorization revision changed")
 
 type enterpriseOAuthImportContextKey struct{}
+type enterpriseOAuthRuntimeContextKey struct{}
 
 // EnterpriseOAuthImportOptions contains no OAuth secret material.
 type EnterpriseOAuthImportOptions struct {
@@ -68,6 +69,90 @@ func EnterpriseOAuthReceipt(auth *Auth, requestID string) (EnterpriseOAuthImport
 	}
 	receipt, ok := receipts[requestID]
 	return receipt, ok && receipt.RequestID == requestID && receipt.Status == "saved"
+}
+
+// MatchesEnterpriseOAuthReceipt identifies the exact active authorization in a saved or runtime parent.
+func MatchesEnterpriseOAuthReceipt(auth *Auth, receipt EnterpriseOAuthImportReceipt) bool {
+	if !IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) || IsPluginVirtualAuth(auth) ||
+		auth.FileName != receipt.Name || auth.Index != receipt.AuthIndex ||
+		EnterpriseOAuthAuthorizationRevision(auth) != receipt.AuthorizationRevision ||
+		ge.String(auth.Metadata, "email") != receipt.Email || ge.String(auth.Metadata, "client_id") != receipt.ClientID ||
+		ge.String(auth.Metadata, EnterpriseOAuthSubjectKey) != receipt.Subject {
+		return false
+	}
+	account, err := ge.ReadAccount(auth.Metadata)
+	stored, ok := EnterpriseOAuthReceipt(auth, receipt.RequestID)
+	return err == nil && account != nil && account.ID == receipt.AccountID &&
+		account.ID == ge.AccountID(receipt.Email, receipt.ClientID) && ok && stored == receipt
+}
+
+// PublishEnterpriseOAuthImport installs a confirmed durable revision in memory.
+// If that exact revision is already live, reuse it to preserve current tokens and settings.
+func (m *Manager) PublishEnterpriseOAuthImport(ctx context.Context, saved *Auth, receipt EnterpriseOAuthImportReceipt) error {
+	if !MatchesEnterpriseOAuthReceipt(saved, receipt) {
+		return ErrEnterpriseOAuthImportConflict
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(WithSkipPersist(ctx), enterpriseOAuthRuntimeContextKey{}, receipt)
+	current, found := m.GetByID(saved.ID)
+	version := saved.Attributes[AttributeEnterpriseObjectETag]
+	if !MatchesEnterpriseOAuthReceipt(current, receipt) || (version != "" && current.Attributes[AttributeEnterpriseObjectETag] != version) {
+		var err error
+		if found {
+			_, err = m.Update(ctx, saved.Clone())
+		} else {
+			_, err = m.Register(ctx, saved.Clone())
+		}
+		if err != nil {
+			return err
+		}
+	}
+	current, _ = m.GetByID(saved.ID)
+	if !MatchesEnterpriseOAuthReceipt(current, receipt) {
+		return ErrEnterpriseOAuthImportConflict
+	}
+	if err := m.syncEnterpriseAccount(ctx, current); err != nil {
+		return err
+	}
+	current, _ = m.GetByID(saved.ID)
+	if !MatchesEnterpriseOAuthReceipt(current, receipt) {
+		return ErrEnterpriseOAuthImportConflict
+	}
+	return nil
+}
+
+// IsEnterpriseOAuthRuntimeSync reports whether this publication is a local-only recovery.
+func IsEnterpriseOAuthRuntimeSync(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	_, ok := ctx.Value(enterpriseOAuthRuntimeContextKey{}).(EnterpriseOAuthImportReceipt)
+	return ok
+}
+
+func checkEnterpriseOAuthRuntime(ctx context.Context, current, saved *Auth, create bool) error {
+	if !IsEnterpriseOAuthRuntimeSync(ctx) {
+		return nil
+	}
+	receipt := ctx.Value(enterpriseOAuthRuntimeContextKey{}).(EnterpriseOAuthImportReceipt)
+	if !MatchesEnterpriseOAuthReceipt(saved, receipt) {
+		return ErrEnterpriseOAuthImportConflict
+	}
+	if current == nil && create {
+		return nil
+	}
+	if !create && current != nil && IsEnterpriseAccountAuth(current) && !enterpriseRetired(current) && !IsPluginVirtualAuth(current) &&
+		sameEnterprisePrincipal(current, saved) && current.FileName == receipt.Name && current.Index == receipt.AuthIndex &&
+		EnterpriseOAuthAuthorizationRevision(current) < receipt.AuthorizationRevision &&
+		(ge.String(current.Metadata, EnterpriseOAuthSubjectKey) == "" || ge.String(current.Metadata, EnterpriseOAuthSubjectKey) == receipt.Subject) {
+		return nil
+	}
+	if !create && saved.Attributes[AttributeEnterpriseObjectETag] != "" && MatchesEnterpriseOAuthReceipt(current, receipt) {
+		return nil
+	}
+	return ErrEnterpriseOAuthImportConflict
 }
 
 // SupportsEnterpriseOAuthImport is deliberately opt-in for conditional stores.

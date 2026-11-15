@@ -235,6 +235,9 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	}
 	// Publish saved routes before a new subscription observation can invalidate
 	// the policy signature used by this synchronous registry update.
+	if coreauth.IsEnterpriseOAuthRuntimeSync(ctx) {
+		return
+	}
 	s.queueEnterpriseSubscription(ctx, auth)
 	s.queueEnterpriseQuota(ctx, auth)
 	s.queueEnterpriseDiscovery(ctx, auth)

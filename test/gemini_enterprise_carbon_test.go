@@ -11,6 +11,7 @@ import (
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreusage "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	"github.com/tidwall/gjson"
 )
@@ -116,6 +117,115 @@ func TestEnterpriseHydrogenPublicHTTPAdmissionAndAliases(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func TestEnterprisePublicCredentialExhaustionUses429(t *testing.T) {
+	for _, route := range []struct {
+		protocol string
+		stream   bool
+	}{{"openai", false}, {"openai", true}, {"gemini", false}, {"gemini", true}} {
+		for _, scenario := range []struct {
+			name, model string
+			wantStatus  int
+		}{
+			{name: "no credential", model: ge.HydrogenModel, wantStatus: http.StatusTooManyRequests},
+			{name: "configured alias", model: "paid-hydrogen-alias", wantStatus: http.StatusTooManyRequests},
+			{name: "disabled registered route", model: ge.ArgonModel, wantStatus: http.StatusTooManyRequests},
+			{name: "all credentials expired", model: ge.ArgonModel, wantStatus: http.StatusTooManyRequests},
+			{name: "catalog model no longer registered", model: "workspace/gemini-3.8-flash", wantStatus: http.StatusTooManyRequests},
+			{name: "local catalog rejection", model: ge.HydrogenModel, wantStatus: http.StatusTooManyRequests},
+			{name: "unknown model", model: "gemini-unknown-credential-test", wantStatus: http.StatusBadRequest},
+			{name: "bad payload", model: ge.ArgonModel, wantStatus: http.StatusBadRequest},
+		} {
+			t.Run(route.protocol+"/"+scenario.name+map[bool]string{true: "/stream", false: "/full"}[route.stream], func(t *testing.T) {
+				cfg := &config.Config{OAuthModelAlias: map[string][]config.OAuthModelAlias{
+					ge.Provider: {{Name: ge.HydrogenModel, Alias: "paid-hydrogen-alias"}},
+				}}
+				var auths []enterprisePolicyWireAuth
+				switch scenario.name {
+				case "disabled registered route", "all credentials expired", "local catalog rejection", "bad payload":
+					auths = []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}}
+				case "catalog model no longer registered":
+					auths = []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", prefix: "workspace"}}
+				}
+				fixture := newEnterprisePolicyWireFixture(t, cfg, auths)
+				fixture.manager.SetOAuthModelAlias(cfg.OAuthModelAlias)
+				if id := fixture.authIDs["paid"]; id != "" {
+					a, _ := fixture.manager.GetByID(id)
+					switch scenario.name {
+					case "disabled registered route", "catalog model no longer registered":
+						a.Disabled, a.Status = true, coreauth.StatusDisabled
+						if _, err := fixture.manager.Update(t.Context(), a); err != nil {
+							t.Fatal(err)
+						}
+						registry.GetGlobalRegistry().UnregisterClient(id)
+						if scenario.name == "disabled registered route" {
+							// A stale registration should produce the same status.
+							registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, []*registry.ModelInfo{{ID: ge.ArgonModel}})
+						}
+					case "local catalog rejection":
+						registry.GetGlobalRegistry().RegisterClient(id, ge.Provider, []*registry.ModelInfo{{ID: ge.HydrogenModel}})
+					case "all credentials expired":
+						a.Status, a.Unavailable, a.StatusMessage = coreauth.StatusError, true, "unauthorized"
+						a.LastError = &coreauth.Error{Code: "unauthorized", Message: "authorization expired", HTTPStatus: http.StatusUnauthorized}
+						if _, err := fixture.manager.Update(t.Context(), a); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				requestFields := map[string]any{}
+				if scenario.name == "bad payload" {
+					field := "messages"
+					if route.protocol == "gemini" {
+						field = "contents"
+					}
+					requestFields[field] = "invalid"
+				}
+				path, body := enterprisePublicRequest(t, scenario.model, route.protocol, route.stream, requestFields)
+				response := enterprisePublicCall(fixture.router, path, body)
+				if response.Code != scenario.wantStatus {
+					t.Fatalf("HTTP %d, want %d: %s", response.Code, scenario.wantStatus, response.Body.String())
+				}
+				wantType := "invalid_request_error"
+				if scenario.wantStatus == http.StatusTooManyRequests {
+					wantType = "rate_limit_error"
+					if scenario.name == "all credentials expired" {
+						wantType = "authentication_error"
+					}
+				}
+				if got := gjson.GetBytes(response.Body.Bytes(), "error.type").String(); got != wantType {
+					t.Fatalf("error type = %q, want %q: %s", got, wantType, response.Body.String())
+				}
+				if got := len(fixture.transport.snapshot()); got != 0 {
+					t.Fatalf("request reached upstream %d times", got)
+				}
+			})
+		}
+	}
+}
+
+func TestEnterprisePublicAvailabilityDistinguishesUpstream400(t *testing.T) {
+	const mismatch = `{"error":{"code":400,"status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"discoveryengine.googleapis.com","reason":"MODEL_NOT_ENABLED"}]}}`
+	const invalid = `{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"invalid request"}}`
+	for _, stream := range []bool{false, true} {
+		for _, scenario := range []struct {
+			name, body string
+			wantStatus int
+		}{
+			{"model unavailable", mismatch, http.StatusTooManyRequests},
+			{"invalid argument", invalid, http.StatusBadRequest},
+		} {
+			t.Run(scenario.name+map[bool]string{true: "/stream", false: "/full"}[stream], func(t *testing.T) {
+				router, transport, _ := enterpriseFixtureRouter(t)
+				transport.upstreamStatus, transport.upstreamBody = http.StatusBadRequest, scenario.body
+				path, body := enterprisePublicRequest(t, ge.ArgonModel, "openai", stream, nil)
+				response := enterprisePublicCall(router, path, body)
+				if response.Code != scenario.wantStatus || transport.calls.Load() != 1 {
+					t.Fatalf("HTTP %d, want %d, upstream calls %d: %s", response.Code, scenario.wantStatus, transport.calls.Load(), response.Body.String())
+				}
+			})
 		}
 	}
 }

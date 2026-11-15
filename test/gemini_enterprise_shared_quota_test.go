@@ -40,6 +40,8 @@ func (f *quotaWireTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 	switch f.mode {
 	case "http":
 		status = 429
+	case "http-mismatched-quota":
+		status = 400
 	case "ndjson-thought":
 		body = `{"answer":{"state":"IN_PROGRESS"}}` + "\n" + quota
 	case "sse-tail":
@@ -64,12 +66,15 @@ func (r *byteReader) Read(p []byte) (int, error) {
 }
 
 func TestEnterpriseSharedQuotaPublicProtocolsSynthetic(t *testing.T) {
-	for _, mode := range []string{"http", "array", "ndjson-thought", "sse-tail"} {
-		for _, route := range []struct{ path, body string }{
-			{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}]}`},
-			{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}],"stream":true}`},
-			{"/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}]}`},
-			{"/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse", `{"contents":[{"parts":[{"text":"hi"}]}]}`},
+	for _, mode := range []string{"http", "http-mismatched-quota", "array", "ndjson-thought", "sse-tail"} {
+		for _, route := range []struct {
+			path, body string
+			stream     bool
+		}{
+			{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}]}`, false},
+			{"/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}],"stream":true}`, true},
+			{"/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}]}`, false},
+			{"/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse", `{"contents":[{"parts":[{"text":"hi"}]}]}`, true},
 		} {
 			t.Run(mode+route.path+route.body[len(route.body)-2:], func(t *testing.T) {
 				router, _, manager := enterpriseFixtureRouter(t)
@@ -99,10 +104,24 @@ func TestEnterpriseSharedQuotaPublicProtocolsSynthetic(t *testing.T) {
 				if strings.Contains(response.Body.String(), "sensitive") {
 					t.Fatal("raw generation error leaked")
 				}
-				if mode == "http" && !strings.Contains(response.Body.String(), "rate_limit_exceeded") {
-					t.Fatalf("shared quota classification lost the safe public diagnostic: %s", response.Body.String())
+				wantStatus := http.StatusTooManyRequests
+				if mode == "sse-tail" && route.stream {
+					wantStatus = http.StatusOK
+				}
+				if response.Code != wantStatus || !strings.Contains(response.Body.String(), "rate_limit_exceeded") {
+					t.Fatalf("shared quota classification lost the public diagnostic: HTTP %d, want %d: %s", response.Code, wantStatus, response.Body.String())
+				}
+				if wantStatus == http.StatusOK && strings.HasSuffix(route.path, ":streamGenerateContent?alt=sse") && !strings.Contains(response.Body.String(), "event: error\n") {
+					t.Fatalf("Gemini SSE omitted the terminal error event: %s", response.Body.String())
 				}
 				enterpriseAssertPublicErrorChannelNeutral(t, response.Body.Bytes())
+				blocked := httptest.NewRecorder()
+				request = httptest.NewRequest(http.MethodPost, route.path, strings.NewReader(route.body))
+				request.Header.Set("Content-Type", "application/json")
+				router.ServeHTTP(blocked, request)
+				if blocked.Code != http.StatusTooManyRequests || blocked.Header().Get("Retry-After") == "" || upstream.calls.Load() != 1 {
+					t.Fatalf("exhausted shared quota was not blocked locally: HTTP %d, Retry-After=%q, calls=%d", blocked.Code, blocked.Header().Get("Retry-After"), upstream.calls.Load())
+				}
 				var pool auth.CooldownView
 				for _, id := range []string{"enterprise-wire-fixture", "enterprise-wire-sibling"} {
 					a, _ := manager.GetByID(id)

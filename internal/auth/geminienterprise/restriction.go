@@ -149,7 +149,7 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	}
 	if mapped, name := generationStatus(body.Code, body.Status); mapped != 0 {
 		e.RPCStatus, e.UpstreamCode = name, body.Code
-		if streamError {
+		if streamError || status == http.StatusBadRequest && mapped == http.StatusTooManyRequests {
 			e.HTTPStatus = mapped
 		}
 	}

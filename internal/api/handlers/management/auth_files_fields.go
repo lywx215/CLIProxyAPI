@@ -181,6 +181,11 @@ func (h *Handler) patchPluginVirtualSourceStatus(ctx context.Context, targetAuth
 	if sourcePath == "" {
 		return nil, errPluginVirtualAuth
 	}
+	if store, enabled := h.versionedAuthFileStore(); enabled {
+		if err := store.GuardUnversionedEnterpriseAuth(ctx, sourcePath); err != nil {
+			return nil, err
+		}
+	}
 	if errWrite := setSourceAuthFileDisabled(sourcePath, disabled); errWrite != nil {
 		if os.IsNotExist(errWrite) {
 			return nil, errAuthFileNotFound
@@ -360,6 +365,17 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 		enterpriseManagementFailure(c, 400, "read_only_collection_fields", "Manage Carbon through the selected application's dedicated switch and test")
 		return
 	}
+	if targetAuth.Provider == ge.Provider {
+		if _, enabled := h.versionedAuthFileStore(); enabled {
+			for field := range req {
+				root := strings.ToLower(rootAuthFileField(field))
+				if coreauth.IsAuthTokenPayloadKey(root) || protectedEnterpriseImportField(root) {
+					enterpriseManagementFailure(c, http.StatusConflict, "authorization_target_changed", "Use the dedicated Gemini Enterprise authorization operation")
+					return
+				}
+			}
+		}
+	}
 	if c.GetBool(ConfigV8ContextKey) && targetAuth.Provider == ge.Provider {
 		for key := range req {
 			switch rootAuthFileField(key) {
@@ -476,6 +492,17 @@ func decodeAuthFileFieldValue(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return value, nil
+}
+
+func protectedEnterpriseImportField(field string) bool {
+	switch field {
+	case coreauth.EnterpriseOAuthReceiptsKey, coreauth.EnterpriseOAuthSubjectKey, coreauth.EnterpriseOAuthRevisionKey,
+		"enterprise_account", "enterprise_retired_to", "type", "email", "client_id", "client_secret", "client_secret_env",
+		"expiry", "expires", "expires_at", "expire":
+		return true
+	default:
+		return false
+	}
 }
 
 type authFileRequestRetryPatch struct {

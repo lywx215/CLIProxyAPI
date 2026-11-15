@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	web "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps/enterpriseweb"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/synthesizer"
@@ -65,6 +66,10 @@ func (h *Handler) UploadAuthFile(c *gin.Context) {
 		if _, errUpload := h.storeUploadedAuthFile(ctx, fileHeaders[0]); errUpload != nil {
 			if errors.Is(errUpload, errAuthFileMustBeJSON) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "file must be .json"})
+				return
+			}
+			if errors.Is(errUpload, coreauth.ErrEnterpriseAuthVersionRequired) {
+				c.JSON(http.StatusConflict, gin.H{"error": errUpload.Error()})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": errUpload.Error()})
@@ -123,6 +128,10 @@ func (h *Handler) UploadAuthFile(c *gin.Context) {
 		return
 	}
 	if err = h.writeAuthFile(ctx, filepath.Base(name), data); err != nil {
+		if errors.Is(err, coreauth.ErrEnterpriseAuthVersionRequired) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -157,7 +166,13 @@ func (h *Handler) DeleteAuthFile(c *gin.Context) {
 					full = abs
 				}
 			}
-			if err = os.Remove(full); err == nil {
+			if _, enabled := h.versionedAuthFileStore(); enabled {
+				if _, status, errDelete := h.deleteAuthFileByName(ctx, name); errDelete != nil {
+					c.JSON(status, gin.H{"error": errDelete.Error(), "deleted": deleted})
+					return
+				}
+				deleted++
+			} else if err = os.Remove(full); err == nil {
 				if errDel := h.deleteTokenRecord(ctx, full); errDel != nil {
 					c.JSON(500, gin.H{"error": errDel.Error()})
 					return
@@ -275,6 +290,14 @@ func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) e
 	if err != nil {
 		return err
 	}
+	if store, enabled := h.versionedAuthFileStore(); enabled {
+		if strings.EqualFold(strings.TrimSpace(auth.Provider), ge.Provider) {
+			return coreauth.ErrEnterpriseAuthVersionRequired
+		}
+		if err = store.GuardUnversionedEnterpriseAuth(ctx, dst); err != nil {
+			return err
+		}
+	}
 	if auth.Provider == web.Provider {
 		return web.Fail(400, "Use the dedicated Web credential endpoint to preserve revisions")
 	}
@@ -375,6 +398,25 @@ func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string
 			targetPath = abs
 		}
 	}
+	if store, enabled := h.versionedAuthFileStore(); enabled {
+		if err := store.GuardUnversionedEnterpriseAuth(ctx, targetPath); err != nil {
+			if errors.Is(err, coreauth.ErrEnterpriseAuthVersionRequired) {
+				return filepath.Base(name), http.StatusConflict, err
+			}
+			return filepath.Base(name), http.StatusInternalServerError, err
+		}
+		if _, err := os.Stat(targetPath); err != nil {
+			if os.IsNotExist(err) {
+				return filepath.Base(name), http.StatusNotFound, errAuthFileNotFound
+			}
+			return filepath.Base(name), http.StatusInternalServerError, err
+		}
+		if err := h.deleteTokenRecord(ctx, targetPath); err != nil {
+			return filepath.Base(name), http.StatusConflict, err
+		}
+		h.removeAuthsForPath(ctx, targetPath, targetID)
+		return filepath.Base(name), http.StatusOK, nil
+	}
 	if errRemove := os.Remove(targetPath); errRemove != nil {
 		if os.IsNotExist(errRemove) {
 			return filepath.Base(name), http.StatusNotFound, errAuthFileNotFound
@@ -386,6 +428,16 @@ func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string
 	}
 	h.removeAuthsForPath(ctx, targetPath, targetID)
 	return filepath.Base(name), http.StatusOK, nil
+}
+
+type versionedAuthFileStore interface {
+	SupportsEnterpriseOAuthImport() bool
+	GuardUnversionedEnterpriseAuth(context.Context, string) error
+}
+
+func (h *Handler) versionedAuthFileStore() (versionedAuthFileStore, bool) {
+	store, ok := h.tokenStoreWithBaseDir().(versionedAuthFileStore)
+	return store, ok && store.SupportsEnterpriseOAuthImport()
 }
 
 func isPluginVirtualSourceDelete(name string, auth *coreauth.Auth) bool {

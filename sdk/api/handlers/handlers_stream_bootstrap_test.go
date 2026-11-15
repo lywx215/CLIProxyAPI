@@ -923,8 +923,8 @@ func TestExecuteStreamWithAuthManager_EnrichesBootstrapRetryAuthUnavailableError
 	if gotErr == nil {
 		t.Fatalf("expected terminal error")
 	}
-	if gotErr.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want %d", gotErr.StatusCode, http.StatusServiceUnavailable)
+	if gotErr.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", gotErr.StatusCode, http.StatusTooManyRequests)
 	}
 
 	var authErr *coreauth.Error

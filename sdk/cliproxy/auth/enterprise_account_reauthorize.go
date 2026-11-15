@@ -53,6 +53,9 @@ func (m *Manager) ReauthorizeEnterpriseAccount(ctx context.Context, record *Auth
 		return updated, err
 	}
 	// Register also rebases against an account that appeared after this lookup.
+	if m.EnterpriseOAuthImportJournalStore() != nil && m.SupportsEnterpriseOAuthImport() {
+		ctx = WithAuthCreationIntent(ctx)
+	}
 	return m.Register(ctx, record.Clone())
 }
 

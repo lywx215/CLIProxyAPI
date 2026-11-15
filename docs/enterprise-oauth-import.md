@@ -2,8 +2,9 @@
 
 This protocol installs a verified personal Gemini Enterprise OAuth grant without
 discovering applications, allocating licenses, or changing model policy. It uses
-normal v8 management authentication. The initial implementation supports the
-conditional atomic FileTokenStore; other stores advertise `import_supported=false`.
+normal v8 management authentication. FileTokenStore supports conditional atomic
+imports. The S3-backed ObjectTokenStore can also support them after its endpoint
+and writers are verified. Other stores advertise `import_supported=false`.
 
 ## Capabilities
 
@@ -48,16 +49,45 @@ legacy project/Engine hints are present in server configuration.
 Request IDs use 16–100 ASCII letters, digits, underscores or hyphens. Reusing an ID
 with the same request returns its receipt without another refresh. A different
 request with that ID conflicts. Missing or unknown receipts never authorize replay.
+The receipt lookup is read-only. Its runtime flag also checks that the exact saved
+authorization is current and present in this process.
 
-Receipts are embedded in the atomically persisted credential. Non-secret intent
-journals use `.receipt` under `.enterprise-oauth-imports/`, so credential JSON scans
-cannot load journals as auth files. Per-principal OS locks persist an owner marker;
-an unresolved prior import stays isolated even after process termination. Separate
-`.write-lock` files serialize credential persistence across processes. Lock files
-are stable and must not be unlinked while the service is running.
+`POST /v8/management/credentials/gemini-enterprise/oauth/imports/{request_id}/runtime-sync`
 
-The legacy generic upload, Vertex import and `/v0/management` routes are unchanged.
-Manager must not fall back to them when the dedicated capability is missing.
+Send an empty body to publish the original revision from the durable store and
+return the same receipt schema. Repeating publication for the same ready
+authorization is idempotent. An absent or superseded grant prevents publication.
+Publication preserves the current graph, account settings, and disabled state.
+
+Receipts are embedded in the atomically persisted credential. FileTokenStore
+uses separate `.receipt` journals under `.enterprise-oauth-imports/`. Its
+per-principal OS locks persist an owner marker across process termination.
+Separate `.write-lock` files serialize credential persistence across processes
+and need to remain present while the service is running.
+
+Manager uses the dedicated v8 route and fails closed when its capability is missing.
+
+## S3 object storage
+
+`OBJECTSTORE_ENTERPRISE_OAUTH_IMPORT_CAS=true` enables this path. The default is
+disabled. Enable it only after testing conditional behavior on the same endpoint
+with isolated synthetic objects and upgrading every writer of the auth prefix.
+Existing credential object keys are reused.
+
+Request journals and per-account owners are stored outside `auths/` and contain
+no OAuth material. Owners are replaced by conditional writes only after the prior
+request is conclusively resolved. Both new credentials and updates use conditional
+PUTs with SDK retries disabled. The successful receipt is embedded in the same
+object as the authorization. Intent updates are advisory once that object commits.
+
+Receipt queries read the exact S3 object. A confirmed save or explicit runtime
+recovery can update the local mirror. Runtime synchronization checks the
+authoritative object before and after publication and reports readiness for the
+responding instance.
+
+With this mode enabled, generic file-based upload, deletion and mirroring require
+version protection for Gemini Enterprise credentials. Managed settings and token
+refresh use the version of the snapshot on which the edit was based.
 
 ## Verification
 

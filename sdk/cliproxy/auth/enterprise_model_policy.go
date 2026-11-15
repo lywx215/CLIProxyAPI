@@ -69,6 +69,56 @@ func enterprisePolicyCatalogKey(auth *Auth) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// EnterpriseModelRouteKnown identifies an explicit model or alias when none is
+// registered. Selection still requires an eligible, registered application.
+func (m *Manager) EnterpriseModelRouteKnown(model string) bool {
+	if m == nil {
+		return false
+	}
+	model = strings.TrimPrefix(canonicalModelKey(model), "models/")
+	if model == "" {
+		return false
+	}
+	table, _ := m.oauthModelAlias.Load().(*oauthModelAliasTable)
+	known := func(name string) bool {
+		if table != nil {
+			if _, ok := table.reverse[ge.Provider][strings.ToLower(name)]; ok {
+				return true
+			}
+		}
+		return ge.IsArgonFamilyModel(name) || name == ge.HydrogenModel
+	}
+	cfg := m.runtimeConfigSnapshot()
+	forcePrefix := cfg != nil && cfg.ForceModelPrefix
+	if !forcePrefix && known(model) {
+		return true
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c := &m.enterprisePolicies
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, auth := range m.auths {
+		if auth.Provider != ge.Provider || IsEnterpriseAccountAuth(auth) || enterpriseRetired(auth) {
+			continue
+		}
+		localModel := rewriteModelForAuth(model, auth)
+		if forcePrefix && localModel == model && auth.Prefix != "" && strings.TrimSpace(auth.Prefix) != model {
+			continue
+		}
+		if known(localModel) || resolveUpstreamModelFromAliases(OAuthModelAliasesFromAttributes(auth.Attributes), localModel).UpstreamModel != "" {
+			return true
+		}
+		for _, entry := range c.catalogs[enterprisePolicyCatalogKey(auth)] {
+			if entry.ID == localModel {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // EnterpriseSubscriptionRefresh is a single-flight lease; obsolete completions are ignored.
 type EnterpriseSubscriptionRefresh struct {
 	manager *Manager

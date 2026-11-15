@@ -68,6 +68,7 @@ func (s *Server) registerManagementV8Routes() {
 	v8.GET("/credentials/gemini-enterprise/oauth/capabilities", s.mgmt.GeminiEnterpriseOAuthCapabilities)
 	v8.POST("/credentials/gemini-enterprise/oauth/import", s.mgmt.ImportGeminiEnterpriseOAuth)
 	v8.GET("/credentials/gemini-enterprise/oauth/imports/:request_id", s.mgmt.GetGeminiEnterpriseOAuthImport)
+	v8.POST("/credentials/gemini-enterprise/oauth/imports/:request_id/runtime-sync", s.mgmt.SyncGeminiEnterpriseOAuthImportRuntime)
 	v8.POST("/credentials/antigravity-enterprise/discover", s.mgmt.DiscoverAntigravityEnterpriseBindings)
 	v8.PATCH("/credentials/antigravity-enterprise/bindings", s.mgmt.PatchAntigravityEnterpriseBinding)
 	v8.PATCH("/credentials/gemini-enterprise/collections", s.mgmt.PatchGeminiEnterpriseCollection)

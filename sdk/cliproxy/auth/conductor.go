@@ -232,7 +232,8 @@ type Manager struct {
 	// 401 recoveries and auto-refresh workers do not race the same refresh_token.
 	refreshLocks sync.Map
 	// persistLocks serializes disk persistence per auth ID and guards against out-of-order writes.
-	persistLocks sync.Map
+	persistLocks                sync.Map
+	enterpriseOAuthPublications sync.Map
 	// authMutationLocks coordinate credential mutations without blocking unrelated readers.
 	authMutationLocks sync.Map
 	// authLoadGate allows concurrent credential transactions, but excludes whole-store reloads.

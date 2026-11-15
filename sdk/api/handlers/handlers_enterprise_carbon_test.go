@@ -14,11 +14,11 @@ import (
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
-func TestUnregisteredHydrogenUsesNormalModelLookup(t *testing.T) {
+func TestUnregisteredHydrogenReturns429WithoutAnEligibleCredential(t *testing.T) {
 	handler := NewBaseAPIHandlers(nil, coreauth.NewManager(nil, nil, nil))
 	payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"OK"}]}]}`)
 	_, _, failure := handler.executeWithAuthManagerFormats(t.Context(), "gemini", "gemini", ge.HydrogenModel, payload, "", false, modelExecutionOptions{Operation: "generate_content"})
-	if failure == nil || failure.StatusCode != http.StatusBadRequest {
+	if failure == nil || failure.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("unregistered Hydrogen lookup = %#v", failure)
 	}
 }

@@ -141,76 +141,116 @@ func readEnterpriseImportJournal(path string) (enterpriseImportJournal, error) {
 }
 
 func (h *Handler) persistedEnterpriseImportReceipt(ctx context.Context, id string) (coreauth.EnterpriseOAuthImportReceipt, bool, error) {
+	receipt, auth, err := h.persistedEnterpriseImport(ctx, id)
+	return receipt, auth != nil, err
+}
+
+func (h *Handler) persistedEnterpriseImport(ctx context.Context, id string) (coreauth.EnterpriseOAuthImportReceipt, *coreauth.Auth, error) {
 	// Consult the durable store: a lost save acknowledgment may precede runtime publication.
 	store := h.tokenStoreWithBaseDir()
 	if store == nil {
-		return coreauth.EnterpriseOAuthImportReceipt{}, false, errors.New("credential store unavailable")
+		return coreauth.EnterpriseOAuthImportReceipt{}, nil, errors.New("credential store unavailable")
 	}
 	rows, err := store.List(ctx)
 	if err != nil {
-		return coreauth.EnterpriseOAuthImportReceipt{}, false, err
+		return coreauth.EnterpriseOAuthImportReceipt{}, nil, err
 	}
 	var found coreauth.EnterpriseOAuthImportReceipt
-	count := 0
+	var auth *coreauth.Auth
 	for _, row := range rows {
 		if row == nil || row.Provider != ge.Provider || coreauth.IsEnterpriseCollectionAuth(row) {
 			continue
 		}
 		if receipt, ok := coreauth.EnterpriseOAuthReceipt(row, id); ok {
-			found, count = receipt, count+1
+			if auth != nil {
+				return found, nil, errors.New("duplicate persistent import receipt")
+			}
+			found, auth = receipt, row
 		}
 	}
-	if count > 1 {
-		return found, false, errors.New("duplicate persistent import receipt")
-	}
-	return found, count == 1, nil
+	return found, auth, nil
 }
 
 func (h *Handler) renderEnterpriseImportReceipt(c *gin.Context, journal enterpriseImportJournal) {
-	receipt, exists, err := h.persistedEnterpriseImportReceipt(c.Request.Context(), journal.RequestID)
+	receipt, saved, err := h.persistedEnterpriseImport(c.Request.Context(), journal.RequestID)
 	if err != nil {
 		enterpriseManagementFailure(c, http.StatusServiceUnavailable, "receipt_unavailable", "Cannot establish the durable OAuth import result")
 		return
 	}
-	if exists {
-		if receipt.Digest != journal.Digest {
+	if saved != nil {
+		if receipt.Digest != journal.Digest || receipt.AccountID != journal.AccountID {
 			enterpriseManagementFailure(c, http.StatusConflict, "request_id_conflict", "Request ID belongs to a different authorization import")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"request_id": receipt.RequestID, "status": "saved", "account_id": receipt.AccountID,
-			"name": receipt.Name, "auth_index": receipt.AuthIndex, "authorization_revision": receipt.AuthorizationRevision,
-			"email": receipt.Email, "subject": receipt.Subject, "client_id": receipt.ClientID, "saved_at": receipt.SavedAt,
-			"runtime_synced": journal.RuntimeSynced})
+		current, _ := h.authManager.GetByID(saved.ID)
+		writeEnterpriseSavedImport(c, receipt, journal.RuntimeSynced &&
+			coreauth.MatchesEnterpriseOAuthReceipt(saved, receipt) && coreauth.MatchesEnterpriseOAuthReceipt(current, receipt))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"request_id": journal.RequestID, "status": journal.Status, "account_id": journal.AccountID,
-		"runtime_synced": false, "error": journal.Code})
+	status, code := journal.Status, journal.Code
+	if status == "saved" {
+		status, code = "reconcile_required", "durable_receipt_unavailable"
+	}
+	c.JSON(http.StatusOK, gin.H{"request_id": journal.RequestID, "status": status, "account_id": journal.AccountID,
+		"runtime_synced": false, "error": code})
 }
 
-func (h *Handler) GetGeminiEnterpriseOAuthImport(c *gin.Context) {
+func writeEnterpriseSavedImport(c *gin.Context, receipt coreauth.EnterpriseOAuthImportReceipt, runtimeSynced bool) {
+	c.JSON(http.StatusOK, gin.H{"request_id": receipt.RequestID, "status": "saved", "account_id": receipt.AccountID,
+		"name": receipt.Name, "auth_index": receipt.AuthIndex, "authorization_revision": receipt.AuthorizationRevision,
+		"email": receipt.Email, "subject": receipt.Subject, "client_id": receipt.ClientID, "saved_at": receipt.SavedAt,
+		"runtime_synced": runtimeSynced})
+}
+
+func (h *Handler) enterpriseImportRequest(c *gin.Context) (string, string, bool) {
+	c.Header("Cache-Control", "no-store")
 	if !h.enterpriseManagementAllowed(c) {
-		return
+		return "", "", false
 	}
 	id := c.Param("request_id")
 	if !enterpriseImportRequestID.MatchString(id) {
 		enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_request_id", "A valid import request ID is required")
-		return
+		return "", "", false
 	}
 	_, directory, _, configured := h.enterpriseImportConfiguration()
 	if !configured || directory == "" {
 		enterpriseManagementFailure(c, 409, "oauth_application_not_ready", "Configure the Enterprise OAuth application first")
-		return
+		return "", "", false
 	}
-	journal, err := readEnterpriseImportJournal(enterpriseJournalPath(directory, id))
+	return id, directory, true
+}
+
+func readFileEnterpriseImportRequest(c *gin.Context, id, directory string) (string, enterpriseImportJournal, bool) {
+	path := enterpriseJournalPath(directory, id)
+	journal, err := readEnterpriseImportJournal(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			enterpriseManagementFailure(c, 404, "import_not_found", "No recorded import request; absence does not authorize a replay")
 		} else {
 			enterpriseManagementFailure(c, 503, "receipt_unavailable", "Cannot read the OAuth import request")
 		}
+		return "", enterpriseImportJournal{}, false
+	}
+	if journal.RequestID != id || !enterpriseImportRequestID.MatchString(journal.AccountID) {
+		enterpriseManagementFailure(c, 503, "receipt_unavailable", "Cannot confirm the OAuth import request identity")
+		return "", enterpriseImportJournal{}, false
+	}
+	return path, journal, true
+}
+
+func (h *Handler) GetGeminiEnterpriseOAuthImport(c *gin.Context) {
+	id, directory, ok := h.enterpriseImportRequest(c)
+	if !ok {
 		return
 	}
-	h.renderEnterpriseImportReceipt(c, journal)
+	if store := h.sharedEnterpriseImportStore(); store != nil {
+		h.renderSharedEnterpriseImport(c, store, id)
+		return
+	}
+	_, journal, ok := readFileEnterpriseImportRequest(c, id, directory)
+	if ok {
+		h.renderEnterpriseImportReceipt(c, journal)
+	}
 }
 
 func (h *Handler) ImportGeminiEnterpriseOAuth(c *gin.Context) {
@@ -246,6 +286,10 @@ func (h *Handler) ImportGeminiEnterpriseOAuth(c *gin.Context) {
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
 	accountID := ge.AccountID(input.Email, input.ClientID)
+	if store := h.sharedEnterpriseImportStore(); store != nil {
+		h.importSharedEnterpriseOAuth(c, store, input, app, proxy, accountID, digest)
+		return
+	}
 	journalPath := enterpriseJournalPath(directory, input.RequestID)
 	if existing, err := readEnterpriseImportJournal(journalPath); err == nil {
 		if existing.Digest != digest {
@@ -258,19 +302,8 @@ func (h *Handler) ImportGeminiEnterpriseOAuth(c *gin.Context) {
 		enterpriseManagementFailure(c, 503, "receipt_unavailable", "Cannot read existing import intent")
 		return
 	}
-	var target *coreauth.Auth
-	matches := 0
-	for _, auth := range h.authManager.List() {
-		if auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseCollectionAuth(auth) || coreauth.IsPluginVirtualAuth(auth) || !strings.EqualFold(ge.String(auth.Metadata, "email"), input.Email) {
-			continue
-		}
-		matches++
-		target = auth
-	}
-	if (input.Mode == "create" && (matches != 0 || input.ExpectedRevision != 0 || input.Target.Name != "" || input.Target.AccountID != "" || input.Target.AuthIndex != "")) ||
-		(input.Mode == "reauthorize" && (matches != 1 || target == nil || !coreauth.IsEnterpriseAccountAuth(target) ||
-			input.Target.Name != target.FileName || input.Target.AuthIndex != target.Index || input.Target.AccountID != accountID ||
-			ge.String(target.Metadata, "client_id") != input.ClientID || coreauth.EnterpriseOAuthAuthorizationRevision(target) != input.ExpectedRevision || input.ExpectedRevision == 0)) {
+	target, err := h.enterpriseImportTarget(input, accountID)
+	if err != nil {
 		enterpriseManagementFailure(c, 409, "authorization_target_changed", "Select one exact Enterprise account and its current authorization revision")
 		return
 	}
@@ -319,49 +352,74 @@ func (h *Handler) ImportGeminiEnterpriseOAuth(c *gin.Context) {
 		enterpriseManagementFailure(c, 503, "import_intent_unknown", "Account import intent could not be durably confirmed")
 		return
 	}
-	token, err := verifyEnterpriseImportedGrant(c.Request.Context(), app, input.RefreshToken, input.Email, input.Subject, proxy)
-	input.RefreshToken = ""
+	journal.Status, journal.Code, journal.RuntimeSynced = h.commitEnterpriseImport(c.Request.Context(), input, app, proxy, digest, target)
+	_ = writeEnterpriseImportJournal(journalPath, journal, false)
+	h.renderEnterpriseImportReceipt(c, journal)
+}
+
+func (h *Handler) enterpriseImportTarget(input enterpriseOAuthImportRequest, accountID string) (*coreauth.Auth, error) {
+	var target *coreauth.Auth
+	matches := 0
+	for _, record := range h.authManager.List() {
+		if record == nil || record.Provider != ge.Provider || coreauth.IsEnterpriseCollectionAuth(record) ||
+			coreauth.IsPluginVirtualAuth(record) || !strings.EqualFold(ge.String(record.Metadata, "email"), input.Email) {
+			continue
+		}
+		matches++
+		target = record
+	}
+	if input.Mode == "create" {
+		if matches == 0 && input.ExpectedRevision == 0 &&
+			input.Target.Name == "" && input.Target.AccountID == "" && input.Target.AuthIndex == "" {
+			return nil, nil
+		}
+	} else if matches == 1 && coreauth.IsEnterpriseAccountAuth(target) &&
+		input.Target.Name == target.FileName && input.Target.AuthIndex == target.Index && input.Target.AccountID == accountID &&
+		ge.String(target.Metadata, "client_id") == input.ClientID && input.ExpectedRevision > 0 &&
+		coreauth.EnterpriseOAuthAuthorizationRevision(target) == input.ExpectedRevision {
+		return target, nil
+	}
+	return nil, coreauth.ErrEnterpriseOAuthImportConflict
+}
+
+func (h *Handler) commitEnterpriseImport(ctx context.Context, input enterpriseOAuthImportRequest, app config.GeminiEnterpriseOAuth, proxy, digest string, target *coreauth.Auth) (status, code string, runtimeSynced bool) {
+	token, err := verifyEnterpriseImportedGrant(ctx, app, input.RefreshToken, input.Email, input.Subject, proxy)
 	if err != nil {
 		var failure *enterpriseImportFailure
 		if errors.As(err, &failure) {
-			journal.Code = failure.Code
 			if !failure.Uncertain {
-				journal.Status = "failed"
+				return "failed", failure.Code, false
 			}
+			return "reconcile_required", failure.Code, false
 		}
-		_ = writeEnterpriseImportJournal(journalPath, journal, false)
-		h.renderEnterpriseImportReceipt(c, journal)
-		return
+		return "reconcile_required", "oauth_verification_unknown", false
 	}
-	// The account builder must not seed a configured legacy resource during import.
+	// Clear discovery hints before constructing the authorization record.
 	app.ProjectID, app.EngineID = "", ""
 	record, err := sdkAuth.NewGeminiEnterpriseAccountRecord(app, input.Email, token, h.authManager.List())
 	if err != nil {
-		journal.Code = "account_record_invalid"
-		_ = writeEnterpriseImportJournal(journalPath, journal, false)
-		h.renderEnterpriseImportReceipt(c, journal)
-		return
+		return "reconcile_required", "account_record_invalid", false
 	}
 	if target != nil {
 		record.ID, record.FileName, record.Index = target.ID, target.FileName, target.Index
 	}
 	options := coreauth.EnterpriseOAuthImportOptions{RequestID: input.RequestID, Digest: digest, Mode: input.Mode,
 		ExpectedRevision: input.ExpectedRevision, Subject: input.Subject}
-	saved, err := h.authManager.ImportEnterpriseAuthorization(c.Request.Context(), record, options)
+	saved, err := h.authManager.ImportEnterpriseAuthorization(ctx, record, options)
+	if errors.Is(err, coreauth.ErrEnterpriseOAuthImportConflict) {
+		return "failed", "authorization_target_changed", false
+	}
 	if err != nil {
-		journal.Code = "authorization_save_unknown"
-		if errors.Is(err, coreauth.ErrEnterpriseOAuthImportConflict) {
-			journal.Status, journal.Code = "failed", "authorization_target_changed"
+		return "reconcile_required", "authorization_save_unknown", false
+	}
+	if h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{saved}) != nil {
+		return "saved", "runtime_sync_pending", false
+	}
+	if saved.Attributes[coreauth.AttributeEnterpriseObjectETag] != "" {
+		receipt, _ := coreauth.EnterpriseOAuthReceipt(saved, input.RequestID)
+		if !h.authManager.ConfirmEnterpriseOAuthRuntime(saved, receipt) {
+			return "saved", "runtime_sync_pending", false
 		}
-		_ = writeEnterpriseImportJournal(journalPath, journal, false)
-		h.renderEnterpriseImportReceipt(c, journal)
-		return
 	}
-	journal.Status, journal.Code = "saved", ""
-	journal.RuntimeSynced = h.invokePostAuthPersistHooks(c.Request.Context(), []*coreauth.Auth{saved}) == nil
-	if !journal.RuntimeSynced {
-		journal.Code = "runtime_sync_pending"
-	}
-	_ = writeEnterpriseImportJournal(journalPath, journal, false)
-	h.renderEnterpriseImportReceipt(c, journal)
+	return "saved", "", true
 }

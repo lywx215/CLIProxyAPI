@@ -55,14 +55,20 @@ For each project and region, sequentially:
    intranet application under `default_collection` with a stable regional ID.
 5. Assign exactly the verified OAuth user to the selected trial, retaining other
    users. Check the operation and the actual ASSIGNED user-license readback.
-6. Read the application's ADMIN model view. Merge all returned model IDs plus
-   `gemini-4-carbon` into the Engine's model overrides as `MODEL_ENABLED`. Use the
-   Google Cloud application page to manage the model selector.
+6. Read the application's ADMIN model view in its region. Use `adminView.regions`
+   and the toggle metadata to select eligible overrides and set them to
+   `MODEL_ENABLED`. Report a model outside its listed regions as
+   `region_unavailable`. The current catalog lists
+   `gemini-3.1-pro-preview` in `us` and `global`, so skip it in `eu`. Retain the
+   existing trial Carbon fallback when its ADMIN entry is absent. Manage the
+   model selector on the Google Cloud application page.
 7. Set the Assistant's `webGroundingType` to Google Search and
    `defaultWebGroundingToggleOff=false`. Extend a nonempty explicit allowed-model
    list while preserving existing entries; keep an implicit list implicit.
-8. Read back the Engine, Assistant, and end-user widget. Verify target settings
-   and preserve unrelated fields, including the default model and instructions.
+8. Read back the Engine, Assistant, and `END_USER_WEB` widget per project and
+   region. Verify each target override and report any enabled model missing
+   from the user catalog in `missing_from_user_catalog`. Preserve unrelated
+   fields, including the default model and instructions.
 9. Explicitly run the remote Carbon configuration stage, using the project's
    `ConfigureCarbonGoogle` semantics. Verify the Engine override and, when the
    Assistant has a nonempty explicit model allowlist, append Carbon while keeping

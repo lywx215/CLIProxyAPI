@@ -111,6 +111,15 @@ func (x *enterpriseImportTest) get(t *testing.T, id string) map[string]any {
 	return importResponse(t, w)
 }
 
+func (x *enterpriseImportTest) runtimeSync(t *testing.T, id, body string) map[string]any {
+	t.Helper()
+	router := gin.New()
+	router.POST("/imports/:request_id/runtime-sync", x.h.SyncGeminiEnterpriseOAuthImportRuntime)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/imports/"+id+"/runtime-sync", strings.NewReader(body)))
+	return importResponse(t, w)
+}
+
 func (x *enterpriseImportTest) root(t *testing.T) *coreauth.Auth {
 	t.Helper()
 	for _, row := range x.h.authManager.List() {
@@ -245,9 +254,90 @@ func TestEnterpriseOAuthImportLostSaveAcknowledgment(t *testing.T) {
 	if result["status"] != "saved" || result["runtime_synced"] != false {
 		t.Fatalf("durable receipt not honored: %v", result)
 	}
+	if len(x.h.authManager.List()) != 0 || x.get(t, r.RequestID)["runtime_synced"] != false || len(x.h.authManager.List()) != 0 {
+		t.Fatal("read-only receipt unexpectedly published the grant")
+	}
 	x.h.authManager = coreauth.NewManager(x.store, nil, nil)
 	if x.get(t, r.RequestID)["status"] != "saved" || x.post(t, r)["status"] != "saved" || x.calls != 1 {
 		t.Fatal("save acknowledgment loss caused replay")
+	}
+	x.h.authManager = coreauth.NewManager(store, nil, nil)
+	publications := 0
+	x.h.authManager.SetEnterpriseAccountSyncHook(func(ctx context.Context, auth *coreauth.Auth) error {
+		publications++
+		if !coreauth.IsEnterpriseOAuthRuntimeSync(ctx) || coreauth.EnterpriseOAuthAuthorizationRevision(auth) != 1 {
+			t.Error("runtime publication was not fenced to the saved grant")
+		}
+		return nil
+	})
+	if rejected := x.runtimeSync(t, r.RequestID, "{}"); rejected["code"] != "invalid_runtime_sync" || publications != 0 {
+		t.Fatalf("runtime sync accepted/wrote request body: %v", rejected)
+	}
+	if result = x.runtimeSync(t, r.RequestID, ""); result["runtime_synced"] != true || result["authorization_revision"] != float64(1) {
+		t.Fatalf("runtime recovery: %v", result)
+	}
+	before := x.root(t)
+	if result = x.runtimeSync(t, r.RequestID, ""); result["runtime_synced"] != true || x.calls != 1 || publications != 1 {
+		t.Fatalf("repeated runtime recovery: %v, refreshes=%d, publications=%d", result, x.calls, publications)
+	}
+	after := x.root(t)
+	if before.Generation != after.Generation || before.CredentialVersion != after.CredentialVersion ||
+		x.get(t, r.RequestID)["runtime_synced"] != true {
+		t.Fatal("repeated runtime recovery rewrote the authorization")
+	}
+}
+
+func TestEnterpriseOAuthRuntimeSyncRejectsSupersededAuthorization(t *testing.T) {
+	x := newEnterpriseImportTest(t)
+	first := x.request("runtime_original_0001")
+	if result := x.post(t, first); result["runtime_synced"] != true {
+		t.Fatalf("import: %v", result)
+	}
+	before := x.root(t)
+	grant := before.Clone()
+	grant.Metadata["access_token"] = "synthetic-private-new-native"
+	if _, err := x.h.authManager.ReauthorizeEnterpriseAccount(t.Context(), grant); err != nil {
+		t.Fatal(err)
+	}
+	if result := x.get(t, first.RequestID); result["status"] != "saved" || result["runtime_synced"] != false {
+		t.Fatalf("old receipt must remain historical: %v", result)
+	}
+	if result := x.runtimeSync(t, first.RequestID, ""); result["code"] != "authorization_target_changed" {
+		t.Fatalf("superseded grant was accepted for publication: %v", result)
+	}
+	if after := x.root(t); coreauth.EnterpriseOAuthAuthorizationRevision(after) != 2 || !coreauth.CredentialsChanged(before, after) || x.calls != 1 {
+		t.Fatal("stale publication changed the new authorization or refreshed")
+	}
+}
+
+func TestEnterpriseOAuthRuntimeSyncRequiresSuccessfulRegistrationHook(t *testing.T) {
+	x := newEnterpriseImportTest(t)
+	r := x.request("runtime_hook_failure_01")
+	x.h.SetPostAuthPersistHook(func(context.Context, *coreauth.Auth) error { return errors.New("synthetic hook failure") })
+	if result := x.post(t, r); result["status"] != "saved" || result["runtime_synced"] != false {
+		t.Fatalf("import: %v", result)
+	}
+	ready, publications := false, 0
+	x.h.authManager.SetEnterpriseAccountSyncHook(func(context.Context, *coreauth.Auth) error {
+		publications++
+		if !ready {
+			return errors.New("synthetic runtime registration failure")
+		}
+		return nil
+	})
+	before := x.root(t)
+	if result := x.runtimeSync(t, r.RequestID, ""); result["code"] != "runtime_sync_pending" {
+		t.Fatalf("failed hook: %v", result)
+	}
+	if result := x.get(t, r.RequestID); result["runtime_synced"] != false || publications != 1 {
+		t.Fatalf("failed hook was reported ready: %v, publications=%d", result, publications)
+	}
+	ready = true
+	if result := x.runtimeSync(t, r.RequestID, ""); result["runtime_synced"] != true || publications != 2 || x.calls != 1 {
+		t.Fatalf("recover hook: %v, publications=%d, refreshes=%d", result, publications, x.calls)
+	}
+	if after := x.root(t); before.Generation != after.Generation || before.CredentialVersion != after.CredentialVersion {
+		t.Fatal("recovery replaced an existing exact runtime credential")
 	}
 }
 

@@ -339,6 +339,7 @@ func main() {
 	if value, ok := lookupEnv("OBJECTSTORE_PREFIX", "objectstore_prefix"); ok {
 		objectStorePrefix = value
 	}
+	objectStoreImportCAS, _ := lookupEnv("OBJECTSTORE_ENTERPRISE_OAUTH_IMPORT_CAS", "objectstore_enterprise_oauth_import_cas")
 
 	// Check for cloud deploy mode only on first execution
 	// Read env var name in uppercase: DEPLOY
@@ -520,15 +521,16 @@ func main() {
 		}
 		resolvedEndpoint = strings.TrimRight(resolvedEndpoint, "/")
 		objCfg := store.ObjectStoreConfig{
-			Endpoint:  resolvedEndpoint,
-			Bucket:    objectStoreBucket,
-			AccessKey: objectStoreAccess,
-			SecretKey: objectStoreSecret,
-			LocalRoot: objectStoreRoot,
-			UseSSL:    useSSL,
-			PathStyle: false,
-			Region:    objectStoreRegion,
-			Prefix:    objectStorePrefix,
+			Endpoint:                 resolvedEndpoint,
+			Bucket:                   objectStoreBucket,
+			AccessKey:                objectStoreAccess,
+			SecretKey:                objectStoreSecret,
+			LocalRoot:                objectStoreRoot,
+			UseSSL:                   useSSL,
+			PathStyle:                false,
+			Region:                   objectStoreRegion,
+			Prefix:                   objectStorePrefix,
+			EnterpriseOAuthImportCAS: strings.EqualFold(strings.TrimSpace(objectStoreImportCAS), "true"),
 		}
 		log.Infof("Initializing Object Store with Endpoint: %s, Bucket: %s, Region: %s, Prefix: %s, PathStyle: false", resolvedEndpoint, objectStoreBucket, objectStoreRegion, objectStorePrefix)
 		objectStoreInst, err = store.NewObjectTokenStore(objCfg)

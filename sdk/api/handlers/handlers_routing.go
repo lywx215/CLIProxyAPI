@@ -224,6 +224,11 @@ func (h *BaseAPIHandler) getRequestDetailsWithOptions(modelName string, allowIma
 	if len(providers) == 0 && h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseWebModel(baseModel) {
 		providers = []string{"gemini-enterprise-web"}
 	}
+	// An Enterprise route can temporarily lose every registration. Let the
+	// scheduler report its credential availability for known model names.
+	if len(providers) == 0 && h != nil && h.AuthManager != nil && h.AuthManager.EnterpriseModelRouteKnown(baseModel) {
+		providers = []string{"gemini-enterprise"}
+	}
 
 	if len(providers) == 0 {
 		// The client asked for a model this proxy cannot route. Report it as a request

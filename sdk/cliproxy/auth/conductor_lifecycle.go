@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -131,6 +132,10 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	auth.EnsureIndex()
 	m.mu.Lock()
+	if errSync := checkEnterpriseOAuthRuntime(ctx, m.auths[auth.ID], auth, true); errSync != nil {
+		m.mu.Unlock()
+		return nil, errSync
+	}
 	if errImport := CheckEnterpriseOAuthImport(ctx, m.auths[auth.ID]); errImport != nil {
 		m.mu.Unlock()
 		return nil, errImport
@@ -203,7 +208,9 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 		m.scheduler.upsertAuth(schedulerSnapshot)
 	}
 	m.structuralEpoch.Add(1)
-	m.queueRefreshReschedule(auth.ID)
+	if !IsEnterpriseOAuthRuntimeSync(ctx) {
+		m.queueRefreshReschedule(auth.ID)
+	}
 	m.hook.OnAuthRegistered(ctx, auth.Clone())
 	m.enterpriseAccountPublished(ctx, authClone)
 	if cooldownStateChanged {
@@ -297,6 +304,15 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	m.mu.Lock()
 	existing, ok := m.auths[auth.ID]
+	if retainEnterpriseObjectSnapshot(ctx, existing, auth) {
+		current := existing.Clone()
+		m.mu.Unlock()
+		return current, nil
+	}
+	if errSync := checkEnterpriseOAuthRuntime(ctx, existing, auth, false); errSync != nil {
+		m.mu.Unlock()
+		return nil, errSync
+	}
 	if errImport := CheckEnterpriseOAuthImport(ctx, existing); errImport != nil {
 		m.mu.Unlock()
 		return nil, errImport
@@ -490,7 +506,8 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 			return nil, fmt.Errorf("persist enterprise resources: %w", errPersist)
 		}
 		if IsBoundAccountAuth(auth) {
-			if mode != updateModeRefresh {
+			if mode != updateModeRefresh || auth.Attributes[AttributeEnterpriseObjectETag] != "" ||
+				errors.Is(errPersist, ErrEnterpriseAuthVersionRequired) || errors.Is(errPersist, ErrEnterpriseOAuthImportConflict) {
 				m.mu.Unlock()
 				return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
 			}
@@ -551,7 +568,9 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		m.scheduler.upsertAuth(schedulerSnapshot)
 	}
 	m.structuralEpoch.Add(1)
-	m.queueRefreshReschedule(auth.ID)
+	if !IsEnterpriseOAuthRuntimeSync(ctx) {
+		m.queueRefreshReschedule(auth.ID)
+	}
 	m.hook.OnAuthUpdated(ctx, auth.Clone())
 	m.enterpriseAccountPublished(ctx, authClone)
 	if cooldownStateChanged || IsAntigravityEnterpriseAccountAuth(authClone) {
@@ -597,6 +616,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 		}
 	}
 	delete(m.auths, id)
+	m.enterpriseOAuthPublications.Delete(id)
 	m.clearStaleAntigravityEnterpriseRateLimitLocked(id, "")
 	if provider == web.Provider {
 		m.rebuildEnterpriseWebModelsLocked()

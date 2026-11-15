@@ -66,6 +66,43 @@ def region_name(project: str, location: str) -> str:
     return f"projects/{project}/locations/{location}"
 
 
+def regional_model_targets(entries: list, location: str) -> tuple[list[str], list[str], dict[str, str]]:
+    catalog = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise InitError("invalid_admin_model_state")
+        model = entry.get("modelId", "")
+        if model == "":
+            continue  # The selector can contain a synthetic Auto entry.
+        if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,256}", model):
+            raise InitError("invalid_model_id")
+        if model in catalog:
+            raise InitError("duplicate_admin_model")
+        catalog[model] = entry.get("adminView", {})
+    catalog.setdefault(CARBON, {})
+
+    targets, defaults, restrictions = [], [], {}
+    for model, admin in sorted(catalog.items()):
+        if not isinstance(admin, dict):
+            raise InitError("invalid_admin_model_state")
+        regions = admin.get("regions", [])
+        overridable = admin.get("adminOverridable")
+        enabled_by_default = admin.get("enabledByDefault", False)
+        if (not isinstance(regions, list) or any(not isinstance(region, str) for region in regions)
+                or (overridable is not None and type(overridable) is not bool) or type(enabled_by_default) is not bool):
+            raise InitError("invalid_admin_model_state")
+        if regions and location not in regions:
+            restrictions[model] = "region_unavailable"
+        elif overridable is False or (overridable is None and "enabledByDefault" in admin):
+            if enabled_by_default:
+                defaults.append(model)
+            else:
+                restrictions[model] = "admin_toggle_unavailable"
+        else:
+            targets.append(model)
+    return targets, defaults, restrictions
+
+
 class Credential:
     def __init__(self, path: Path, expected_email: str | None):
         self.path = path
@@ -427,9 +464,7 @@ class Initializer:
         values = admin.get("uiSettings", {}).get("modelConfigInfo", {}).get("resolvedModels")
         if not isinstance(values, list):
             raise InitError("admin_model_catalog_unknown")
-        models = sorted({item["modelId"] for item in values if isinstance(item, dict) and item.get("modelId")} | {CARBON})
-        if any(not isinstance(model, str) or len(model) > 256 or not re.fullmatch(r"[A-Za-z0-9_.-]+", model) for model in models):
-            raise InitError("invalid_model_id")
+        models, defaults, restrictions = regional_model_targets(values, location)
         allowed = assistant.get("generationConfig", {}).get("allowedModelIds")
         if allowed is not None and (not isinstance(allowed, list) or any(not isinstance(item, str) for item in allowed)):
             raise InitError("invalid_assistant_model_range")
@@ -447,7 +482,8 @@ class Initializer:
             latest = self.api.request("GET", url)
             if fingerprint(latest) != fingerprint(old):
                 raise InitError("resource_changed_before_write")
-            if any(old.get(key, False if isinstance(value, bool) else None) != value for key, value in payload.items() if key != "name"):
+            if (is_assistant or models) and any(old.get(key, False if isinstance(value, bool) else None) != value
+                                                 for key, value in payload.items() if key != "name"):
                 self.mutate(project, location, "PATCH", old["name"], payload, "v1alpha", "updateMask=" + urllib.parse.quote(mask, safe=""))
                 writes += 1
             current = self.api.request("GET", url)
@@ -465,9 +501,21 @@ class Initializer:
         ui, settings = widget.get("uiSettings", {}), widget.get("assistantSettings", {})
         if settings.get("webGroundingType") != SEARCH or settings.get("defaultWebGroundingToggleOff", False):
             raise InitError("widget_settings_readback_failed")
-        visible = [item["modelId"] for item in ui.get("modelConfigInfo", {}).get("resolvedModels", []) if item.get("modelId")]
-        carbon = self.configure_carbon_remote(project, location, name)
-        return {"name": name, "configured_models": models, "user_model_ids": visible, "patches": writes, "model_selector": ui.get("features", {}).get("model-selector") == "FEATURE_STATE_ON", "google_search": True, "default_search": True, "implicit_model_range_preserved": not explicit, "carbon_remote": carbon}
+        catalog = ui.get("modelConfigInfo", {}).get("resolvedModels")
+        if not isinstance(catalog, list):
+            raise InitError("user_model_catalog_unknown")
+        visible = [item["modelId"] for item in catalog if isinstance(item, dict) and item.get("modelId")]
+        if CARBON in models:
+            carbon = self.configure_carbon_remote(project, location, name)
+        else:
+            carbon = {"status": "skipped", "reason": restrictions.get(CARBON, "enabled_by_default"), "patches": 0,
+                      "configuration_verified": CARBON in defaults, "generation_verified": False}
+        return {"name": name, "configured_models": models, "user_model_ids": visible,
+                "enabled_by_default": defaults, "model_restrictions": restrictions,
+                "missing_from_user_catalog": sorted((set(models) | set(defaults)) - set(visible)),
+                "patches": writes, "model_selector": ui.get("features", {}).get("model-selector") == "FEATURE_STATE_ON",
+                "google_search": True, "default_search": True, "implicit_model_range_preserved": not explicit,
+                "carbon_remote": carbon}
 
     def run_region(self, project: str, location: str) -> dict:
         result = {"project": project, "location": location, "actions": []}

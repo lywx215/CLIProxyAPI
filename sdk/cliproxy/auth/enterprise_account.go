@@ -54,8 +54,14 @@ func (m *Manager) SetEnterpriseAccountSyncHook(hook PostAuthHook) {
 }
 
 func (m *Manager) enterpriseAccountPublished(ctx context.Context, parent *Auth) {
+	if !IsEnterpriseOAuthRuntimeSync(ctx) {
+		_ = m.syncEnterpriseAccount(ctx, parent)
+	}
+}
+
+func (m *Manager) syncEnterpriseAccount(ctx context.Context, parent *Auth) error {
 	if !IsBoundAccountAuth(parent) {
-		return
+		return nil
 	}
 	m.enterpriseAccounts.mu.Lock()
 	hook := m.enterpriseAccounts.syncHook
@@ -64,8 +70,9 @@ func (m *Manager) enterpriseAccountPublished(ctx context.Context, parent *Auth) 
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		_ = hook(context.WithoutCancel(ctx), parent.Clone())
+		return hook(context.WithoutCancel(ctx), parent.Clone())
 	}
+	return nil
 }
 
 // IsEnterpriseAccountAuth identifies persisted account parents, which never infer.

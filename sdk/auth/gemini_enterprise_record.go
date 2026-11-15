@@ -62,7 +62,7 @@ func NewGeminiEnterpriseAccountRecord(application config.GeminiEnterpriseOAuth, 
 		}
 	}
 	now := time.Now().UTC()
-	id := "gemini-enterprise-account-" + accountID[:32] + ".json"
+	id := coreauth.EnterpriseOAuthCredentialID(accountID)
 	record := &coreauth.Auth{ID: id, FileName: id, Provider: ge.Provider, Label: email, Status: coreauth.StatusActive, CreatedAt: now}
 	metadata := ge.Metadata(application, email, &copyToken)
 	if previous != nil {

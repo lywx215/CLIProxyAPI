@@ -397,7 +397,7 @@ func executionErrorMessage(err error) *interfaces.ErrorMessage {
 		}
 	}
 	status := http.StatusInternalServerError
-	if code := clienterror.HTTPStatusFromError(err); code > 0 {
+	if code := executionAvailabilityStatus(err, clienterror.HTTPStatusFromError(err)); code > 0 {
 		status = code
 	}
 	// Upstream error bodies, including Home refresh responses, are diagnostic input.

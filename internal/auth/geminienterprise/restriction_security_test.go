@@ -165,6 +165,11 @@ func TestEnterpriseQuotaHTTP200AndContradictoryCodes(t *testing.T) {
 		wantStatus int
 	}{
 		{`{"error":{"code":8,"status":"RESOURCE_EXHAUSTED"}}`, 200, 429},
+		{`{"error":{"code":8,"status":"RESOURCE_EXHAUSTED"}}`, 400, 429},
+		{`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`, 400, 429},
+		{`{"error":{"code":400,"status":"RESOURCE_EXHAUSTED"}}`, 400, 400},
+		{`{"error":{"code":8,"status":"INVALID_ARGUMENT"}}`, 400, 400},
+		{`{"error":{"message":"daily quota exhausted"}}`, 400, 400},
 		{`{"code":7,"status":"PERMISSION_DENIED"}`, 200, 403},
 		{`{"error":{"status":"UNAUTHENTICATED"}}`, 0, 401},
 		{`{"error":{"code":403,"status":"RESOURCE_EXHAUSTED"}}`, 200, 502},

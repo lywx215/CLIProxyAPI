@@ -34,12 +34,22 @@ def describe(repository, commit):
             'page_sha256': digest(page), 'page_bytes': len(page)}
 
 
-def environment(directory):
+def environment(directory, repository):
     env = {key: value for key, value in os.environ.items()
            if not re.search(r'(?i)(secret|token|password|cookie|api_key|credential|cliproxy|gemini_|objectstore|pgstore|gitstore)', key)}
-    env.update(CGO_ENABLED='0', GOCACHE=str(directory / 'go-cache'), GOTMPDIR=str(directory / 'go-tmp'))
-    for name in ['go-cache', 'go-tmp']:
-        (directory / name).mkdir(parents=True, exist_ok=True)
+    setting = subprocess.run(
+        ['git', '-C', str(repository), 'config', '--local', '--type=path', '--get', 'cliproxyapi.gocache'],
+        capture_output=True,
+    )
+    require(setting.returncode == 0 or (setting.returncode == 1 and not setting.stderr), 'git_operation_failed')
+    cache = directory / 'go-cache'
+    if setting.returncode == 0:
+        cache = Path(setting.stdout.decode('utf-8').rstrip('\r\n'))
+        require(cache.is_absolute(), 'go_cache_path_must_be_absolute')
+    temporary = directory / 'go-tmp'
+    cache.mkdir(parents=True, exist_ok=True)
+    temporary.mkdir(parents=True, exist_ok=True)
+    env.update(CGO_ENABLED='0', GOCACHE=str(cache), GOTMPDIR=str(temporary))
     return env
 
 
@@ -135,6 +145,7 @@ class Releases:
             note('cache_hit', scope='release')
             return data
         directory.mkdir(parents=True, exist_ok=True)
+        env = environment(directory, self.repository)
         source = directory / ('source-' + uuid.uuid4().hex[:8])
         source.mkdir()
         archive = directory / 'source.tar'
@@ -148,7 +159,6 @@ class Releases:
                 elif member.isfile():
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(package.extractfile(member).read())
-        env = environment(directory)
         self.emit('release_qualification_started', commit=release['commit'])
         checks = [execute([self.go, 'test', '-count=1', '-p', '4', './...'], source, env, directory / 'go-test.log')]
         executable = source / ('smoke-server.exe' if os.name == 'nt' else 'smoke-server')

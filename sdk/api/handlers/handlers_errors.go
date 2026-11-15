@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -33,6 +34,19 @@ func isAuthSelectionUnavailable(err error) bool {
 	}
 	code := strings.TrimSpace(authErr.Code)
 	return code == "auth_not_found" || code == "auth_unavailable"
+}
+
+func executionAvailabilityStatus(err error, status int) int {
+	switch status {
+	case 0, http.StatusBadRequest, http.StatusServiceUnavailable:
+		var generation *ge.GenerationError
+		if coreauth.IsEnterpriseApplicationPolicyRejection(err) ||
+			errors.As(err, &generation) && generation != nil && generation.ModelNotEnabled ||
+			isAuthSelectionUnavailable(err) && !coreauth.IsTerminalAuthError(err) {
+			return http.StatusTooManyRequests
+		}
+	}
+	return status
 }
 
 func enrichAuthSelectionError(err error, providers []string, model string) error {
@@ -93,6 +107,12 @@ func enrichAuthSelectionError(err error, providers []string, model string) error
 	if status <= 0 {
 		status = http.StatusServiceUnavailable
 	}
+	terminal := coreauth.IsTerminalAuthError(err)
+	if terminal && status == http.StatusServiceUnavailable && len(providers) == 1 && providers[0] == ge.Provider {
+		// The sole Enterprise pool has no remaining credentials. Retain the
+		// authentication diagnostic while signaling availability to the caller.
+		status = http.StatusTooManyRequests
+	}
 
 	enriched := &coreauth.Error{
 		Code:       authErr.Code,
@@ -104,7 +124,7 @@ func enrichAuthSelectionError(err error, providers []string, model string) error
 	if errors.As(err, &carrier) && carrier != nil {
 		return carrier.WithAuthError(enriched)
 	}
-	if coreauth.IsTerminalAuthError(err) {
+	if terminal {
 		return coreauth.NewTerminalAuthError(enriched, cause)
 	}
 	if cause != nil {

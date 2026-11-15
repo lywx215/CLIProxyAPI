@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/misc"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
@@ -40,17 +41,21 @@ type ObjectStoreConfig struct {
 	LocalRoot string
 	UseSSL    bool
 	PathStyle bool
+	// EnterpriseOAuthImportCAS is enabled only after the endpoint and all writers
+	// sharing its auth prefix are verified to enforce conditional writes.
+	EnterpriseOAuthImportCAS bool
 }
 
 // ObjectTokenStore persists configuration and authentication metadata using an S3-compatible object storage backend.
 // Files are mirrored to a local workspace so existing file-based flows continue to operate.
 type ObjectTokenStore struct {
-	client     *s3.Client
-	cfg        ObjectStoreConfig
-	spoolRoot  string
-	configPath string
-	authDir    string
-	mu         sync.Mutex
+	client           *s3.Client
+	cfg              ObjectStoreConfig
+	spoolRoot        string
+	configPath       string
+	authDir          string
+	mu               sync.Mutex
+	enterpriseMirror sync.Map
 }
 
 // NewObjectTokenStore initializes an object storage backed token store.
@@ -205,6 +210,18 @@ func (s *ObjectTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (s
 		return "", fmt.Errorf("object store: missing file path attribute for %s", auth.ID)
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.SupportsEnterpriseOAuthImport() {
+		if auth.Provider == ge.Provider {
+			return s.saveVersionedEnterprise(ctx, auth, path)
+		}
+		if errGuard := s.GuardUnversionedEnterpriseAuth(ctx, path); errGuard != nil {
+			return "", errGuard
+		}
+	}
+
 	// Runtime updates must not recreate a disabled credential whose source file
 	// was deliberately removed. Login and migration callers explicitly mark the
 	// save when creating a missing disabled credential is intentional.
@@ -213,9 +230,6 @@ func (s *ObjectTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (s
 			return "", nil
 		}
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if err = cliproxyauth.CheckEnterpriseWebStoreRevision(ctx, auth, path); err != nil {
 		return "", err
@@ -324,6 +338,18 @@ func (s *ObjectTokenStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if errGuard := s.GuardUnversionedEnterpriseAuth(ctx, path); errGuard != nil {
+		return errGuard
+	}
+	if s.SupportsEnterpriseOAuthImport() {
+		if err = s.deleteAuthObject(ctx, path); err != nil {
+			return err
+		}
+		if err = os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("object store: delete auth file: %w", err)
+		}
+		return nil
+	}
 	if err = os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("object store: delete auth file: %w", err)
 	}
@@ -350,6 +376,9 @@ func (s *ObjectTokenStore) PersistAuthFiles(ctx context.Context, _ string, paths
 		abs := trimmed
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(s.authDir, trimmed)
+		}
+		if err := s.GuardUnversionedEnterpriseAuth(ctx, abs); err != nil {
+			return err
 		}
 		if err := s.uploadAuth(ctx, abs); err != nil {
 			return err
@@ -502,6 +531,12 @@ func (s *ObjectTokenStore) syncAuthFromBucket(ctx context.Context) error {
 				return fmt.Errorf("object store: prepare auth subdir: %w", err)
 			}
 
+			if s.SupportsEnterpriseOAuthImport() && strings.HasSuffix(strings.ToLower(cleanRel), ".json") {
+				if errMirror := s.bootstrapVersionedAuth(ctx, local, objectStoreAuthPrefix+"/"+filepath.ToSlash(cleanRel)); errMirror != nil {
+					return errMirror
+				}
+				continue
+			}
 			resp, errGet := s.client.GetObject(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(s.cfg.Bucket),
 				Key:    aws.String(key),
@@ -541,6 +576,17 @@ func (s *ObjectTokenStore) uploadAuth(ctx context.Context, path string) error {
 		return s.deleteAuthObject(ctx, path)
 	}
 	key := objectStoreAuthPrefix + "/" + filepath.ToSlash(rel)
+	if s.SupportsEnterpriseOAuthImport() {
+		if enterpriseObjectBody(data) {
+			return cliproxyauth.ErrEnterpriseAuthVersionRequired
+		}
+		etag, err := s.unprotectedAuthETag(ctx, filepath.ToSlash(rel))
+		if err != nil {
+			return err
+		}
+		_, err = s.putVersionedObject(ctx, key, data, etag)
+		return err
+	}
 	return s.putObject(ctx, key, data, "application/json")
 }
 
@@ -553,6 +599,13 @@ func (s *ObjectTokenStore) deleteAuthObject(ctx context.Context, path string) er
 		return fmt.Errorf("object store: resolve auth relative path: %w", err)
 	}
 	key := objectStoreAuthPrefix + "/" + filepath.ToSlash(rel)
+	if s.SupportsEnterpriseOAuthImport() {
+		etag, err := s.unprotectedAuthETag(ctx, filepath.ToSlash(rel))
+		if err != nil || etag == "" {
+			return err
+		}
+		return s.deleteVersionedObject(ctx, key, etag)
+	}
 	return s.deleteObject(ctx, key)
 }
 
@@ -649,11 +702,30 @@ func (s *ObjectTokenStore) readAuthFile(path, baseDir string) (*cliproxyauth.Aut
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat auth file: %w", err)
+	}
+	rel, errRel := filepath.Rel(baseDir, path)
+	if errRel != nil {
+		rel = filepath.Base(path)
+	}
+	record, err := decodeObjectAuth(data, path, normalizeAuthID(rel), info.ModTime())
+	if err == nil && record != nil && s.SupportsEnterpriseOAuthImport() && record.Provider == ge.Provider {
+		// Load propagates only the ETag associated with these exact mirror bytes.
+		if etag := s.mirroredEnterpriseETag(path, data); etag != "" {
+			record.Attributes[cliproxyauth.AttributeEnterpriseObjectETag] = etag
+		}
+	}
+	return record, err
+}
+
+func decodeObjectAuth(data []byte, path, id string, updated time.Time) (*cliproxyauth.Auth, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	metadata := make(map[string]any)
-	if err = json.Unmarshal(data, &metadata); err != nil {
+	if err := json.Unmarshal(data, &metadata); err != nil {
 		return nil, fmt.Errorf("unmarshal auth json: %w", err)
 	}
 	cliproxyauth.NormalizeCredentialMetadata(metadata)
@@ -664,15 +736,6 @@ func (s *ObjectTokenStore) readAuthFile(path, baseDir string) (*cliproxyauth.Aut
 	if provider == "" {
 		provider = "unknown"
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("stat auth file: %w", err)
-	}
-	rel, errRel := filepath.Rel(baseDir, path)
-	if errRel != nil {
-		rel = filepath.Base(path)
-	}
-	rel = normalizeAuthID(rel)
 	attr := map[string]string{
 		cliproxyauth.AttributePath:          path,
 		cliproxyauth.AttributeSourceBackend: cliproxyauth.AuthSourceObjectStore,
@@ -681,15 +744,15 @@ func (s *ObjectTokenStore) readAuthFile(path, baseDir string) (*cliproxyauth.Aut
 		attr["email"] = email
 	}
 	auth := &cliproxyauth.Auth{
-		ID:               rel,
+		ID:               id,
 		Provider:         provider,
-		FileName:         rel,
+		FileName:         id,
 		Label:            labelFor(metadata),
 		Status:           cliproxyauth.StatusActive,
 		Attributes:       attr,
 		Metadata:         metadata,
-		CreatedAt:        info.ModTime(),
-		UpdatedAt:        info.ModTime(),
+		CreatedAt:        updated,
+		UpdatedAt:        updated,
 		LastRefreshedAt:  time.Time{},
 		NextRefreshAfter: time.Time{},
 	}

@@ -34,10 +34,7 @@ func TestLocalRecoveryHintsSurviveDefaultHeaderPolicyAndEnrichment(t *testing.T)
 				ctx.Request.Header.Set("Accept", "text/event-stream")
 			}
 			NewBaseAPIHandlers(nil, nil).WriteErrorResponse(ctx, executionErrorMessage(err))
-			wantStatus := 503
-			if quota {
-				wantStatus = 429
-			}
+			const wantStatus = http.StatusTooManyRequests
 			if recorder.Code != wantStatus || recorder.Header().Get("Retry-After") != "60" {
 				t.Fatalf("quota=%t streaming=%t status=%d Retry-After=%q", quota, streaming, recorder.Code, recorder.Header().Get("Retry-After"))
 			}
