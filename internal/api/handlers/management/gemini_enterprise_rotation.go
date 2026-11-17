@@ -13,12 +13,15 @@ import (
 )
 
 type enterpriseRotationTarget struct {
-	Name                  string `json:"name" form:"name"`
-	AuthIndex             string `json:"auth_index" form:"auth_index"`
-	AccountID             string `json:"account_id" form:"account_id"`
-	AuthorizationRevision uint64 `json:"authorization_revision" form:"authorization_revision"`
-	Project               string `json:"project" form:"project"`
-	Location              string `json:"location" form:"location"`
+	Name                  string   `json:"name" form:"name"`
+	AuthIndex             string   `json:"auth_index" form:"auth_index"`
+	AccountID             string   `json:"account_id" form:"account_id"`
+	AuthorizationRevision uint64   `json:"authorization_revision" form:"authorization_revision"`
+	Project               string   `json:"project" form:"project"`
+	Location              string   `json:"location" form:"location"`
+	Isolated              bool     `json:"isolated" form:"isolated"`
+	EnsureAccess          bool     `json:"-" form:"ensure_access"`
+	ExpectedEngines       []string `json:"-" form:"engines"`
 }
 
 type enterpriseRotationCollection struct {
@@ -40,6 +43,8 @@ type enterpriseRotationState struct {
 	Project               string                         `json:"project"`
 	Location              string                         `json:"location"`
 	HoldOwner             string                         `json:"hold_owner"`
+	AccountDisabled       bool                           `json:"account_disabled"`
+	OutsideScopeRoutable  bool                           `json:"outside_scope_routable"`
 	Collections           []enterpriseRotationCollection `json:"collections"`
 }
 
@@ -47,6 +52,7 @@ type enterpriseRotationRequest struct {
 	enterpriseRotationTarget
 	ExpectedRevision uint64   `json:"expected_revision"`
 	BindingIDs       []string `json:"binding_ids"`
+	Engines          []string `json:"engines"`
 	Owner            string   `json:"owner"`
 	Action           string   `json:"action"`
 }
@@ -57,7 +63,7 @@ var newGeminiEnterpriseRotationClient = ge.Client
 func (h *Handler) GeminiEnterpriseRotationCapabilities(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	if h.enterpriseManagementAllowed(c) {
-		c.JSON(http.StatusOK, gin.H{"protocol": 1, "scoped_drain": true, "refresh_while_disabled": true})
+		c.JSON(http.StatusOK, gin.H{"protocol": 1, "scoped_drain": true, "refresh_while_disabled": true, "isolated_disabled_account": true})
 	}
 }
 
@@ -72,20 +78,30 @@ func (h *Handler) enterpriseRotationState(target enterpriseRotationTarget) (*cor
 		return nil, state, errEnterpriseRotationConflict
 	}
 	root, account, ok := h.authManager.EnterpriseAccountSnapshot(base.ID)
-	if !ok || root.Disabled || root.Status == coreauth.StatusDisabled || account.ID != target.AccountID || coreauth.EnterpriseOAuthAuthorizationRevision(root) != target.AuthorizationRevision {
+	if !ok || account.ID != target.AccountID || coreauth.EnterpriseOAuthAuthorizationRevision(root) != target.AuthorizationRevision {
+		return nil, state, errEnterpriseRotationConflict
+	}
+	disabled := root.Disabled || root.Status == coreauth.StatusDisabled
+	hold := account.RotationHolds[scope]
+	isolationActive := account.RotationIsolationOwner != ""
+	if (!target.Isolated && (disabled || isolationActive)) || (target.Isolated && hold != "" && !isolationActive) {
 		return nil, state, errEnterpriseRotationConflict
 	}
 	state = enterpriseRotationState{AccountID: account.ID, AuthorizationRevision: target.AuthorizationRevision,
-		AccountRevision: account.Revision, Project: target.Project, Location: target.Location, HoldOwner: account.RotationHolds[scope]}
+		AccountRevision: account.Revision, Project: target.Project, Location: target.Location, HoldOwner: hold,
+		AccountDisabled: disabled}
 	children := make(map[string]*coreauth.Auth)
 	for _, child := range h.authManager.EnterpriseCollections(root.ID) {
 		children[coreauth.EnterpriseBindingID(child)] = child
 	}
 	for _, collection := range account.Collections {
+		child := children[collection.ID]
 		if ge.RotationScope(collection.ProjectID, collection.Location) != scope {
+			if (!disabled && !collection.Disabled) || (child != nil && !child.Disabled && child.Status != coreauth.StatusDisabled) {
+				state.OutsideScopeRoutable = true
+			}
 			continue
 		}
-		child := children[collection.ID]
 		if child == nil || collection.Missing || (state.HoldOwner != "" && !child.Disabled) {
 			return nil, state, errEnterpriseRotationConflict
 		}
@@ -107,7 +123,7 @@ func (h *Handler) enterpriseRotationState(target enterpriseRotationTarget) (*cor
 		})
 	}
 	latest, graph, ok := h.authManager.EnterpriseAccountSnapshot(root.ID)
-	if len(state.Collections) == 0 || !ok || latest.Disabled || latest.Status == coreauth.StatusDisabled ||
+	if len(state.Collections) == 0 || !ok || (latest.Disabled || latest.Status == coreauth.StatusDisabled) != disabled ||
 		graph.Revision != account.Revision || latest.RegistrationEpoch != root.RegistrationEpoch ||
 		coreauth.EnterpriseOAuthAuthorizationRevision(latest) != target.AuthorizationRevision {
 		return nil, state, errEnterpriseRotationConflict
@@ -128,6 +144,41 @@ func (state enterpriseRotationState) matches(request enterpriseRotationRequest) 
 			return false
 		}
 	}
+	return !request.Isolated || state.matchesEngines(request.Engines)
+}
+
+func (state enterpriseRotationState) matchesEngines(expected []string) bool {
+	if len(state.Collections) != len(expected) {
+		return false
+	}
+	expected = append([]string(nil), expected...)
+	sort.Strings(expected)
+	actual := make([]string, 0, len(state.Collections))
+	for _, item := range state.Collections {
+		actual = append(actual, item.Engine)
+	}
+	sort.Strings(actual)
+	for i := range actual {
+		if expected[i] != actual[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (state enterpriseRotationState) sameScope(other enterpriseRotationState) bool {
+	if state.AccountID != other.AccountID || state.AccountRevision != other.AccountRevision ||
+		state.AuthorizationRevision != other.AuthorizationRevision || state.Project != other.Project ||
+		state.Location != other.Location || state.AccountDisabled != other.AccountDisabled || len(state.Collections) != len(other.Collections) {
+		return false
+	}
+	for i, item := range state.Collections {
+		candidate := other.Collections[i]
+		if item.BindingID != candidate.BindingID || item.Engine != candidate.Engine || item.Revision != candidate.Revision ||
+			item.AuthIndex != candidate.AuthIndex {
+			return false
+		}
+	}
 	return true
 }
 
@@ -145,10 +196,26 @@ func (h *Handler) GetGeminiEnterpriseRotation(c *gin.Context) {
 		enterpriseRotationChanged(c)
 		return
 	}
-	_, state, err := h.enterpriseRotationState(target)
-	if err != nil {
+	root, state, err := h.enterpriseRotationState(target)
+	if err != nil || (len(target.ExpectedEngines) != 0 && !state.matchesEngines(target.ExpectedEngines)) ||
+		(target.EnsureAccess && (!target.Isolated || !state.AccountDisabled)) {
 		enterpriseRotationChanged(c)
 		return
+	}
+	if target.EnsureAccess {
+		fresh, errRefresh := h.authManager.EnsureEnterpriseAccountToken(c.Request.Context(), root.ID)
+		if errRefresh != nil || fresh == nil {
+			enterpriseManagementFailure(c, http.StatusUnprocessableEntity, "credential_unavailable", "Could not access the saved Google authorization for this account")
+			return
+		}
+		latest, after, errRead := h.enterpriseRotationState(target)
+		if errRead != nil || !state.sameScope(after) || latest.RegistrationEpoch != root.RegistrationEpoch ||
+			fresh.RegistrationEpoch != root.RegistrationEpoch ||
+			coreauth.EnterpriseOAuthAuthorizationRevision(fresh) != target.AuthorizationRevision {
+			enterpriseRotationChanged(c)
+			return
+		}
+		state = after
 	}
 	c.JSON(http.StatusOK, state)
 }
@@ -171,7 +238,8 @@ func (h *Handler) PatchGeminiEnterpriseRotation(c *gin.Context) {
 		return
 	}
 	root, before, err := h.enterpriseRotationState(request.enterpriseRotationTarget)
-	if err != nil || !before.matches(request) || (before.HoldOwner != "" && before.HoldOwner != request.Owner) ||
+	if err != nil || before.AccountDisabled != request.Isolated || !before.matches(request) ||
+		(before.HoldOwner != "" && before.HoldOwner != request.Owner) ||
 		(request.Action != "hold" && before.HoldOwner != request.Owner) {
 		enterpriseRotationChanged(c)
 		return
@@ -186,7 +254,7 @@ func (h *Handler) PatchGeminiEnterpriseRotation(c *gin.Context) {
 	}
 	scope := ge.RotationScope(request.Project, request.Location)
 	ctx := c.Request.Context()
-	updated, err := h.authManager.UpdateEnterpriseRotation(ctx, root, before.AccountRevision, request.AuthorizationRevision, func(account *ge.Account) error {
+	mutate := func(account *ge.Account) error {
 		if request.Action == "hold" {
 			if account.RotationHolds == nil {
 				account.RotationHolds = map[string]string{}
@@ -207,7 +275,14 @@ func (h *Handler) PatchGeminiEnterpriseRotation(c *gin.Context) {
 			account.RotationHolds = nil
 		}
 		return nil
-	})
+	}
+	var updated *coreauth.Auth
+	if request.Isolated {
+		updated, err = h.authManager.UpdateEnterpriseIsolatedRotation(ctx, root, before.AccountRevision, request.AuthorizationRevision,
+			coreauth.EnterpriseIsolatedRotation{Project: request.Project, Location: request.Location, Owner: request.Owner, Action: request.Action, Engines: request.Engines})
+	} else {
+		updated, err = h.authManager.UpdateEnterpriseRotation(ctx, root, before.AccountRevision, request.AuthorizationRevision, mutate)
+	}
 	if err != nil {
 		if errors.Is(err, coreauth.ErrEnterpriseAccountChanged) {
 			enterpriseRotationChanged(c)
@@ -221,7 +296,7 @@ func (h *Handler) PatchGeminiEnterpriseRotation(c *gin.Context) {
 		return
 	}
 	_, state, err := h.enterpriseRotationState(request.enterpriseRotationTarget)
-	if err != nil {
+	if err != nil || (request.Isolated && request.Action == "activate" && (state.AccountDisabled || state.OutsideScopeRoutable)) {
 		enterpriseManagementFailure(c, http.StatusInternalServerError, "rotation_readback_pending", "The saved rotation change could not be read back")
 		return
 	}
@@ -242,7 +317,7 @@ func (h *Handler) RefreshGeminiEnterpriseRotation(c *gin.Context) {
 		return
 	}
 	root, before, err := h.enterpriseRotationState(request.enterpriseRotationTarget)
-	if err != nil || !before.matches(request) || before.HoldOwner != request.Owner {
+	if err != nil || before.AccountDisabled != request.Isolated || !before.matches(request) || before.HoldOwner != request.Owner {
 		enterpriseRotationChanged(c)
 		return
 	}
@@ -261,9 +336,17 @@ func (h *Handler) RefreshGeminiEnterpriseRotation(c *gin.Context) {
 			return
 		}
 		binding := ge.FromMetadata(fresh.Metadata)
-		if ge.Engine(binding) != item.Engine {
+		if ge.Engine(binding) != item.Engine || (request.Isolated && fresh.RegistrationEpoch != child.RegistrationEpoch) {
 			enterpriseRotationChanged(c)
 			return
+		}
+		if request.Isolated {
+			latest, currentScope, errRead := h.enterpriseRotationState(request.enterpriseRotationTarget)
+			if errRead != nil || latest.RegistrationEpoch != root.RegistrationEpoch ||
+				!before.sameScope(currentScope) || currentScope.HoldOwner != request.Owner {
+				enterpriseRotationChanged(c)
+				return
+			}
 		}
 		client, err := newGeminiEnterpriseRotationClient(h.enterpriseProxy(fresh))
 		if err != nil {
@@ -296,7 +379,12 @@ func (h *Handler) RefreshGeminiEnterpriseRotation(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"status": "pending", "subscription": observation, "catalog_error": ge.CatalogError(err)})
 				return
 			}
-			if err = h.authManager.PersistEnterpriseRotationCatalog(ctx, fresh, models, time.Now(), request.Owner); err != nil {
+			if request.Isolated {
+				err = h.authManager.PersistEnterpriseIsolatedRotationCatalog(ctx, fresh, models, time.Now(), request.Owner, before.AccountRevision)
+			} else {
+				err = h.authManager.PersistEnterpriseRotationCatalog(ctx, fresh, models, time.Now(), request.Owner)
+			}
+			if err != nil {
 				enterpriseManagementFailure(c, http.StatusConflict, "rotation_catalog_pending", "The exact application catalog could not be published")
 				return
 			}
@@ -306,7 +394,7 @@ func (h *Handler) RefreshGeminiEnterpriseRotation(c *gin.Context) {
 		}
 	}
 	latest, after, err := h.enterpriseRotationState(request.enterpriseRotationTarget)
-	if err != nil || !after.matches(request) || after.HoldOwner != request.Owner ||
+	if err != nil || !before.sameScope(after) || !after.matches(request) || after.HoldOwner != request.Owner ||
 		latest.RegistrationEpoch != root.RegistrationEpoch {
 		enterpriseRotationChanged(c)
 		return

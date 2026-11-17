@@ -328,7 +328,8 @@ func (g *enterpriseQuotaGate) beginRotationRequest() (func(), error) {
 	defer c.mu.Unlock()
 	current := c.bindings[g.authID]
 	if current == nil || current.epoch != g.epoch || current.credential != g.credential ||
-		current.fingerprint != g.fingerprint || current.policy.Metadata["enterprise_rotation_held"] == true {
+		current.fingerprint != g.fingerprint || current.policy.Disabled || current.policy.Status == StatusDisabled ||
+		current.policy.Metadata["enterprise_rotation_held"] == true {
 		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise application is paused or changed", HTTPStatus: 409}
 	}
 	c.startRotationRequestLocked(g.authID)

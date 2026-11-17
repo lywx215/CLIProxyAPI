@@ -26,13 +26,14 @@ type Collection struct {
 
 // Account owns a single OAuth authorization and its collection graph.
 type Account struct {
-	Version       int               `json:"version"`
-	ID            string            `json:"account_id"`
-	Revision      uint64            `json:"revision"`
-	Collections   []Collection      `json:"collections"`
-	Discovery     map[string]any    `json:"discovery,omitempty"`
-	MergedSources []string          `json:"merged_sources,omitempty"`
-	RotationHolds map[string]string `json:"rotation_holds,omitempty"`
+	Version                int               `json:"version"`
+	ID                     string            `json:"account_id"`
+	Revision               uint64            `json:"revision"`
+	Collections            []Collection      `json:"collections"`
+	Discovery              map[string]any    `json:"discovery,omitempty"`
+	MergedSources          []string          `json:"merged_sources,omitempty"`
+	RotationHolds          map[string]string `json:"rotation_holds,omitempty"`
+	RotationIsolationOwner string            `json:"rotation_isolation_owner,omitempty"`
 }
 
 // RotationScope identifies the shared license region, independent of engine choice.
@@ -123,9 +124,13 @@ func ReadAccount(metadata map[string]any) (*Account, error) {
 	if expected := AccountID(String(metadata, "email"), String(metadata, "client_id")); expected != "" && account.ID != expected {
 		return nil, fmt.Errorf("gemini-enterprise: account metadata identity mismatch")
 	}
+	if account.RotationIsolationOwner != "" && (!ValidRotationOwner(account.RotationIsolationOwner) || len(account.RotationHolds) == 0) {
+		return nil, fmt.Errorf("gemini-enterprise: invalid rotation isolation owner")
+	}
 	for scope, owner := range account.RotationHolds {
 		project, location, ok := strings.Cut(scope, "/")
-		if !ok || RotationScope(project, location) != scope || !ValidRotationOwner(owner) {
+		if !ok || RotationScope(project, location) != scope || !ValidRotationOwner(owner) ||
+			(account.RotationIsolationOwner != "" && owner != account.RotationIsolationOwner) {
 			return nil, fmt.Errorf("gemini-enterprise: invalid rotation hold")
 		}
 	}
