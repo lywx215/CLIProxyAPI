@@ -1,6 +1,7 @@
 package geminienterprise
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,6 +35,8 @@ type GenerationError struct {
 	RPCStatus          string
 	UpstreamCode       int
 	Started            bool
+	// UnscopedRateLimit records a Google 429 without quota-specific details.
+	UnscopedRateLimit bool
 	// ModelNotEnabled is set only from a validated Google ErrorInfo detail.
 	ModelNotEnabled bool
 	Model           string
@@ -137,7 +140,12 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		Error json.RawMessage `json:"error"`
 		rpcStatus
 	}
-	if len(raw) > 1024*1024 || json.Unmarshal(raw, &envelope) != nil {
+	if len(raw) > 1024*1024 {
+		return e
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		trimmed := bytes.TrimSpace(raw)
+		e.UnscopedRateLimit = e.HTTPStatus == 429 && (len(trimmed) == 0 || trimmed[0] != '{' && trimmed[0] != '[')
 		return e
 	}
 	body := envelope.rpcStatus
@@ -258,6 +266,7 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		return true
 	}
 	validDetails := true
+	unscoped := true
 	for _, detail := range body.Details {
 		var d struct {
 			Type       string            `json:"@type"`
@@ -269,6 +278,11 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		if json.Unmarshal(detail, &d) != nil {
 			validDetails = false
 			continue
+		}
+		// A detail identifying a different quota or an unrecognized scope
+		// must never become evidence against the entire edition.
+		if d.Type != "type.googleapis.com/google.rpc.RetryInfo" {
+			unscoped = false
 		}
 		switch d.Type {
 		case "type.googleapis.com/google.rpc.ErrorInfo":
@@ -292,6 +306,7 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	if !validDetails {
 		return e
 	}
+	e.UnscopedRateLimit = unscoped
 	if len(violations) == 0 {
 		violations = append(violations, violation{Metric: metadata["quota_metric"], ID: metadata["quota_limit"]})
 	}
@@ -358,8 +373,8 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 			r.Scope = "credential"
 		}
 		r.ResetAt = resetAt
-		if resetAt.After(r.RetryAt) {
-			r.RetryAt = resetAt
+		if r.ResetAt.After(r.RetryAt) {
+			r.RetryAt = r.ResetAt
 		}
 		if r.RetryAt.IsZero() {
 			if r.Kind == "daily" {

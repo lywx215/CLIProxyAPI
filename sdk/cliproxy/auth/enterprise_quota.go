@@ -38,8 +38,19 @@ type SharedQuotaState struct {
 	Phase          string         `json:"phase"`
 	Restriction    ge.Restriction `json:"restriction"`
 	LastRejectedAt time.Time      `json:"last_rejected_at,omitempty"`
-	probe          uint64
-	probeOwner     *enterpriseQuotaGate
+	// PaidRecovery stays set across quota kinds until a current probe succeeds.
+	PaidRecovery  bool `json:"paid_recovery,omitempty"`
+	probe         uint64
+	probeOwner    *enterpriseQuotaGate
+	probePaid     bool
+	legacyReadyAt time.Time
+	rejections    []enterpriseQuotaRejection
+}
+
+func (s *SharedQuotaState) clearProbe() {
+	s.probe = 0
+	s.probeOwner = nil
+	s.probePaid = false
 }
 
 type enterpriseQuotaGate struct {
@@ -56,6 +67,10 @@ type enterpriseQuotaTicket struct {
 	balance         *enterpriseBalancePool
 	versions        map[string]quotaTicketVersion
 	probes          map[string]uint64
+	request         *enterpriseQuotaRequest
+	admittedAt      time.Time
+	paidRecovery    bool
+	sharedRateLimit bool
 	finished        sync.Once
 	balanceFinished sync.Once
 }
@@ -118,22 +133,37 @@ func (m *Manager) attachEnterpriseQuotaLocked(auth *Auth) {
 	}
 	policy := auth.Clone()
 	policy.enterpriseQuota = nil
-	c.releaseGateLocked(old)
 	g := &enterpriseQuotaGate{manager: m, authID: auth.ID, fingerprint: fingerprint, epoch: auth.RegistrationEpoch, credential: auth.CredentialVersion, identity: identity, policy: policy}
+	c.replaceProbeOwnerLocked(old, g)
 	c.migrateBalanceLocked(old, g)
 	auth.EnterpriseQuotaIdentity = identity
 	auth.enterpriseQuota = g
 	c.bindings[auth.ID] = g
+	c.alignLegacyPaidDailyRecoveryLocked(g, c.now())
 }
 
 func (c *enterpriseQuotaCoordinator) releaseGateLocked(g *enterpriseQuotaGate) {
-	if g == nil {
+	c.replaceProbeOwnerLocked(g, nil)
+}
+
+func (c *enterpriseQuotaCoordinator) replaceProbeOwnerLocked(old, next *enterpriseQuotaGate) {
+	if old == nil {
 		return
 	}
 	for _, s := range c.pools {
-		if s.probeOwner == g && s.Phase == "probing" {
-			s.probe = 0
-			s.probeOwner = nil
+		if s.probeOwner == old && s.Phase == "probing" {
+			if old.sameCredential(next) && next.keys()[s.Restriction.Scope] == s.Key && next.appliesToQuota(s, c.now()) {
+				// A subscription or metadata refresh can republish the same
+				// credential while its recovery request is still in flight.
+				s.probeOwner = next
+				continue
+			}
+			if s.probePaid || !s.legacyReadyAt.IsZero() {
+				// Keep the slot occupied for paid and still-attributable
+				// legacy recovery until the dispatched request ends.
+				continue
+			}
+			s.clearProbe()
 			s.Phase = "probe_pending"
 			s.Version++
 		}
@@ -155,18 +185,21 @@ func (m *Manager) fenceEnterpriseQuotaHomeTransition(previousHome, nextHome bool
 		if s.Phase == "probing" {
 			s.Phase = "probe_pending"
 		}
-		s.probe = 0
-		s.probeOwner = nil
+		s.clearProbe()
+		s.rejections = nil
 	}
 }
 
-func (g *enterpriseQuotaGate) currentLocked() bool {
-	c := &g.manager.enterpriseQuota
-	current := c.bindings[g.authID]
-	return current == g
+func (g *enterpriseQuotaGate) sameCredential(current *enterpriseQuotaGate) bool {
+	return current != nil && current.epoch == g.epoch && current.credential == g.credential &&
+		current.fingerprint == g.fingerprint && current.policy.ProxyURL == g.policy.ProxyURL &&
+		!current.policy.Disabled && current.policy.Status != StatusDisabled
 }
 func quotaPhase(state *SharedQuotaState, now time.Time) string {
 	if state.Phase == "cooling" && !state.Restriction.RetryAt.After(now) {
+		if state.probe != 0 {
+			return "probing"
+		}
 		return "probe_pending"
 	}
 	return state.Phase
@@ -184,7 +217,7 @@ func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 	}
 	for _, key := range g.keys() {
 		s := c.pools[quotaDigest(key)]
-		if s == nil {
+		if s == nil || !g.appliesToQuota(s, now) {
 			continue
 		}
 		switch quotaPhase(s, now) {
@@ -196,28 +229,37 @@ func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 			if t := now.Add(time.Second); t.After(next) {
 				next = t
 			}
+		case "probe_pending":
+			if readyAt := g.legacyProbeReadyAt(s, now); readyAt.After(next) {
+				next = readyAt
+			}
 		}
 	}
 	return !next.IsZero(), next
 }
 
 func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
+	return g.beginForModel("")
+}
+
+func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicket, error) {
+	media := model != "" && !enterpriseQuotaTextModel(model)
 	c := &g.manager.enterpriseQuota
-	now := c.now()
 	c.mu.Lock()
+	now := c.now()
 	if g.manager.HomeEnabled() {
 		c.mu.Unlock()
 		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise shared quota is unsupported in Home mode", HTTPStatus: 409}
 	}
 	current := c.bindings[g.authID]
-	if current == nil || current.epoch != g.epoch || current.credential != g.credential || current.fingerprint != g.fingerprint || current.policy.ProxyURL != g.policy.ProxyURL || current.policy.Disabled || current.policy.Status == StatusDisabled {
+	if !g.sameCredential(current) {
 		c.mu.Unlock()
 		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise credential changed; retry the request", HTTPStatus: 409}
 	}
 	// Identity discovery and metadata edits publish a new gate without changing
 	// credentials. Admit those snapshots against the latest quota identity/policy.
 	g = current
-	t := &enterpriseQuotaTicket{gate: g, versions: map[string]quotaTicketVersion{}, probes: map[string]uint64{}}
+	t := &enterpriseQuotaTicket{gate: g, admittedAt: now, versions: map[string]quotaTicketVersion{}, probes: map[string]uint64{}}
 	keys := g.keys()
 	enabled := g.enabled()
 	var wait time.Duration
@@ -232,7 +274,7 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 			c.pools[id] = s
 		}
 		t.versions[id] = quotaTicketVersion{s.ResetEpoch, s.Version}
-		if !enabled {
+		if !enabled || !g.appliesToQuota(s, now) {
 			continue
 		}
 		switch quotaPhase(s, now) {
@@ -244,6 +286,13 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 			if wait < time.Second {
 				wait = time.Second
 			}
+		case "probe_pending":
+			if delay := g.legacyProbeReadyAt(s, now).Sub(now); delay > wait {
+				wait = delay
+			}
+			if media && g.isPaidQuotaRecovery(s, now) && wait < time.Second {
+				wait = time.Second
+			}
 		}
 	}
 	if wait > 0 {
@@ -253,16 +302,19 @@ func (g *enterpriseQuotaGate) begin() (*enterpriseQuotaTicket, error) {
 	if enabled {
 		for _, key := range keys {
 			s := c.pools[quotaDigest(key)]
-			if quotaPhase(s, now) != "probe_pending" {
+			if !g.appliesToQuota(s, now) || quotaPhase(s, now) != "probe_pending" {
 				continue
 			}
 			c.nextProbe++
 			s.probe = c.nextProbe
 			s.probeOwner = g
+			s.probePaid = g.isPaidQuotaRecovery(s, now)
+			s.PaidRecovery = s.PaidRecovery || s.probePaid
 			s.Phase = "probing"
 			s.Version++
 			t.probes[s.PoolID] = s.probe
 			t.versions[s.PoolID] = quotaTicketVersion{s.ResetEpoch, s.Version}
+			t.paidRecovery = t.paidRecovery || s.probePaid
 		}
 	}
 	t.balance = c.balancePoolLocked(g)
@@ -297,75 +349,191 @@ func (t *enterpriseQuotaTicket) finishQuota(err error) {
 	}
 }
 
+func enterpriseGenerationError(err error) *ge.GenerationError {
+	var upstream *ge.GenerationError
+	_ = errors.As(err, &upstream)
+	return upstream
+}
+
 func (t *enterpriseQuotaTicket) finishOnce(err error) {
 	g := t.gate
 	c := &g.manager.enterpriseQuota
-	now := c.now()
-	var upstream *ge.GenerationError
-	_ = errors.As(err, &upstream)
+	upstream := enterpriseGenerationError(err)
+	unscopedRateLimit := enterpriseUnscopedRateLimit(upstream)
+	probeRetryAt := enterpriseProbeFailureCooldown(err, upstream, c.now())
 	c.mu.Lock()
-	if !g.currentLocked() || g.manager.HomeEnabled() {
+	now := c.now()
+	if !probeRetryAt.IsZero() && probeRetryAt.Before(now.Add(enterpriseQuotaPressureWindow)) {
+		probeRetryAt = now.Add(enterpriseQuotaPressureWindow).UTC()
+	}
+	current := c.bindings[g.authID]
+	if g.manager.HomeEnabled() {
 		c.mu.Unlock()
 		return
 	}
-	changed := false
-	deniedID := ""
+	currentCredential := g.sameCredential(current)
+	changed, persist := false, false
+	restrictionID, deniedID := "", ""
 	if upstream != nil && upstream.Restriction != nil {
-		r := *upstream.Restriction
-		keys := g.keys()
-		key := keys[r.Scope]
-		if key == "" || (r.Edition != "" && (g.identity == nil || !g.identity.Verified || r.Edition != g.identity.Edition)) {
-			key = keys["credential"]
-			r.Scope = "credential"
-		}
-		id := quotaDigest(key)
-		s := c.pools[id]
-		captured, ok := t.versions[id]
-		if s != nil && ok && s.ResetEpoch == captured.reset {
+		r, id := g.restrictionPool(*upstream.Restriction)
+		restrictionID = id
+		if currentCredential && t.applyRestrictionLocked(current, id, r, probeRetryAt, now) {
 			deniedID = id
-			// Merge a concurrent batch without progressive backoff or deadline shortening.
-			if s.Restriction.RetryAt.After(r.RetryAt) {
-				resetAt := r.ResetAt
-				r = s.Restriction
-				if resetAt.After(r.ResetAt) {
-					r.ResetAt = resetAt
-				}
-			}
-			if s.Restriction.ResetAt.After(r.ResetAt) {
-				r.ResetAt = s.Restriction.ResetAt
-			}
-			if s.Phase != "cooling" || !sameEnterpriseRestriction(s.Restriction, r) {
-				s.Version++
-			}
-			s.Restriction = r
-			s.Phase = "cooling"
-			s.LastRejectedAt = now.UTC()
-			s.probe = 0
-			s.probeOwner = nil
-			changed = true
+			changed, persist = true, true
 		}
+	} else if currentCredential && unscopedRateLimit {
+		changed = t.recordQuotaPressureLocked(current, upstream, now)
 	}
 	for id, probe := range t.probes {
 		s := c.pools[id]
 		version := t.versions[id]
-		if id == deniedID || s == nil || s.ResetEpoch != version.reset || s.Version != version.version || s.probe != probe {
+		if id == deniedID || s == nil || s.ResetEpoch != version.reset || s.probe != probe {
 			continue
 		}
-		s.probe = 0
-		s.probeOwner = nil
+		ownerCurrent := currentCredential && s.probeOwner == current
+		paidProbe := s.probePaid
+		legacyReadyAt := g.legacyProbeReadyAt(s, now)
+		s.clearProbe()
+		changed = true
+		superseded := s.Version != version.version
 		s.Version++
-		if err == nil {
+		rateLimitRetryAt := enterpriseSupersededProbeRetryAt(upstream, id == restrictionID, probeRetryAt)
+		if superseded || !legacyReadyAt.IsZero() {
+			// Only the newer restriction or the legacy schedule can
+			// authorize recovery. A real 429 can still delay verification.
+			if !superseded {
+				s.Phase = "probe_pending"
+				persist = persist || s.Restriction.Kind != enterpriseNearLimitKind
+			}
+			if paidProbe || !legacyReadyAt.IsZero() {
+				retryAt := rateLimitRetryAt
+				if !retryAt.IsZero() {
+					if legacyReadyAt.After(retryAt) {
+						retryAt = legacyReadyAt
+					}
+					s.coolProbeUntil(retryAt, now)
+					t.sharedRateLimit = unscopedRateLimit
+					persist = persist || s.Restriction.Kind != enterpriseNearLimitKind
+				}
+			}
+			continue
+		}
+		persist = persist || s.Restriction.Kind != enterpriseNearLimitKind
+		switch {
+		case err == nil && ownerCurrent:
 			s.Phase = "normal"
 			s.Restriction = ge.Restriction{}
-		} else {
+			s.legacyReadyAt = time.Time{}
+			s.PaidRecovery = false
+		case paidProbe && !probeRetryAt.IsZero():
+			// Failed upstream verification closes the pool again. Returning
+			// to probe_pending here would let a burst dispatch serial probes.
+			retryAt := probeRetryAt
+			if rateLimitRetryAt.After(retryAt) {
+				retryAt = rateLimitRetryAt
+			}
+			lastRejected := time.Time{}
+			if enterpriseProbeGoogleRateLimited(upstream) {
+				lastRejected = now
+				t.sharedRateLimit = unscopedRateLimit
+			}
+			s.coolProbeUntil(retryAt, lastRejected)
+		default:
 			s.Phase = "probe_pending"
 		}
-		changed = true
 	}
 	c.mu.Unlock()
 	if changed {
 		g.manager.publishEnterpriseQuota()
+	}
+	if persist {
 		g.manager.persistCooldownStates(context.Background())
+	}
+}
+
+func (g *enterpriseQuotaGate) restrictionPool(r ge.Restriction) (ge.Restriction, string) {
+	keys := g.keys()
+	key := keys[r.Scope]
+	if key == "" || (r.Edition != "" && (g.identity == nil || !g.identity.Verified || r.Edition != g.identity.Edition)) {
+		key = keys["credential"]
+		r.Scope = "credential"
+	}
+	return r, quotaDigest(key)
+}
+
+func (t *enterpriseQuotaTicket) applyRestrictionLocked(current *enterpriseQuotaGate, id string, r ge.Restriction, probeRetryAt, now time.Time) bool {
+	c := &t.gate.manager.enterpriseQuota
+	s := c.pools[id]
+	captured, ok := t.versions[id]
+	if s == nil || !ok || s.ResetEpoch != captured.reset {
+		return false
+	}
+	isProbe := t.probes[id] != 0 && s.probe == t.probes[id]
+	if t.gate != current && (!isProbe || s.probeOwner != current) {
+		return false
+	}
+	legacyReadyAt := t.gate.legacyProbeReadyAt(s, now)
+	if isProbe && (s.probePaid && s.Version != captured.version || !legacyReadyAt.IsZero()) {
+		return false
+	}
+	r = current.paidDailyRestriction(r, s, now, t.admittedAt, isProbe)
+	if isProbe && s.probePaid && probeRetryAt.After(r.RetryAt) {
+		r.RetryAt = probeRetryAt
+	}
+	paidRecovery := s.PaidRecovery || (r.Kind == "daily" && r.Scope == "edition" &&
+		r.Feature == "assistant_search" && current.paidQuotaKey(now) == s.Key)
+	// Merge a concurrent batch without progressive backoff or deadline shortening.
+	if s.Restriction.RetryAt.After(r.RetryAt) {
+		if s.Restriction.Kind == enterpriseNearLimitKind || r.Kind == "daily" {
+			r.RetryAt = s.Restriction.RetryAt
+		} else {
+			resetAt := r.ResetAt
+			r = s.Restriction
+			if resetAt.After(r.ResetAt) {
+				r.ResetAt = resetAt
+			}
+		}
+	}
+	if s.Restriction.ResetAt.After(r.ResetAt) {
+		r.ResetAt = s.Restriction.ResetAt
+	}
+	if legacyReadyAt.After(r.RetryAt) {
+		r.RetryAt = legacyReadyAt.UTC()
+	}
+	if s.Phase != "cooling" || s.PaidRecovery != paidRecovery || !sameEnterpriseRestriction(s.Restriction, r) {
+		s.Version++
+	}
+	s.Restriction = r
+	s.Phase = "cooling"
+	s.PaidRecovery = paidRecovery
+	s.legacyReadyAt = time.Time{}
+	s.LastRejectedAt = now.UTC()
+	// An unrelated rejection can update the restriction while the running
+	// probe still occupies the slot.
+	if isProbe {
+		s.clearProbe()
+	}
+	s.rejections = nil
+	return true
+}
+
+func (s *SharedQuotaState) coolProbeUntil(retryAt, rejectedAt time.Time) {
+	if s.PaidRecovery && s.Restriction.Kind == "daily" && s.Restriction.ResetAt.IsZero() {
+		// Retain the old quota day's anchor before recording a post-reset 429.
+		anchor := s.dailyResetAnchor()
+		if !anchor.After(s.Restriction.RetryAt) {
+			s.Restriction.ResetAt = anchor.UTC()
+		}
+	}
+	s.Phase = "cooling"
+	if retryAt.After(s.Restriction.RetryAt) {
+		s.Restriction.RetryAt = retryAt.UTC()
+	}
+	if s.Restriction.ResetAt.After(s.Restriction.RetryAt) {
+		s.Restriction.RetryAt = s.Restriction.ResetAt
+	}
+	if !rejectedAt.IsZero() {
+		s.LastRejectedAt = rejectedAt.UTC()
 	}
 }
 
@@ -413,12 +581,21 @@ func (g *enterpriseQuotaGate) views(now time.Time) []CooldownView {
 	var views []CooldownView
 	for _, key := range g.keys() {
 		s := c.pools[quotaDigest(key)]
-		if s == nil || s.Phase == "normal" {
+		if s == nil || s.Phase == "normal" || !g.appliesToQuota(s, now) {
 			continue
 		}
 		phase := quotaPhase(s, now)
+		retryAt := s.Restriction.RetryAt
+		if phase == "probe_pending" {
+			if readyAt := g.legacyProbeReadyAt(s, now); !readyAt.IsZero() {
+				phase, retryAt = "cooling", readyAt
+			}
+		}
 		count := 0
 		for _, member := range c.bindings {
+			if !member.appliesToQuota(s, now) {
+				continue
+			}
 			for _, memberKey := range member.keys() {
 				if memberKey == key {
 					count++
@@ -428,9 +605,15 @@ func (g *enterpriseQuotaGate) views(now time.Time) []CooldownView {
 		}
 		remaining := int64(0)
 		if phase == "cooling" {
-			remaining = int64((s.Restriction.RetryAt.Sub(now) + time.Second - 1) / time.Second)
+			remaining = int64((retryAt.Sub(now) + time.Second - 1) / time.Second)
 		}
-		views = append(views, CooldownView{Scope: "credential", Reason: "credential_quota", RetryAt: s.Restriction.RetryAt.UTC(), RemainingSeconds: remaining, Origin: "shared_pool", Feature: s.Restriction.Feature, PoolID: s.PoolID, PoolVersion: s.Version, RelatedAuthCount: count, Phase: phase, RestrictionKind: s.Restriction.Kind, RestrictionScope: s.Restriction.Scope, TimeSource: s.Restriction.TimeSource, SharedResetSupported: !g.manager.HomeEnabled()})
+		kind := s.Restriction.Kind
+		if kind == enterpriseNearLimitKind {
+			// Older management clients already accept shared cooldowns with
+			// no upstream restriction kind.
+			kind = ""
+		}
+		views = append(views, CooldownView{Scope: "credential", Reason: "credential_quota", RetryAt: retryAt.UTC(), RemainingSeconds: remaining, Origin: "shared_pool", Feature: s.Restriction.Feature, PoolID: s.PoolID, PoolVersion: s.Version, RelatedAuthCount: count, Phase: phase, RestrictionKind: kind, RestrictionScope: s.Restriction.Scope, TimeSource: s.Restriction.TimeSource, SharedResetSupported: !g.manager.HomeEnabled()})
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].PoolID < views[j].PoolID })
 	return views
@@ -460,17 +643,22 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 			}
 		}
 	}
-	if !belongs || s == nil || version == 0 || s.Version != version {
+	now := c.now()
+	if !belongs || s == nil || !g.appliesToQuota(s, now) || version == 0 || s.Version != version || s.probe != 0 {
 		c.mu.Unlock()
 		return nil, fmt.Errorf("shared pool changed; refresh credentials before retrying")
 	}
 	s.ResetEpoch++
 	s.Version++
 	s.Phase = "probe_pending"
-	s.probe = 0
-	s.probeOwner = nil
+	s.clearProbe()
+	s.legacyReadyAt = time.Time{}
+	s.rejections = nil
 	result := &SharedQuotaResetResult{ResetScope: "shared_pool", PoolID: poolID, PoolVersion: s.Version, Phase: s.Phase, AffectedAuthIndexes: []string{}}
 	for _, member := range c.bindings {
+		if !member.appliesToQuota(s, now) {
+			continue
+		}
 		for _, key := range member.keys() {
 			if quotaDigest(key) == poolID {
 				result.AffectedAuthIndexes = append(result.AffectedAuthIndexes, member.policy.Index)
@@ -496,7 +684,7 @@ func validSharedQuotaState(s SharedQuotaState) bool {
 		return false
 	}
 	if s.Phase == "normal" {
-		return s.Restriction == (ge.Restriction{})
+		return !s.PaidRecovery && s.Restriction == (ge.Restriction{})
 	}
 	if s.Phase != "cooling" && s.Phase != "probe_pending" && s.Phase != "probing" {
 		return false
@@ -506,6 +694,9 @@ func validSharedQuotaState(s SharedQuotaState) bool {
 		return false
 	}
 	if r.Scope != scope || r.ResetAt.After(r.RetryAt) || (scope == "project" && r.Feature != "technical_requests") {
+		return false
+	}
+	if s.PaidRecovery && (scope != "edition" || r.Feature != "assistant_search") {
 		return false
 	}
 	return r.TimeSource == "google" || r.TimeSource == "estimated_pacific_midnight" || r.TimeSource == "estimated_minute"

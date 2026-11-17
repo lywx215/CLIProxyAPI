@@ -1694,7 +1694,8 @@ func resultErrorFromError(err error) *Error {
 	if errors.As(err, &modelGate) || IsEnterpriseApplicationPolicyRejection(err) {
 		return &Error{Code: "enterprise_model_gate", Message: "Enterprise model dispatch blocked locally", HTTPStatus: statusCodeFromError(err)}
 	}
-	if errors.As(err, &enterpriseErr) && enterpriseErr.Restriction != nil {
+	var sharedRateLimit *enterpriseSharedRateLimitError
+	if errors.As(err, &enterpriseErr) && (enterpriseErr.Restriction != nil || errors.As(err, &sharedRateLimit)) {
 		return &Error{Code: "enterprise_quota", Message: enterpriseErr.Error(), HTTPStatus: enterpriseErr.StatusCode()}
 	}
 	var localGate *enterpriseLocalGateError

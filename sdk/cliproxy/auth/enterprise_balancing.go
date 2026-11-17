@@ -29,12 +29,13 @@ type enterpriseQuotaDebit struct {
 }
 
 type enterpriseBalancePool struct {
-	redirect *enterpriseBalancePool
-	snapshot ge.QuotaSnapshot
-	pool     *ge.QuotaPool
-	inFlight int64
-	byAuth   map[string]int64
-	debits   []enterpriseQuotaDebit
+	redirect        *enterpriseBalancePool
+	snapshot        ge.QuotaSnapshot
+	pool            *ge.QuotaPool
+	paidObservation bool
+	inFlight        int64
+	byAuth          map[string]int64
+	debits          []enterpriseQuotaDebit
 }
 
 func (p *enterpriseBalancePool) current() *enterpriseBalancePool {
@@ -172,46 +173,73 @@ func (c *enterpriseQuotaCoordinator) balancePoolLocked(g *enterpriseQuotaGate) *
 	return p
 }
 
-// ObserveEnterpriseQuota accepts only a current credential's verified edition.
-// A failed, stale, foreign or out-of-order read cannot replenish a routing pool.
-// Restrictions remain separate: a positive balance never clears a Google 429.
-func (m *Manager) ObserveEnterpriseQuota(source *Auth, snapshot ge.QuotaSnapshot) bool {
-	if source == nil || source.enterpriseQuota == nil || !m.EnterpriseQuotaBalancingEnabled() {
+// EnterpriseQuotaRefreshNeeded retains the balancing refresh policy and lets
+// a recent paid-pool rejection request a quota read with balancing disabled.
+func (m *Manager) EnterpriseQuotaRefreshNeeded(source *Auth) bool {
+	if source == nil || source.enterpriseQuota == nil || m.HomeEnabled() {
 		return false
+	}
+	if m.EnterpriseQuotaBalancingEnabled() {
+		return true
 	}
 	c := &m.enterpriseQuota
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	g := c.bindings[source.ID]
-	old := source.enterpriseQuota
-	if g == nil || g.epoch != old.epoch || g.credential != old.credential || g.fingerprint != old.fingerprint || g.policy.ProxyURL != old.policy.ProxyURL || g.policy.Disabled || g.policy.Status == StatusDisabled {
+	return source.enterpriseQuota.sameCredential(g) && g.needsQuotaObservationLocked(c.now())
+}
+
+// ObserveEnterpriseQuota accepts only a current credential's verified edition.
+// A failed, stale, foreign or out-of-order read cannot replenish a routing pool.
+// A positive balance never clears a Google restriction.
+func (m *Manager) ObserveEnterpriseQuota(source *Auth, snapshot ge.QuotaSnapshot) bool {
+	if source == nil || source.enterpriseQuota == nil || m.HomeEnabled() {
 		return false
+	}
+	c := &m.enterpriseQuota
+	c.mu.Lock()
+	g := c.bindings[source.ID]
+	accepted, paused := m.observeEnterpriseQuotaLocked(source, g, snapshot, c.now())
+	c.mu.Unlock()
+	if paused {
+		m.publishEnterpriseQuota()
+	}
+	return accepted
+}
+
+func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaGate, snapshot ge.QuotaSnapshot, now time.Time) (accepted, paused bool) {
+	c := &m.enterpriseQuota
+	if m.HomeEnabled() || !source.enterpriseQuota.sameCredential(g) || (!m.EnterpriseQuotaBalancingEnabled() && !g.needsQuotaObservationLocked(now)) {
+		return false, false
 	}
 	binding := ge.FromMetadata(g.policy.Metadata)
 	if !g.identity.ValidFor(binding) || snapshot.ProjectID != binding.ProjectID || snapshot.Location != binding.Location {
-		return false
+		return false, false
 	}
-	now := c.now()
 	pool := ge.SelectQuotaPool(snapshot, g.identity, binding)
 	if pool == nil || pool.Status != "ok" || pool.Remaining == nil || pool.Limit == nil || pool.Used == nil || pool.UsageUpdatedAt == nil || snapshot.PeriodStart == nil || snapshot.ResetAt == nil ||
 		snapshot.ObservedAt.After(now) || now.Sub(snapshot.ObservedAt) > EnterpriseQuotaObservationTTL || !snapshot.PeriodStart.Equal(enterpriseQuotaDayStart(now)) || !snapshot.ResetAt.Equal(ge.NextPacificMidnight(now)) ||
 		pool.UsageUpdatedAt.Before(*snapshot.PeriodStart) || pool.UsageUpdatedAt.After(snapshot.ObservedAt) || *pool.Remaining < 0 || *pool.Limit < 0 || *pool.Used < 0 {
-		return false
+		return false, false
 	}
 	p := c.balancePoolLocked(g)
 	if p.snapshot.ObservedAt.After(snapshot.ObservedAt) {
-		return false
+		return false, false
 	}
 	if p.pool != nil && p.snapshot.PeriodStart != nil && p.snapshot.PeriodStart.Equal(*snapshot.PeriodStart) && p.pool.UsageUpdatedAt.After(*pool.UsageUpdatedAt) {
-		return false
+		return false, false
 	}
 	p.snapshot = ge.CloneQuotaSnapshot(snapshot)
 	p.pool = ge.SelectQuotaPool(p.snapshot, g.identity, binding)
+	p.paidObservation = g.paidQuotaKey(now) != ""
 	// Recompute rather than trusting a caller-supplied derived remaining value.
 	remaining := max(int64(0), *p.pool.Limit-*p.pool.Used)
 	p.pool.Remaining = &remaining
 	p.pruneDebits(*pool.UsageUpdatedAt)
-	return true
+	if s := g.quotaPressureStateLocked(now); s != nil {
+		paused = g.pauseNearQuotaLimitLocked(s, now)
+	}
+	return true, paused
 }
 
 func (p *enterpriseBalancePool) pruneDebits(watermark time.Time) {
@@ -248,7 +276,7 @@ func (g *enterpriseQuotaGate) balanceBlockedLocked(now time.Time) (bool, time.Ti
 	}
 	p := g.manager.enterpriseQuota.balances[g.balanceKey()]
 	left, known := p.remaining(now, g.manager.enterpriseQuotaReserve())
-	if !known || left > 0 {
+	if !known || left > 0 || g.hasPendingPaidQuotaProbeLocked(now) {
 		return false, time.Time{}
 	}
 	// Re-evaluate after observation expiry or daily reset; no permanent restriction
@@ -412,7 +440,7 @@ func (s *QuotaBalancedSelector) Pick(ctx context.Context, provider, model string
 		if p == nil {
 			pool := c.balancePoolLocked(g)
 			left, known := pool.remaining(now, m.enterpriseQuotaReserve())
-			if known && left == 0 && g.enabled() {
+			if known && left == 0 && g.enabled() && !g.hasPendingPaidQuotaProbeLocked(now) {
 				continue
 			}
 			p = &candidatePool{key: key, pool: pool, left: left, known: known}

@@ -21,6 +21,10 @@ type QuotaIdentity struct {
 	Edition       string    `json:"edition,omitempty"`
 	PrincipalHash string    `json:"principal_hash,omitempty"`
 	CheckedAt     time.Time `json:"checked_at"`
+	// Paid is refreshed from the license and is not restored from disk.
+	Paid bool `json:"-"`
+	// Trial distinguishes an observed free trial from an unverified license.
+	Trial bool `json:"-"`
 }
 
 func (i *QuotaIdentity) ValidFor(binding config.GeminiEnterpriseOAuth) bool {
@@ -49,6 +53,8 @@ func ResolveQuotaIdentity(ctx context.Context, client *http.Client, binding conf
 	result := &QuotaIdentity{Binding: Binding(binding), CheckedAt: now.UTC(), Invalidated: observation.Authoritative() && observation.Status != "ok"}
 	if observation.Status == "ok" {
 		result.Verified, result.ProjectNumber, result.Location, result.Edition, result.PrincipalHash = true, observation.ProjectNumber, binding.Location, observation.Edition, observation.PrincipalHash
+		result.Paid = observation.ConfirmedPaid()
+		result.Trial = observation.FreeTrial != nil && *observation.FreeTrial
 	}
 	return result
 }

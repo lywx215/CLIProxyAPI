@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 )
@@ -71,9 +72,13 @@ func (m *Manager) sharedQuotaSnapshot() SharedQuotaSnapshot {
 	c.storeVersion++
 	snapshot := SharedQuotaSnapshot{SchemaVersion: 1, Version: c.storeVersion, Pools: []SharedQuotaState{}, Bindings: []SharedQuotaBinding{}}
 	for _, s := range c.pools {
+		if s.Restriction.Kind == enterpriseNearLimitKind {
+			continue
+		}
 		state := *s
-		state.probe = 0
-		state.probeOwner = nil
+		state.clearProbe()
+		state.legacyReadyAt = time.Time{}
+		state.rejections = nil
 		snapshot.Pools = append(snapshot.Pools, state)
 	}
 	for _, g := range c.bindings {
@@ -111,20 +116,32 @@ func (m *Manager) restoreSharedQuota(ctx context.Context, store CooldownStateSto
 		c.pools = map[string]*SharedQuotaState{}
 	}
 	c.storeVersion = max(c.storeVersion, snapshot.Version)
+	now := c.now()
 	for _, s := range snapshot.Pools {
 		// Versions from independently configured stores are not a shared clock.
 		// Existing memory, including explicit-reset tombstones, remains authoritative.
 		if c.pools[s.PoolID] != nil {
 			continue
 		}
-		if s.Phase == "probing" || (s.Phase == "cooling" && !s.Restriction.RetryAt.After(c.now())) {
+		// Keep the automatic daily restriction distinguishable until its
+		// paid identity is available. quotaPhase still exposes elapsed waits.
+		if s.Phase == "probing" || (s.Phase == "cooling" && !s.Restriction.RetryAt.After(now) && !s.canAlignLegacyDailyRecovery()) {
 			s.Phase = "probe_pending"
 			s.Version++
 		}
-		s.probe = 0
-		s.probeOwner = nil
+		s.clearProbe()
+		s.legacyReadyAt = time.Time{}
+		if s.canAlignLegacyDailyRecovery() {
+			readyAt := enterprisePaidDailyRecoveryAt(s.dailyResetAnchor(), s.PoolID)
+			if readyAt.After(s.Restriction.RetryAt) && readyAt.After(now) {
+				s.legacyReadyAt = readyAt
+			}
+		}
 		copyState := s
 		c.pools[s.PoolID] = &copyState
+	}
+	for _, gate := range c.bindings {
+		c.alignLegacyPaidDailyRecoveryLocked(gate, now)
 	}
 	c.mu.Unlock()
 	for _, binding := range snapshot.Bindings {

@@ -598,6 +598,8 @@ func (m *Manager) PublishEnterpriseSubscriptionIdentity(source *Auth) {
 		identity := &ge.QuotaIdentity{Binding: ge.Binding(binding), CheckedAt: observation.CheckedAt, Invalidated: observation.Status != "ok"}
 		if observation.Status == "ok" {
 			identity.Verified, identity.ProjectNumber, identity.Location, identity.Edition, identity.PrincipalHash = true, observation.ProjectNumber, binding.Location, observation.Edition, observation.PrincipalHash
+			identity.Paid = observation.ConfirmedPaid()
+			identity.Trial = observation.FreeTrial != nil && *observation.FreeTrial
 			if !identity.ValidFor(binding) {
 				continue
 			}

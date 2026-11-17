@@ -286,11 +286,17 @@ func (e *GeminiEnterpriseExecutor) open(ctx context.Context, auth *coreauth.Auth
 		if errRead != nil {
 			return nil, input, &ge.TransportError{Cause: errRead, Started: (finalModel == ge.CarbonModel || finalModel == ge.HydrogenModel)}
 		}
-		if len(raw) > 64*1024 {
+		truncated := len(raw) > 64*1024
+		if truncated {
 			raw = nil
 		}
 		uncertain := (finalModel == ge.CarbonModel || finalModel == ge.HydrogenModel) && (response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError)
-		return nil, input, helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, uncertain, finalModel)
+		rejection := helps.EnterpriseGenerationError(raw, response.StatusCode, response.Header, auth, uncertain, finalModel)
+		if parsed, ok := rejection.(*ge.GenerationError); ok && truncated {
+			// The omitted details could identify a different quota scope.
+			parsed.UnscopedRateLimit = false
+		}
+		return nil, input, rejection
 	}
 	return response, input, nil
 }

@@ -14,7 +14,7 @@ const enterpriseQuotaRefreshInterval = 2 * time.Minute
 // Quota reads share the bounded, cancellable discovery workers. They never run
 // on the inference path and do not depend on an open management dashboard.
 func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth) {
-	if s.coreManager == nil || !s.coreManager.EnterpriseQuotaBalancingEnabled() || auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == coreauth.StatusDisabled {
+	if s.coreManager == nil || auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == coreauth.StatusDisabled || !s.coreManager.EnterpriseQuotaRefreshNeeded(auth) {
 		return
 	}
 	auth = auth.Clone()
@@ -81,7 +81,10 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 		if d.fetchQuota != nil {
 			observation = d.fetchQuota(probeCtx, auth, proxy)
 		} else if client, errClient := ge.Client(proxy); errClient == nil {
-			observation = ge.FetchQuota(probeCtx, client, binding, ge.String(auth.Metadata, "access_token"), d.now())
+			quotaBinding := binding
+			quotaBinding.ProjectID = identity.ProjectNumber
+			observation = ge.FetchQuota(probeCtx, client, quotaBinding, ge.String(auth.Metadata, "access_token"), d.now())
+			observation.ProjectID = binding.ProjectID
 			client.CloseIdleConnections()
 		}
 		if probeCtx.Err() != nil || !s.enterpriseActive(auth, key) {
