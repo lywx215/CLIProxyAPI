@@ -117,9 +117,6 @@ func TestEnterpriseFallbackFinalBarrierDispatchAndUsage(t *testing.T) {
 					}
 					m.PublishEnterpriseCatalogState(a, ge.CatalogState{Source: "none", Status: "unavailable", LastError: &ge.MetadataError{Code: "service_disabled"}})
 					model := "gemini-3.8-flash"
-					if paid {
-						model = ge.ArgonModel
-					}
 					calls := 0
 					ctx := contextWithEnterpriseTransport(t, func(req *http.Request) (*http.Response, error) {
 						calls++
@@ -153,10 +150,10 @@ func TestEnterpriseFallbackFinalBarrierDispatchAndUsage(t *testing.T) {
 					if calls != 1 || !strings.Contains(output, "hello") || !strings.Contains(output, "usageMetadata") {
 						t.Fatalf("calls=%d output=%s", calls, output)
 					}
-					// Override the final model to one forbidden by either trial or paid policy.
+					// Even full paid fallback only admits models from the effective catalog.
 					forbidden := ge.ArgonModel
 					if paid {
-						forbidden = "gemini-3.8-flash"
+						forbidden = "gemini-unlisted"
 					}
 					cfg.Payload.Override = []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: model, Protocol: ge.Provider}}, Params: map[string]any{"generationSpec.modelId": forbidden}}}
 					calls = 0

@@ -438,6 +438,20 @@ func TestRedisProtocol_AUTH_And_PopContracts(t *testing.T) {
 
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 
+	expectError := func(expected string, args ...string) {
+		t.Helper()
+		if err := writeTestRESPCommand(conn, args...); err != nil {
+			t.Fatalf("failed to write %s: %v", args[0], err)
+		}
+		if msg, err := readTestRESPError(reader); err != nil || msg != expected {
+			t.Fatalf("%s response = %q, %v, want %q", args[0], msg, err, expected)
+		}
+	}
+	for range 6 {
+		expectError("ERR invalid management key", "AUTH", "wrong-secret")
+	}
+	expectError("NOAUTH Authentication required.", "RPOP", "usage")
+	expectError("ERR wrong number of arguments for 'auth' command", "AUTH")
 	if errWrite := writeTestRESPCommand(conn, "AUTH", managementPassword); errWrite != nil {
 		t.Fatalf("failed to write AUTH command: %v", errWrite)
 	}

@@ -285,11 +285,13 @@ func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model stri
 	if scope := enterpriseCarbonTestScope(ctx); scope != nil {
 		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, scope.model)
 	}
-	if auth == nil {
+	if auth == nil || auth.Provider != ge.Provider {
 		return nil
 	}
 	allModels, _ := ge.ReadAllModelsEnabled(auth.Metadata)
-	if allModels || ge.IsArgonFamilyModel(modelKey) || modelKey == ge.HydrogenModel {
+	// An unset switch may have admitted this request under the paid default.
+	_, configured := auth.Metadata[ge.AllModelsEnabledKey]
+	if !configured || allModels || ge.IsArgonFamilyModel(modelKey) || modelKey == ge.HydrogenModel {
 		return ValidateEnterpriseModelRequest(ctx, auth, model)
 	}
 	return nil

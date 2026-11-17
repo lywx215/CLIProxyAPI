@@ -33,6 +33,7 @@ func TestEnterpriseFallbackPolicyAdmissionAndMedia(t *testing.T) {
 				t.Run(edition+"/"+mode+map[bool]string{true: "/trial", false: "/paid"}[trial], func(t *testing.T) {
 					m, a := catalogFixture(t, edition, trial)
 					a.Metadata["model_policy"] = mode
+					a.Metadata[ge.AllModelsEnabledKey] = false
 					a.Metadata["catalog_fallback"] = map[string]any{"mode": "custom", "models": []string{ge.ArgonModel, "gemini-3.8-flash", "gemini-3-pro-image", "veo-3.1"}}
 					var err error
 					a, err = m.Update(t.Context(), a)
@@ -73,7 +74,8 @@ func TestEnterpriseFallbackDefaultTransitionsAndAuthoritativeEmpty(t *testing.T)
 		t.Fatal(v)
 	}
 	publishSubscription(t, m, a, "enterprise_plus", false)
-	if v := m.EnterpriseModelPolicyView(a); !slices.Equal(v.EffectiveModels, []string{ge.ArgonModel, ge.CarbonModel, ge.HydrogenModel}) {
+	if v := m.EnterpriseModelPolicyView(a); !v.AllModelsEnabled || v.CatalogState.Source != "default" ||
+		!slices.Contains(v.EffectiveModels, "gemini-3.8-flash") || !slices.Contains(v.EffectiveModels, ge.HydrogenModel) {
 		t.Fatal(v)
 	}
 	m.InvalidateEnterpriseSubscription(a)

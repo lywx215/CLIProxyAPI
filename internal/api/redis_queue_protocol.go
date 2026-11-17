@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -41,7 +40,7 @@ func (s *Server) handleRedisConnection(conn net.Conn, reader *bufio.Reader) {
 		reader = bufio.NewReader(conn)
 	}
 
-	clientIP, localClient := resolveRemoteIP(conn.RemoteAddr())
+	localClient := isRedisLoopback(conn.RemoteAddr())
 	authed := false
 	writer := bufio.NewWriter(conn)
 	defer func() {
@@ -88,16 +87,7 @@ func (s *Server) handleRedisConnection(conn net.Conn, reader *bufio.Reader) {
 		cmd := strings.ToUpper(strings.TrimSpace(args[0]))
 
 		if cmd != "AUTH" && !authed {
-			if s.mgmt != nil {
-				_, statusCode, errMsg := s.mgmt.AuthenticateManagementKey(clientIP, localClient, "")
-				if statusCode == http.StatusForbidden && strings.HasPrefix(errMsg, "IP banned due to too many failed attempts") {
-					_ = writeRedisError(writer, "ERR "+errMsg)
-				} else {
-					_ = writeRedisError(writer, "NOAUTH Authentication required.")
-				}
-			} else {
-				_ = writeRedisError(writer, "NOAUTH Authentication required.")
-			}
+			_ = writeRedisError(writer, "NOAUTH Authentication required.")
 			if !flush() {
 				return
 			}
@@ -108,16 +98,6 @@ func (s *Server) handleRedisConnection(conn net.Conn, reader *bufio.Reader) {
 		case "AUTH":
 			password, ok := parseAuthPassword(args)
 			if !ok {
-				if s.mgmt != nil {
-					_, statusCode, errMsg := s.mgmt.AuthenticateManagementKey(clientIP, localClient, "")
-					if statusCode == http.StatusForbidden && strings.HasPrefix(errMsg, "IP banned due to too many failed attempts") {
-						_ = writeRedisError(writer, "ERR "+errMsg)
-						if !flush() {
-							return
-						}
-						continue
-					}
-				}
 				_ = writeRedisError(writer, "ERR wrong number of arguments for 'auth' command")
 				if !flush() {
 					return
@@ -131,7 +111,7 @@ func (s *Server) handleRedisConnection(conn net.Conn, reader *bufio.Reader) {
 				}
 				continue
 			}
-			allowed, _, errMsg := s.mgmt.AuthenticateManagementKey(clientIP, localClient, password)
+			allowed, _, errMsg := s.mgmt.AuthenticateManagementKey(localClient, password)
 			if !allowed {
 				_ = writeRedisError(writer, "ERR "+errMsg)
 				if !flush() {
@@ -340,9 +320,9 @@ func handleRedisSubscriptionCommand(writer *bufio.Writer, channel string, comman
 	}
 }
 
-func resolveRemoteIP(addr net.Addr) (ip string, localClient bool) {
+func isRedisLoopback(addr net.Addr) bool {
 	if addr == nil {
-		return "", false
+		return false
 	}
 
 	var host string
@@ -374,8 +354,7 @@ func resolveRemoteIP(addr net.Addr) (ip string, localClient bool) {
 	}
 
 	host = strings.TrimSpace(host)
-	localClient = host == "127.0.0.1" || host == "::1"
-	return host, localClient
+	return host == "127.0.0.1" || host == "::1"
 }
 
 func parseAuthPassword(args []string) (string, bool) {

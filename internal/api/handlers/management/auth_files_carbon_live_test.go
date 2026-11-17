@@ -104,7 +104,7 @@ func TestCarbonAdmissionLiveManagement(t *testing.T) {
 		t.Fatal("could not configure management authentication")
 	}
 	cfg.RemoteManagement.SecretKey = string(hash)
-	h := &Handler{authManager: manager, cfg: cfg, localPassword: secret, failedAttempts: make(map[string]*attemptInfo)}
+	h := &Handler{authManager: manager, cfg: cfg, localPassword: secret}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	group := router.Group("/v8/management", h.Middleware(), func(c *gin.Context) { c.Set(ConfigV8ContextKey, true) })

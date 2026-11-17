@@ -80,8 +80,8 @@ func TestSubscriptionResolutionPagesRegionsAndFailures(t *testing.T) {
 				}
 				if want == "ok" {
 					policy := ModelPolicyFor(nil, observation)
-					if policy.Allows(ArgonModel) != (scenario != "plus") || policy.Allows("gemini-3.8-flash") != (scenario != "business" && scenario != "paid") {
-						t.Fatalf("wrong trial policy: %+v", policy)
+					if policy.Allows(ArgonModel) != (scenario != "plus") || policy.Allows("gemini-3.8-flash") != (scenario != "business") || policy.AllModelsEnabled != (scenario == "paid") {
+						t.Fatalf("wrong subscription policy: %+v", policy)
 					}
 				}
 				if scenario == "permission" && configs != 0 {
@@ -140,7 +140,7 @@ func TestPaidSubscriptionEnforcesExactModelsAcrossAllPolicies(t *testing.T) {
 		for _, status := range []string{"ok", "stale"} {
 			for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
 				t.Run(edition+"/"+status+"/"+mode, func(t *testing.T) {
-					metadata := map[string]any{"model_policy": mode, "allowed_models": append(append([]string{}, allowed...), "gemini-3.8-flash")}
+					metadata := map[string]any{AllModelsEnabledKey: false, "model_policy": mode, "allowed_models": append(append([]string{}, allowed...), "gemini-3.8-flash")}
 					policy := ModelPolicyFor(metadata, SubscriptionObservation{Status: status, Edition: edition, FreeTrial: &paid, State: "ACTIVE"})
 					if policy.Status != status || !policy.Restricted() || policy.EnforcedReason != "paid_subscription_restricted" || !slices.Equal(policy.EnforcedAllowedModels, allowed) {
 						t.Fatalf("paid enforcement missing: %+v", policy)
@@ -180,7 +180,7 @@ func TestSubscriptionVerificationIsMandatoryForEveryPolicy(t *testing.T) {
 			t.Run(mode+"/"+observation.Status+"/"+observation.Reason, func(t *testing.T) {
 				metadata := map[string]any{"model_policy": mode, "allowed_models": []string{ArgonModel}, "free_trial": true, "subscription": map[string]any{"status": "ok", "free_trial": true}, "enforced_allowed_models": []string{ArgonModel}}
 				policy := ModelPolicyFor(metadata, observation)
-				if policy.Status != "blocked" || policy.EnforcedAllowedModels == nil || len(policy.EnforcedAllowedModels) != 0 || policy.EnforcedReason == "" || policy.EnforcedReason != policy.Reason {
+				if policy.AllModelsEnabled || policy.Status != "blocked" || policy.EnforcedAllowedModels == nil || len(policy.EnforcedAllowedModels) != 0 || policy.EnforcedReason == "" || policy.EnforcedReason != policy.Reason {
 					t.Fatalf("unverified policy did not fail closed: %+v", policy)
 				}
 				for _, model := range []string{ArgonModel, CarbonModel, "gemini-3-pro-image", "veo-3.1", "gemini-3.8-flash"} {
@@ -228,7 +228,7 @@ func TestModelPolicyForceArgonOverridesOnlyArgon(t *testing.T) {
 func TestPaidSubscriptionIntersectsUserListsWithoutChangingThem(t *testing.T) {
 	paid := false
 	for _, allowed := range []any{nil, []string(nil), []string{}, []string{ArgonModel, "gemini-3.8-flash"}} {
-		metadata := map[string]any{"model_policy": "custom", "allowed_models": allowed, "excluded_models": []string{ArgonModel}}
+		metadata := map[string]any{AllModelsEnabledKey: false, "model_policy": "custom", "allowed_models": allowed, "excluded_models": []string{ArgonModel}}
 		before, _ := json.Marshal(metadata)
 		policy := ModelPolicyFor(metadata, SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid, State: "ACTIVE"})
 		after, _ := json.Marshal(metadata)
@@ -238,6 +238,45 @@ func TestPaidSubscriptionIntersectsUserListsWithoutChangingThem(t *testing.T) {
 		if models, ok := allowed.([]string); ok && models != nil && (policy.AllowedModels == nil || !slices.Equal(policy.AllowedModels, models)) {
 			t.Fatalf("user whitelist was rewritten: %+v", policy)
 		}
+	}
+}
+
+func TestAllModelsDefaultsOnForVerifiedPaidSubscription(t *testing.T) {
+	trial, paid := true, false
+	for _, scenario := range []struct {
+		name, status string
+		freeTrial    *bool
+		enabled      bool
+	}{
+		{"paid", "ok", &paid, true},
+		{"stale-paid", "stale", &paid, true},
+		{"trial", "ok", &trial, false},
+		{"stale-trial", "stale", &trial, false},
+		{"unknown", "unknown", &paid, false},
+		{"missing-trial-status", "ok", nil, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			metadata := map[string]any{
+				"excluded_models": []string{"veo-*"},
+			}
+			observation := SubscriptionObservation{Status: scenario.status, Edition: "business_standard", FreeTrial: scenario.freeTrial}
+			policy := ModelPolicyFor(metadata, observation)
+			if policy.AllModelsEnabled != scenario.enabled || policy.Allows("gemini-3.8-flash") != scenario.enabled || policy.Allows(HydrogenModel) != scenario.enabled || policy.Allows("veo-3.1") {
+				t.Fatalf("unexpected paid default: %+v", policy)
+			}
+			if _, exists := metadata[AllModelsEnabledKey]; exists {
+				t.Fatal("the default became a saved override")
+			}
+			metadata["model_policy"] = "custom"
+			metadata["allowed_models"] = []string{ArgonModel}
+			if custom := ModelPolicyFor(metadata, observation); custom.AllModelsEnabled || custom.Allows("gemini-3.8-flash") {
+				t.Fatalf("the default overrode the saved custom whitelist: %+v", custom)
+			}
+			metadata[AllModelsEnabledKey] = "true"
+			if invalid := ModelPolicyFor(metadata, observation); invalid.AllModelsEnabled || invalid.Reason != "invalid_model_policy" || invalid.Allows("gemini-3.8-flash") {
+				t.Fatalf("non-boolean value was accepted: %+v", invalid)
+			}
+		})
 	}
 }
 
@@ -254,7 +293,7 @@ func TestAllModelsOverridesEditionAndApplicationModelPolicy(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			metadata := map[string]any{
-				"model_policy": tc.mode, "allowed_models": []string{}, "excluded_models": []string{"veo-*"},
+				AllModelsEnabledKey: false, "model_policy": tc.mode, "allowed_models": []string{}, "excluded_models": []string{"veo-*"},
 			}
 			observation := SubscriptionObservation{Status: "ok", Edition: tc.edition, FreeTrial: tc.freeTrial, State: "ACTIVE"}
 			if ModelPolicyFor(metadata, observation).Allows(tc.newlyAllowed) {
@@ -284,14 +323,16 @@ func TestEnforcedModelPolicyJSONDistinguishesTrialAndBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		observation SubscriptionObservation
+		metadata    map[string]any
 		json        string
 	}{
-		{"trial", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial}, "null"},
-		{"paid", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, `["gemini-4-argon","gemini-4-carbon","gemini-4-hydrogen","gemini-3-pro-image","veo-3.1"]`},
-		{"blocked", SubscriptionObservation{}, "[]"},
+		{"trial", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &trial}, nil, "null"},
+		{"paid-default", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, nil, "null"},
+		{"paid-opt-out", SubscriptionObservation{Status: "ok", Edition: "enterprise_standard", FreeTrial: &paid}, map[string]any{AllModelsEnabledKey: false}, `["gemini-4-argon","gemini-4-carbon","gemini-4-hydrogen","gemini-3-pro-image","veo-3.1"]`},
+		{"blocked", SubscriptionObservation{}, nil, "[]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := json.Marshal(ModelPolicyFor(map[string]any{"model_policy": "catalog"}, tc.observation))
+			data, err := json.Marshal(ModelPolicyFor(tc.metadata, tc.observation))
 			if err != nil || !strings.Contains(string(data), `"enforced_allowed_models":`+tc.json) || !strings.Contains(string(data), `"enforced_reason":`) {
 				t.Fatalf("unexpected policy JSON: %s %v", data, err)
 			}

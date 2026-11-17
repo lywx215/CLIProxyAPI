@@ -41,6 +41,13 @@ Downloads, deletion, OAuth renewal and the account switch retain their account-l
 
 Quota observations are selected by the verified user's assigned license edition. If identity is unavailable, only a single unambiguous active pool is a fallback. Multiple unknown pools are neither summed nor guessed. The response retains the pool list and adds nullable `selected_pool` plus account/binding/revision identity.
 
+For a verified paid subscription, the collection summary can include
+`quota_project_number`, the canonical project number from the current license
+observation. The credential page uses this number, region and edition to count
+each shared pool once in the account and page totals. Only complete readings
+from the current Pacific day contribute to the totals. Both refresh controls
+use the existing collection quota endpoint.
+
 `remaining = max(0, limit - used)` is computed only when both observations are known. Zero remains zero; missing values remain `null` and display as unavailable. Successful use and limit observations are retained independently on transient failures within the same Pacific day, with stale indication. Conflicting observations, different metric versions and daily resets do not produce a combined balance.
 
 Same-account, same-project, same-region reads share a short cache and in-flight fetch. `refresh=true` forces an update for the shared display pool. Disabled collections remain eligible for this read-only management operation. Quota reads do not change request counters, switches or routing health.

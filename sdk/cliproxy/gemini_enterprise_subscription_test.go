@@ -81,6 +81,11 @@ func TestEnterpriseManualPolicyStillPublishesBackgroundQuotaIdentity(t *testing.
 
 func TestEnterprisePaidConstraintRefreshesManualCatalogWithoutRefetch(t *testing.T) {
 	s, auth := enterpriseTestService(t, "paid-manual-policy-transitions")
+	auth.Metadata[ge.AllModelsEnabledKey] = false
+	auth, err := s.coreManager.Update(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := s.enterpriseState()
 	models := []ge.Model{
 		{ID: ge.ArgonModel}, {ID: ge.HydrogenModel}, {ID: "gemini-3-pro-image", MediaKind: "image"},

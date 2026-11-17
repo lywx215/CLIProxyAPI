@@ -191,10 +191,9 @@ func TestEnterpriseAllModelsUpdatesRegisteredRoutes(t *testing.T) {
 	const flash = "gemini-3.8-flash"
 	svc.cfg.OAuthExcludedModels = map[string][]string{ge.Provider: {"blocked-model"}}
 	svc.coreManager.SetConfig(svc.cfg)
-	paid := false
-	flight := svc.coreManager.BeginEnterpriseSubscriptionRefresh(auth)
-	if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &paid}) {
-		t.Fatal("verified fixture subscription was not published")
+	d.fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
+		trial := false
+		return ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial}
 	}
 	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
 		return []ge.Model{{ID: ge.ArgonModel}, {ID: flash}, {ID: "blocked-model"}}, nil
@@ -212,8 +211,8 @@ func TestEnterpriseAllModelsUpdatesRegisteredRoutes(t *testing.T) {
 			t.Fatalf("unexpected registered routes: %v", found)
 		}
 	}
-	assertRoutes(false)
-	for _, enabled := range []bool{true, false} {
+	assertRoutes(true)
+	for _, enabled := range []bool{false, true, false} {
 		current, _ := svc.coreManager.GetByID(auth.ID)
 		current.Metadata[ge.AllModelsEnabledKey] = enabled
 		updated, err := svc.coreManager.Update(t.Context(), current)

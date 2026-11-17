@@ -403,6 +403,7 @@ func TestEnterpriseSubscriptionFailureBackoffStartsAtFiveSeconds(t *testing.T) {
 func TestEnterprisePaidPolicyViewReasonsSignatureAndFinalAdmission(t *testing.T) {
 	m, auth, _ := policyFixture(t)
 	auth.Metadata["model_policy"] = "catalog"
+	auth.Metadata[ge.AllModelsEnabledKey] = false
 	auth, err := m.Update(t.Context(), auth)
 	if err != nil {
 		t.Fatal(err)
@@ -467,7 +468,7 @@ func TestEnterpriseEveryModelPolicyRequiresBoundedVerifiedSubscription(t *testin
 			assertBlocked := func(reason string) {
 				t.Helper()
 				view := m.EnterpriseModelPolicyView(auth)
-				if view.Status != "blocked" || view.Reason != reason || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 || view.EnforcedReason != reason || len(view.EffectiveModels) != 0 {
+				if view.AllModelsEnabled || view.Status != "blocked" || view.Reason != reason || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 || view.EnforcedReason != reason || len(view.EffectiveModels) != 0 {
 					t.Fatalf("unverified policy was admitted: %+v", view)
 				}
 				var denied *EnterpriseModelPolicyError
@@ -486,8 +487,9 @@ func TestEnterpriseEveryModelPolicyRequiresBoundedVerifiedSubscription(t *testin
 			if flight == nil || !flight.Complete(ge.SubscriptionObservation{Status: "unknown", Reason: "subscription_unavailable"}) {
 				t.Fatal("temporary refresh failure did not complete")
 			}
-			if view := m.EnterpriseModelPolicyView(auth); view.Status != "stale" || view.EnforcedReason != "paid_subscription_restricted" || view.Allows("gemini-3.8-flash") {
-				t.Fatalf("temporary read failure relaxed paid enforcement: %+v", view)
+			wantAllModels := mode == "auto" || mode == "catalog"
+			if view := m.EnterpriseModelPolicyView(auth); view.Status != "stale" || view.AllModelsEnabled != wantAllModels || view.Allows("gemini-3.8-flash") != wantAllModels {
+				t.Fatalf("temporary read failure changed the verified paid policy: %+v", view)
 			}
 			*now = now.Add(enterpriseSubscriptionMaxStale - enterpriseSubscriptionTTL)
 			assertBlocked("subscription_cache_expired")
@@ -502,7 +504,7 @@ func TestEnterpriseEveryModelPolicyRequiresBoundedVerifiedSubscription(t *testin
 	}
 }
 
-func TestEnterprisePaidGuardSurvivesAccessRefreshAndFencesNewAuthorization(t *testing.T) {
+func TestEnterprisePaidDefaultSurvivesAccessRefreshAndFencesNewAuthorization(t *testing.T) {
 	m, auth, _ := policyFixture(t)
 	auth.Metadata["model_policy"] = "catalog"
 	auth, err := m.Update(t.Context(), auth)
@@ -516,8 +518,8 @@ func TestEnterprisePaidGuardSurvivesAccessRefreshAndFencesNewAuthorization(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view := m.EnterpriseModelPolicyView(rotated); view.Subscription.Status != "ok" || view.EnforcedReason != "paid_subscription_restricted" || !view.Allows(ge.ArgonModel) || view.Allows("gemini-3.8-flash") {
-		t.Fatalf("access refresh lost the verified paid guard: %+v", view)
+	if view := m.EnterpriseModelPolicyView(rotated); view.Subscription.Status != "ok" || !view.AllModelsEnabled || !view.Allows(ge.ArgonModel) || !view.Allows("gemini-3.8-flash") {
+		t.Fatalf("access refresh lost the verified paid default: %+v", view)
 	}
 	reauthorized := rotated.Clone()
 	reauthorized.Metadata["refresh_token"] = "new-authorization"
@@ -525,7 +527,7 @@ func TestEnterprisePaidGuardSurvivesAccessRefreshAndFencesNewAuthorization(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view := m.EnterpriseModelPolicyView(reauthorized); view.Status != "blocked" || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 {
+	if view := m.EnterpriseModelPolicyView(reauthorized); view.AllModelsEnabled || view.Status != "blocked" || view.EnforcedAllowedModels == nil || len(view.EnforcedAllowedModels) != 0 {
 		t.Fatalf("new authorization inherited an earlier subscription: %+v", view)
 	}
 }

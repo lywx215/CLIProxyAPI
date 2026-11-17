@@ -9,43 +9,76 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
+	"golang.org/x/crypto/bcrypt"
 )
 
-func TestAuthenticateManagementKey_LocalhostIPBan_BlocksCorrectKeyDuringBan(t *testing.T) {
-	h := &Handler{
-		cfg:            &config.Config{},
-		failedAttempts: make(map[string]*attemptInfo),
-		envSecret:      "test-secret",
+func TestMiddlewareAllowsValidKeyAfterFailedAttempts(t *testing.T) {
+	const validKey = "fixture-management-key"
+	hash, err := bcrypt.GenerateFromPassword([]byte(validKey), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
 	}
+	for _, test := range []struct {
+		name, addr  string
+		allowRemote bool
+	}{
+		{name: "loopback", addr: "127.0.0.1:12345"},
+		{name: "remote", addr: "192.0.2.10:12345", allowRemote: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.RemoteManagement.AllowRemote = test.allowRemote
+			cfg.RemoteManagement.SecretKey = string(hash)
+			h := &Handler{cfg: cfg}
+			const path = "/v8/management/config"
+			engine := gin.New()
+			engine.GET(path, h.Middleware(), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
+			request := func(key string) *httptest.ResponseRecorder {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req.RemoteAddr = test.addr
+				if key != "" {
+					req.Header.Set("Authorization", "Bearer "+key)
+				}
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, req)
+				return response
+			}
+			for i := range 6 {
+				if response := request("wrong-secret"); response.Code != http.StatusUnauthorized ||
+					!strings.Contains(response.Body.String(), "invalid management key") {
+					t.Fatalf("unexpected result at attempt %d: %d %s", i+1, response.Code, response.Body.String())
+				}
+			}
+			if response := request(""); response.Code != http.StatusUnauthorized {
+				t.Fatalf("missing key was not rejected: %d %s", response.Code, response.Body.String())
+			}
+			if response := request(validKey); response.Code != http.StatusNoContent {
+				t.Fatalf("valid key was blocked: %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
 
-	for i := 0; i < 5; i++ {
-		allowed, statusCode, errMsg := h.AuthenticateManagementKey("127.0.0.1", true, "wrong-secret")
-		if allowed {
-			t.Fatalf("expected auth to be denied at attempt %d", i+1)
-		}
-		if statusCode != http.StatusUnauthorized || errMsg != "invalid management key" {
-			t.Fatalf("unexpected auth failure at attempt %d: status=%d msg=%q", i+1, statusCode, errMsg)
-		}
+func TestAuthenticateManagementKeyPreservesConfigurationChecks(t *testing.T) {
+	h := &Handler{cfg: &config.Config{}}
+	if allowed, code, detail := h.AuthenticateManagementKey(false, "fixture-key"); allowed ||
+		code != http.StatusForbidden || detail != "remote management disabled" {
+		t.Fatalf("expected remote access to be refused, got allowed=%t status=%d detail=%q", allowed, code, detail)
 	}
-
-	allowed, statusCode, errMsg := h.AuthenticateManagementKey("127.0.0.1", true, "test-secret")
-	if allowed {
-		t.Fatalf("expected correct key to be denied while banned")
-	}
-	if statusCode != http.StatusForbidden {
-		t.Fatalf("expected forbidden status while banned, got %d", statusCode)
-	}
-	if !strings.HasPrefix(errMsg, "IP banned due to too many failed attempts. Try again in") {
-		t.Fatalf("unexpected banned message: %q", errMsg)
+	h.cfg.RemoteManagement.AllowRemote = true
+	if allowed, code, detail := h.AuthenticateManagementKey(false, "fixture-key"); allowed ||
+		code != http.StatusForbidden || detail != "remote management key not set" {
+		t.Fatalf("expected access without a configured key to be refused, got allowed=%t status=%d detail=%q", allowed, code, detail)
 	}
 }
 
 func TestMiddlewareSetsSupportPluginHeader(t *testing.T) {
 
 	h := &Handler{
-		cfg:            &config.Config{},
-		failedAttempts: make(map[string]*attemptInfo),
-		envSecret:      "test-secret",
+		cfg:       &config.Config{},
+		envSecret: "test-secret",
 	}
 	middleware := h.Middleware()
 

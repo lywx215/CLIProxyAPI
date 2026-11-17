@@ -124,7 +124,10 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 	}
 	explicitExclusions := len(policy.ExcludedModels)
 	confirmed := (subscription.Status == "ok" || subscription.Status == "stale") && subscription.FreeTrial != nil
-	paid := confirmed && !*subscription.FreeTrial
+	paid := subscription.ConfirmedPaid()
+	if _, configured := metadata[AllModelsEnabledKey]; !configured {
+		policy.AllModelsEnabled = paid && (mode == "auto" || mode == "catalog")
+	}
 	if mode == "auto" && confirmed {
 		policy.EffectiveMode = "catalog"
 		if subscription.FreeTrial != nil && *subscription.FreeTrial {
@@ -162,13 +165,13 @@ func ModelPolicyFor(metadata map[string]any, subscription SubscriptionObservatio
 		policy.Status = "stale"
 	}
 	if paid {
-		// The paid ceiling comes only from runtime license verification, never saved settings.
+		// The restricted paid policy is available when All Models is turned off.
 		policy.EnforcedAllowedModels = []string{ArgonModel, CarbonModel, HydrogenModel, "gemini-3-pro-image", "veo-3.1"}
 		policy.EnforcedReason = "paid_subscription_restricted"
 	} else {
 		policy.EnforcedExcludedModels = []string{HydrogenModel}
 	}
-	if allModels {
+	if policy.AllModelsEnabled {
 		policy.restrictRaw = policy.Restricted()
 		policy.EffectiveMode = "catalog"
 		policy.AllowedModels = nil

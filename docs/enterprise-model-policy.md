@@ -16,7 +16,18 @@ every model in custom mode. Entries are exact upstream IDs. Existing
 `excluded_models` apply in every mode, including provider-wide exclusions.
 Switching modes preserves the dormant whitelist and existing exclusions.
 
-The paid group contains Argon, Carbon and Hydrogen. Gemini 3 Pro Image and Veo 3.1 are also eligible under the default paid catalog policy. The trial group contains Argon and Carbon. Hydrogen requires a confirmed paid subscription in every mode, including with `all_models_enabled` and a custom whitelist.
+All Models defaults to on when the OAuth principal has a verified paid subscription
+and the collection uses `auto` or `catalog` without a saved
+`all_models_enabled` setting. It uses the full
+eligible catalog, with existing model exclusions and feature switches still applied.
+The default is computed at runtime without writing the credential. A saved
+`all_models_enabled: false` restores the collection's configured model policy and
+the paid model limit. Trial collections and explicit restricted policies still
+default to off.
+
+The restricted paid catalog includes Argon, Carbon, Hydrogen, Gemini 3 Pro Image
+and Veo 3.1. The trial group contains Argon and Carbon. Hydrogen requires a confirmed
+paid subscription in every mode, including with All Models and a custom whitelist.
 
 The historical application setting `argon_force_enabled` retains its priority and supplements Argon and Carbon when missing from the catalog. A previous `carbon_enabled=true` may supplement Carbon in the local catalog, subject to the effective group policy. The management UI shows the effective policy and the All Models setting.
 
@@ -29,7 +40,11 @@ Successful catalogs, including empty catalogs, take precedence. A failed read us
 Use the existing v8 collection PATCH endpoint, its `fields` object, and the current
 `binding_id`, `auth_index` and `expected_revision`. Subscription observations and
 `model_policy_state` in credential responses are read-only runtime data.
-Its `enforced_allowed_models` field contains the five default paid IDs, null for confirmed trials or the All Models setting, and an empty array when subscription verification blocks generation. The trial ceiling is expressed by `enforced_excluded_models`, which includes Hydrogen.
+Its `all_models_enabled` field reports the effective switch, including the paid
+default. The `enforced_allowed_models` field contains the five restricted paid IDs
+when the switch is off, null for confirmed trials or when All Models is on, and an
+empty array when subscription verification blocks generation. The trial ceiling is
+expressed by `enforced_excluded_models`, which includes Hydrogen.
 `enforced_reason` explains a paid limit or blocked subscription. Clients distinguish
 an absent field on older backends from null and an empty array; these observations
 are never accepted as persisted collection settings.
@@ -39,8 +54,8 @@ Every policy mode requires a verified assigned subscription. Observations refres
 in the background every five minutes. A temporary failure retains the last
 confirmed policy for at most 30 minutes; first-time unknown, conflicting,
 unassigned or inactive subscriptions pause generation in all modes. Read-only
-resource queries and subscription refreshes remain available. Manual settings do
-not grant Google access or override the mandatory paid restriction.
+resource queries and subscription refreshes remain available. The eligible models
+still depend on the catalog, and Google verifies access to each model at dispatch.
 Observation caches are not persisted and are rebuilt after restart.
 
 Subscription reads paginate unfiltered user licenses and match the verified OAuth
@@ -63,8 +78,5 @@ implicitly start image or video generation. Trial applications require an
 explicit resolved model because upstream Auto cannot enforce the Hydrogen
 restriction. Media generation requires an explicit media model ID.
 
-These restrictions follow the OAuth principal's assigned license, rather than the
-mere presence of a paid license configuration in the project. A paid principal's
-ordinary text requests require another eligible credential or provider. The
-Google project/location/edition quota pool is unchanged: applications do not gain
-independent balances, and this policy does not reserve quota for particular models.
+These policies follow the OAuth principal's assigned license. The Google
+project/location/edition quota pool stays shared across models and applications.

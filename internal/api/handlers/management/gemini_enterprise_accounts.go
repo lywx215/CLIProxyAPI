@@ -123,7 +123,11 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 		}
 		if child != nil {
 			entry["quota_balancing"] = h.authManager.EnterpriseQuotaBalance(child)
-			entry["model_policy_state"] = h.authManager.EnterpriseModelPolicyView(child)
+			policy := h.authManager.EnterpriseModelPolicyView(child)
+			entry["model_policy_state"] = policy
+			if policy.Subscription.ConfirmedPaid() && policy.Subscription.ProjectNumber != "" {
+				entry["quota_project_number"] = policy.Subscription.ProjectNumber
+			}
 			carbon := h.authManager.EnterpriseCarbonAdmissionView(child)
 			entry["carbon_admission_supported"], entry["carbon_admission"] = true, carbon
 			if carbon.Enabled {

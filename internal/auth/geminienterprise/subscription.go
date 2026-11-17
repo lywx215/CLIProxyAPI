@@ -27,6 +27,11 @@ type SubscriptionObservation struct {
 	PrincipalHash string     `json:"-"`
 }
 
+// ConfirmedPaid includes a verified paid assignment within the cache's grace period.
+func (o SubscriptionObservation) ConfirmedPaid() bool {
+	return (o.Status == "ok" || o.Status == "stale") && o.FreeTrial != nil && !*o.FreeTrial
+}
+
 // Authoritative distinguishes verified subscription changes from temporary read failures.
 func (o SubscriptionObservation) Authoritative() bool {
 	switch o.Status {

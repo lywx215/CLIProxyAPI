@@ -158,13 +158,7 @@ func (s *Service) publishEnterpriseCatalog(ctx context.Context, auth *coreauth.A
 		s.cfgMu.RUnlock()
 		return false
 	}
-	forceArgon, _ := ge.ReadArgonForceEnabled(latest.Metadata)
-	allModels, _ := ge.ReadAllModelsEnabled(latest.Metadata)
-	if forceArgon != policy.ArgonForceEnabled || allModels != policy.AllModelsEnabled {
-		d.mu.Unlock()
-		s.cfgMu.RUnlock()
-		return false
-	}
+	// The signature includes the effective switches and subscription policy.
 	if s.coreManager.EnterpriseModelPolicySignature(latest) != policySignature {
 		d.mu.Unlock()
 		s.cfgMu.RUnlock()

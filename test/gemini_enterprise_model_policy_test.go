@@ -112,6 +112,7 @@ type enterprisePolicyWireAuth struct {
 	id, project, edition, prefix, mode string
 	trial, unknown                     bool
 	forceArgon                         bool
+	allModelsOff                       bool
 	aliases                            []config.OAuthModelAlias
 	allowedModels                      []string
 	subscription                       *ge.SubscriptionObservation
@@ -170,6 +171,9 @@ func newEnterprisePolicyWireFixture(t *testing.T, cfg *config.Config, auths []en
 		}
 		if spec.forceArgon {
 			metadata[ge.ArgonForceEnabledKey] = true
+		}
+		if spec.allModelsOff {
+			metadata[ge.AllModelsEnabledKey] = false
 		}
 		auth := &coreauth.Auth{ID: id, Provider: ge.Provider, Status: coreauth.StatusActive, Prefix: spec.prefix, Metadata: metadata, Attributes: map[string]string{"priority": spec.priority}}
 		coreauth.SetOAuthModelAliasesAttribute(auth, spec.aliases)
@@ -740,7 +744,7 @@ func TestEnterprisePaidPolicyAllModesAndPublicMedia(t *testing.T) {
 		for _, mode := range []string{"auto", "catalog", "argon_only", "exclude_argon", "custom"} {
 			t.Run(edition+"/"+mode, func(t *testing.T) {
 				spec := enterprisePolicyWireAuth{
-					id: "paid", project: "12345", edition: edition, mode: mode, prefix: "paid-team",
+					id: "paid", project: "12345", edition: edition, mode: mode, prefix: "paid-team", allModelsOff: true,
 					allowedModels: []string{ge.ArgonModel, "gemini-3-pro-image", "veo-3.1", "gemini-3.8-flash", "gemini-3.1-pro-preview"},
 					aliases:       []config.OAuthModelAlias{{Name: "gemini-3.8-flash", Alias: "paid-flash", Fork: true}, {Name: ge.ArgonModel, Alias: "paid-argon", Fork: true}},
 				}
@@ -775,15 +779,21 @@ func TestEnterprisePaidPolicyAllModesAndPublicMedia(t *testing.T) {
 	}
 }
 
-func TestEnterprisePaidPolicySkipsPaidTextAndRefreshesWithoutCooling(t *testing.T) {
+func TestEnterprisePaidPolicyRoutesTextUntilOptOutAndRefreshesWithoutCooling(t *testing.T) {
 	for _, protocol := range []string{"openai", "gemini"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
 				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{
 					{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", priority: "100"},
-					{id: "trial", project: "67890", edition: "enterprise_standard", trial: true, mode: "catalog"},
+					{id: "trial", project: "67890", edition: "enterprise_standard", trial: true, mode: "catalog", allModelsOff: true},
 				})
 				fixture.manager.SetRetryConfig(3, 0, 3)
+				enterprisePolicyAssertPublicSuccess(t, fixture, "gemini-3.8-flash", "gemini-3.8-flash", "12345", protocol, stream)
+				paid, _ := fixture.manager.GetByID(fixture.authIDs["paid"])
+				paid.Metadata[ge.AllModelsEnabledKey] = false
+				if _, err := fixture.manager.Update(t.Context(), paid); err != nil {
+					t.Fatal(err)
+				}
 				for attempt := 0; attempt < 3; attempt++ {
 					for _, model := range []string{"gemini-3.8-flash", "gemini-3.1-pro-preview"} {
 						enterprisePolicyAssertPublicSuccess(t, fixture, model, model, "67890", protocol, stream)
@@ -832,7 +842,7 @@ func TestEnterprisePaidPolicyFinalPayloadAndUnknownCannotBypass(t *testing.T) {
 					cfg.Payload = config.PayloadConfig{Filter: []config.PayloadFilterRule{{Models: models, Params: []string{"generationSpec.modelId"}}}}
 				}
 				fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{{
-					id: "paid", project: "12345", edition: "enterprise_plus", mode: mode,
+					id: "paid", project: "12345", edition: "enterprise_plus", mode: mode, allModelsOff: true,
 					allowedModels: []string{ge.ArgonModel, "gemini-3.8-flash"}, subscription: scenario.observation,
 				}})
 				fixture.manager.SetRetryConfig(3, 0, 3)
@@ -857,7 +867,7 @@ func TestEnterprisePaidPolicyFinalAllowedModelStillRequiresCatalogAndFeature(t *
 			if scenario == "image feature disabled" {
 				cfg.DisableImageGeneration = config.DisableImageGenerationAll
 			}
-			fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}})
+			fixture := newEnterprisePolicyWireFixture(t, cfg, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", allModelsOff: true}})
 			if scenario == "missing catalog" {
 				auth, _ := fixture.manager.GetByID(fixture.authIDs["paid"])
 				fixture.manager.PublishEnterprisePolicyCatalog(auth, []ge.Model{})
@@ -885,7 +895,7 @@ func TestEnterprisePaidPolicyPinnedAndResolvedAutoUseActualModel(t *testing.T) {
 	for _, protocol := range []string{"openai", "gemini"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
-				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}})
+				fixture := newEnterprisePolicyWireFixture(t, nil, []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", allModelsOff: true}})
 				fixture.manager.SetRetryConfig(3, 0, 3)
 				operation := "generate_content"
 				if protocol == "openai" {
