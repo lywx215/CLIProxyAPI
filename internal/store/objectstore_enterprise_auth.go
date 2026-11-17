@@ -21,6 +21,10 @@ type objectAuthSnapshot struct {
 	etag   string
 }
 
+func (s *ObjectTokenStore) SupportsExistingEnterpriseReauthorization() bool {
+	return s.SupportsEnterpriseOAuthImport()
+}
+
 // GuardUnversionedEnterpriseAuth rejects file-based writers before they can
 // alter a protected mirror. Save performs a conditional write for such records.
 func (s *ObjectTokenStore) GuardUnversionedEnterpriseAuth(ctx context.Context, file string) error {
@@ -227,6 +231,9 @@ func (s *ObjectTokenStore) prepareObjectReauthorization(ctx context.Context, rec
 		return nil, auth.ErrEnterpriseOAuthImportConflict
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err = auth.CheckExistingEnterpriseAuthorization(ctx, current); err != nil {
 		return nil, err
 	}
 	return auth.RebaseEnterpriseAuthorization(current, record)

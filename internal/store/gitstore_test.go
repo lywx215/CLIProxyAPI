@@ -28,6 +28,43 @@ type callbackTokenStorage struct {
 	save func(string) error
 }
 
+func TestGitStoreExactEnterpriseRenewalDoesNotRecreateDeletedCredential(t *testing.T) {
+	root := t.TempDir()
+	remote := setupGitRemoteRepository(t, root, "master",
+		testBranchSpec{name: "master", contents: "local renewal fixture\n"})
+	store := NewGitTokenStore(remote, "", "", "")
+	store.SetBaseDir(filepath.Join(root, "workspace", "auths"))
+	manager := cliproxyauth.NewManager(store, nil, nil)
+	record := &cliproxyauth.Auth{
+		ID: "legacy.json", FileName: "legacy.json", Provider: "gemini-enterprise", Status: cliproxyauth.StatusActive,
+		Metadata: map[string]any{"type": "gemini-enterprise", "email": "fixture@example.test",
+			"client_id": "fixture-client", "client_secret_env": "FIXTURE_SECRET",
+			"access_token": "fixture-access", "refresh_token": "fixture-refresh",
+			"project_id": "fixture-project", "engine_id": "fixture-engine"},
+	}
+	base, err := manager.Register(t.Context(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate durable deletion before the watcher removes the runtime snapshot.
+	if err = store.Delete(t.Context(), base.ID); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.AuthDir(), base.FileName)
+	if _, err = os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("fixture credential was not deleted")
+	}
+	renewed := base.Clone()
+	renewed.Metadata["access_token"] = "fixture-new-access"
+	renewed.Metadata["refresh_token"] = "fixture-new-refresh"
+	if _, err = manager.ReauthorizeExistingGeminiEnterpriseCredential(t.Context(), base, renewed); err == nil {
+		t.Fatal("exact renewal succeeded after durable source deletion")
+	}
+	if _, err = os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("exact renewal recreated a deleted credential")
+	}
+}
+
 func (s *callbackTokenStorage) SaveTokenToFile(path string) error {
 	return s.save(path)
 }

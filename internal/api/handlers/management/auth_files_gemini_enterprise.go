@@ -23,6 +23,7 @@ import (
 const geminiEnterpriseCallbackURL = "http://localhost:8788/oauth-callback"
 
 var newGeminiEnterpriseOAuthClient = ge.Client
+var acquireGeminiEnterpriseCallback = enterpriseCallbacks.acquire
 
 // RequestGeminiEnterpriseToken is registered only by the v8 management API.
 func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
@@ -32,52 +33,19 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "configure oauth.providers.gemini-enterprise before login"})
 		return
 	}
-	var binding config.GeminiEnterpriseOAuth
-	if h.cfg.OAuth.Providers.GeminiEnterprise != nil {
-		binding = h.cfg.OAuth.Providers.GeminiEnterprise.WithDefaults()
-	}
+	settings := h.cfg.OAuth
 	proxy, authDir, home := h.cfg.ProxyURL, h.cfg.AuthDir, h.cfg.Home.Enabled
 	h.mu.Unlock()
 	if home {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "gemini-enterprise OAuth is not supported in CLIProxyAPIHome mode"})
 		return
 	}
-	discover := false
-	var oauth *oauth2.Config
-	var err error
-	if mode, specified := c.GetQuery("auto_discover_resources"); specified {
-		if mode != "true" && mode != "false" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid resource discovery mode"})
-			return
-		}
-		discover = mode == "true"
-		// Session inputs are independent of the global binding and other accounts.
-		binding = (config.GeminiEnterpriseOAuth{
-			ClientID: strings.TrimSpace(c.Query("client_id")), ClientSecretEnv: strings.TrimSpace(c.Query("client_secret_env")),
-			EngineID: strings.TrimSpace(c.Query("engine_id")), AssistantID: strings.TrimSpace(c.Query("assistant_id")),
-		}).WithDefaults()
-		if discover {
-			err = binding.ValidateDiscovery()
-		} else {
-			binding.ProjectID = strings.TrimSpace(c.Query("project_id"))
-			if location := strings.TrimSpace(c.Query("location")); location != "" {
-				binding.Location = location
-			}
-			if collection := strings.TrimSpace(c.Query("collection_id")); collection != "" {
-				binding.CollectionID = collection
-			}
-			err = binding.Validate()
-		}
-		if err == nil {
-			oauth, err = ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
-		}
-	} else {
-		discover = binding.Validate() != nil
-		oauth, err = ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
-		if err == nil {
-			err = binding.ValidateLogin()
-		}
+	binding, discover, target, err := h.geminiEnterpriseLoginBinding(c, settings)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
+	oauth, err := ge.ApplicationOAuth(binding, geminiEnterpriseCallbackURL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -93,7 +61,7 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 	}
 	verifier := oauth2.GenerateVerifier()
 	RegisterOAuthSession(state, ge.Provider)
-	release, automatic := enterpriseCallbacks.acquire(state, authDir, 8788)
+	release, automatic := acquireGeminiEnterpriseCallback(state, authDir, 8788)
 	ctx := PopulateAuthContext(context.Background(), c)
 	go func() {
 		defer release()
@@ -114,15 +82,69 @@ func (h *Handler) RequestGeminiEnterpriseToken(c *gin.Context) {
 			SetOAuthSessionError(state, "Invalid Gemini Enterprise OAuth callback")
 			return
 		}
-		h.finishGeminiEnterpriseLoginWithDiscovery(ctx, state, binding, oauth, verifier, result.Code, proxy, discover)
+		h.finishGeminiEnterpriseLoginAttempt(ctx, state, binding, oauth, verifier, result.Code, proxy, discover, target)
 	}()
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok", "url": ge.AuthorizationURL(oauth, state, verifier), "state": state,
 		"callback_url": geminiEnterpriseCallbackURL, "manual_callback_required": !automatic,
 		"resource_inputs_supported":    true,
+		"reauthorization":              target != nil,
 		"automatic_resource_discovery": discover,
 	})
+}
+
+func (h *Handler) geminiEnterpriseLoginBinding(c *gin.Context, settings config.OAuthConfig) (config.GeminiEnterpriseOAuth, bool, *coreauth.Auth, error) {
+	var binding config.GeminiEnterpriseOAuth
+	selected, selectApp := c.GetQuery("application_client_id")
+	name, renewName := c.GetQuery("reauthorize_name")
+	index, renewIndex := c.GetQuery("reauthorize_auth_index")
+	explicitClient := strings.TrimSpace(c.Query("client_id"))
+	explicitSecret := strings.TrimSpace(c.Query("client_secret_env"))
+	if renewName || renewIndex {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(index) == "" || selectApp || explicitClient != "" || explicitSecret != "" {
+			return binding, false, nil, errors.New("select the current Gemini Enterprise credential for reauthorization")
+		}
+		if !h.authManager.SupportsExistingEnterpriseReauthorization() {
+			return binding, false, nil, coreauth.ErrEnterpriseReauthorizationUnsupported
+		}
+		target, ok := h.lookupAuthFile(name, index)
+		if !ok || target == nil || target.Provider != ge.Provider || coreauth.IsEnterpriseCollectionAuth(target) ||
+			coreauth.IsPluginVirtualAuth(target) || ge.String(target.Metadata, "enterprise_retired_to") != "" ||
+			strings.TrimSpace(ge.String(target.Metadata, "email")) == "" {
+			return binding, false, nil, errors.New("Gemini Enterprise reauthorization target is unavailable")
+		}
+		binding = ge.FromMetadata(target.Metadata)
+		return binding, false, target, binding.ValidateApplication()
+	}
+	selected = strings.TrimSpace(selected)
+	if selectApp && (selected == "" || explicitClient != "" || explicitSecret != "") {
+		return binding, false, nil, errors.New("select one configured Gemini Enterprise OAuth application")
+	}
+	var configured bool
+	binding, configured = settings.GeminiEnterpriseApplication(selected)
+	if selectApp && !configured {
+		return binding, false, nil, errors.New("selected Gemini Enterprise OAuth application is unavailable")
+	}
+	mode, specified := c.GetQuery("auto_discover_resources")
+	if !specified {
+		return binding, binding.Validate() != nil, nil, binding.ValidateLogin()
+	}
+	if mode != "true" && mode != "false" {
+		return binding, false, nil, errors.New("invalid resource discovery mode")
+	}
+	if !selectApp {
+		binding = config.GeminiEnterpriseOAuth{ClientID: explicitClient, ClientSecretEnv: explicitSecret}
+	}
+	binding.EngineID = strings.TrimSpace(c.Query("engine_id"))
+	binding.AssistantID = strings.TrimSpace(c.Query("assistant_id"))
+	if mode == "true" {
+		return binding.WithDefaults(), true, nil, binding.ValidateDiscovery()
+	}
+	binding.ProjectID = strings.TrimSpace(c.Query("project_id"))
+	binding.Location = strings.TrimSpace(c.Query("location"))
+	binding.CollectionID = strings.TrimSpace(c.Query("collection_id"))
+	return binding.WithDefaults(), false, nil, binding.Validate()
 }
 
 func waitEnterpriseCallback(ctx context.Context, state, path string) (oauthCallbackFilePayload, error) {
@@ -160,6 +182,10 @@ func (h *Handler) finishGeminiEnterpriseLogin(ctx context.Context, state string,
 }
 
 func (h *Handler) finishGeminiEnterpriseLoginWithDiscovery(ctx context.Context, state string, binding config.GeminiEnterpriseOAuth, oauth *oauth2.Config, verifier, code, proxy string, discover bool) {
+	h.finishGeminiEnterpriseLoginAttempt(ctx, state, binding, oauth, verifier, code, proxy, discover, nil)
+}
+
+func (h *Handler) finishGeminiEnterpriseLoginAttempt(ctx context.Context, state string, binding config.GeminiEnterpriseOAuth, oauth *oauth2.Config, verifier, code, proxy string, discover bool, target *coreauth.Auth) {
 	if !IsOAuthSessionPending(state, ge.Provider) {
 		return
 	}
@@ -185,9 +211,17 @@ func (h *Handler) finishGeminiEnterpriseLoginWithDiscovery(ctx context.Context, 
 	if !IsOAuthSessionPending(state, ge.Provider) {
 		return
 	}
-	email, err := ge.Email(credentialCtx, client, token.AccessToken)
+	email, subject, err := ge.UserIdentity(credentialCtx, client, token.AccessToken)
 	if err != nil {
 		SetOAuthSessionError(state, "Failed to read the authorized Google account")
+		return
+	}
+	if target != nil {
+		if expected := ge.String(target.Metadata, coreauth.EnterpriseOAuthSubjectKey); expected != "" && expected != subject {
+			SetOAuthSessionError(state, "Google account does not match the Gemini Enterprise credential")
+			return
+		}
+		h.finishGeminiEnterpriseReauthorization(ctx, state, target, email, token)
 		return
 	}
 	var existing []*coreauth.Auth
@@ -269,6 +303,34 @@ func (h *Handler) finishGeminiEnterpriseLoginWithDiscovery(ctx context.Context, 
 		if resourceCtx.Err() != nil {
 			return
 		}
+	}
+	CompleteOAuthSession(state)
+}
+
+func (h *Handler) finishGeminiEnterpriseReauthorization(ctx context.Context, state string, target *coreauth.Auth, email string, token *oauth2.Token) {
+	if !strings.EqualFold(email, ge.String(target.Metadata, "email")) {
+		SetOAuthSessionError(state, "Google account does not match the Gemini Enterprise credential")
+		return
+	}
+	if token.RefreshToken == "" && ge.String(target.Metadata, "refresh_token") == "" {
+		SetOAuthSessionError(state, "Google did not return an offline refresh token")
+		return
+	}
+	if !oauthSessions.ClaimSave(state, ge.Provider) {
+		return
+	}
+	record := target.Clone()
+	delete(record.Metadata, "refresh_token")
+	ge.PutToken(record.Metadata, token)
+	record.LastRefreshedAt = time.Now()
+	saved, err := h.authManager.ReauthorizeExistingGeminiEnterpriseCredential(ctx, target, record)
+	if err != nil {
+		SetOAuthSessionError(state, "Failed to renew the selected Gemini Enterprise credential; start from the current account")
+		return
+	}
+	if errHook := h.invokePostAuthPersistHooks(ctx, []*coreauth.Auth{saved}); errHook != nil {
+		SetOAuthSessionError(state, "Authorization saved, but runtime synchronization failed; refresh the account")
+		return
 	}
 	CompleteOAuthSession(state)
 }

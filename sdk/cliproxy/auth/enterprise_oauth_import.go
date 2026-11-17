@@ -48,6 +48,10 @@ func EnterpriseOAuthAuthorizationRevision(auth *Auth) uint64 {
 	if auth == nil || !IsEnterpriseAccountAuth(auth) {
 		return 0
 	}
+	return enterpriseOAuthAuthorizationRevision(auth)
+}
+
+func enterpriseOAuthAuthorizationRevision(auth *Auth) uint64 {
 	v := fmt.Sprint(auth.Metadata[EnterpriseOAuthRevisionKey])
 	if revision, err := strconv.ParseUint(v, 10, 64); err == nil && revision > 0 {
 		return revision

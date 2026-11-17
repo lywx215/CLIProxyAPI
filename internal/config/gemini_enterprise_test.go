@@ -83,3 +83,51 @@ func TestEnterpriseAutomaticLoginConfigurationDoesNotRequireEngine(t *testing.T)
 		t.Fatal("automatic OAuth and strict inference binding validation were conflated")
 	}
 }
+
+func TestEnterpriseOAuthApplicationsPreserveLegacyDefault(t *testing.T) {
+	const raw = `config-version: 8
+oauth:
+  providers:
+    gemini-enterprise:
+      client-id: old-client
+      client-secret-env: OLD_OAUTH_SECRET
+      engine-id: old-engine
+  gemini-enterprise-applications:
+    new-account-default-client-id: new-client
+    entries:
+      - name: New application
+        client-id: new-client
+        client-secret-env: NEW_OAUTH_SECRET
+      - name: Third application
+        client-id: third-client
+        client-secret-env: THIRD_OAUTH_SECRET
+`
+	if err := ValidateV8Config([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	clone := cfg.CloneForRuntime()
+	legacy, ok := clone.OAuth.GeminiEnterpriseApplication("")
+	if !ok || legacy.ClientID != "old-client" || legacy.EngineID != "old-engine" {
+		t.Fatal("the default provider binding changed")
+	}
+	if app, ok := clone.OAuth.GeminiEnterpriseApplication("new-client"); !ok || app.ClientSecretEnv != "NEW_OAUTH_SECRET" {
+		t.Fatal("the additional application was not available")
+	}
+	if _, ok := clone.OAuth.GeminiEnterpriseApplication("third-client"); !ok ||
+		clone.OAuth.GeminiEnterpriseApplications.NewAccountDefaultClientID != "new-client" {
+		t.Fatal("the third application or new-account default did not survive cloning")
+	}
+	for _, invalid := range []string{
+		strings.Replace(raw, "default-client-id: new-client", "default-client-id: unknown", 1),
+		strings.Replace(raw, "client-id: third-client", "client-id: old-client", 1),
+		strings.Replace(raw, "THIRD_OAUTH_SECRET", "OLD_OAUTH_SECRET", 1),
+	} {
+		if ValidateV8Config([]byte(invalid)) == nil || yaml.Unmarshal([]byte(invalid), &Config{}) == nil {
+			t.Fatal("invalid OAuth application configuration accepted")
+		}
+	}
+}

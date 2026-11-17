@@ -174,7 +174,8 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	// Persist failures stay non-fatal, but must not be silent: a restart would
 	// lose the credential that only exists in memory.
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
-		if IsBoundAccountAuth(auth) || auth.Provider == web.Provider {
+		if IsBoundAccountAuth(auth) || auth.Provider == web.Provider ||
+			RequiresAuthFileWriteLock(ctx) || errors.Is(errPersist, ErrAuthFileWriteConflict) {
 			m.authEpochs[auth.ID] = registrationEpochBefore
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise account: %w", errPersist)
@@ -317,6 +318,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		m.mu.Unlock()
 		return nil, errImport
 	}
+	if errAuthorization := CheckExistingEnterpriseAuthorization(ctx, existing); errAuthorization != nil {
+		m.mu.Unlock()
+		return nil, errAuthorization
+	}
 	if !ok || existing == nil {
 		m.mu.Unlock()
 		if mode == updateModeEnterpriseResources {
@@ -366,6 +371,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		}
 	}
 	if mode == updateModeEnterpriseReauthorize {
+		if base != nil && base.RegistrationEpoch != existing.RegistrationEpoch {
+			m.mu.Unlock()
+			return nil, ErrEnterpriseAccountChanged
+		}
 		var errAuthorization error
 		auth, errAuthorization = installEnterpriseAuthorization(existing, auth)
 		if errAuthorization != nil {
@@ -496,6 +505,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	existingBeforeSave := existing.Clone()
 	persistMetaMint := (mode == updateModePrepare || mode == updateModeRefresh) && strings.EqualFold(strings.TrimSpace(auth.Provider), "meta")
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
+		if RequiresAuthFileWriteLock(ctx) || (!IsBoundAccountAuth(auth) && errors.Is(errPersist, ErrAuthFileWriteConflict)) {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("persist credential source: %w", errPersist)
+		}
 		// A minted Meta key must reach the store before requests can use it.
 		if persistMetaMint || mode == updateModeEnterpriseWeb || auth.Provider == web.Provider {
 			m.mu.Unlock()
@@ -504,6 +517,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		if mode == updateModeEnterpriseResources {
 			m.mu.Unlock()
 			return nil, fmt.Errorf("persist enterprise resources: %w", errPersist)
+		}
+		if RequiresExistingEnterpriseAuthorization(ctx) {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("persist enterprise reauthorization: %w", errPersist)
 		}
 		if IsBoundAccountAuth(auth) {
 			if mode != updateModeRefresh || auth.Attributes[AttributeEnterpriseObjectETag] != "" ||
@@ -815,6 +832,9 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	m.mu.RLock()
 	store := m.store
 	m.mu.RUnlock()
+	if RequiresExistingEnterpriseAuthorization(ctx) && !supportsExistingEnterpriseReauthorization(store) {
+		return ErrEnterpriseReauthorizationUnsupported
+	}
 	if store == nil || auth == nil {
 		return nil
 	}
@@ -855,7 +875,9 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 			return nil
 		}
 		_, err := store.Save(ctx, auth)
-		if err != nil && (IsBoundAccountAuth(auth) || auth.Provider == web.Provider) {
+		if err != nil && (IsBoundAccountAuth(auth) || auth.Provider == web.Provider ||
+			RequiresExistingEnterpriseAuthorization(ctx) || RequiresAuthFileWriteLock(ctx) ||
+			errors.Is(err, ErrAuthFileWriteConflict)) {
 			pLock.lastEpoch, pLock.lastGeneration = previousEpoch, previousGeneration
 		}
 		return err

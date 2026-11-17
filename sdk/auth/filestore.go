@@ -63,6 +63,10 @@ type FileTokenStore struct {
 // SupportsEnterpriseOAuthImport advertises the conditional atomic account save.
 func (s *FileTokenStore) SupportsEnterpriseOAuthImport() bool { return true }
 
+func (s *FileTokenStore) SupportsExistingEnterpriseReauthorization() bool { return true }
+
+func (s *FileTokenStore) OwnsAuthFileWrites() bool { return true }
+
 // NewFileTokenStore creates a token store that saves credentials to disk through the
 // TokenStorage implementation embedded in the token record.
 func NewFileTokenStore() *FileTokenStore {
@@ -101,13 +105,14 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 	if path == "" {
 		return "", fmt.Errorf("auth filestore: missing file path attribute for %s", auth.ID)
 	}
+	requiresExistingAuthorization := cliproxyauth.RequiresExistingEnterpriseAuthorization(ctx)
 
 	// Runtime updates must not recreate a disabled credential whose source file
 	// was deliberately removed. Login and migration callers explicitly mark the
 	// save when creating a missing disabled credential is intentional.
 	if auth.Disabled && !cliproxyauth.HasAuthCreationIntent(ctx) {
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
-			if cliproxyauth.IsEnterpriseAccountAuth(auth) {
+			if cliproxyauth.IsEnterpriseAccountAuth(auth) || requiresExistingAuthorization {
 				return "", fmt.Errorf("auth filestore: enterprise account source file is missing")
 			}
 			return "", nil
@@ -116,15 +121,31 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if cliproxyauth.IsEnterpriseAccountAuth(auth) {
+	if cliproxyauth.IsEnterpriseAccountAuth(auth) || auth.Provider == ge.Provider ||
+		requiresExistingAuthorization || cliproxyauth.RequiresAuthFileWriteLock(ctx) {
 		if errDirectory := os.MkdirAll(filepath.Dir(path), 0700); errDirectory != nil {
 			return "", errDirectory
 		}
 		_, release, errLock := filelock.Try(path + ".write-lock")
 		if errLock != nil {
-			return "", fmt.Errorf("auth filestore: enterprise account is being persisted by another process")
+			return "", fmt.Errorf("auth filestore: %w", cliproxyauth.ErrAuthFileWriteConflict)
 		}
 		defer release()
+	}
+	if auth.Provider == ge.Provider && !cliproxyauth.IsEnterpriseAccountAuth(auth) &&
+		!cliproxyauth.IsEnterpriseReauthorizationSave(ctx) && !cliproxyauth.HasAuthCreationIntent(ctx) {
+		if data, errRead := os.ReadFile(path); errRead == nil {
+			var metadata map[string]any
+			if errJSON := json.Unmarshal(data, &metadata); errJSON != nil {
+				return "", fmt.Errorf("auth filestore: invalid existing credential: %w", cliproxyauth.ErrAuthFileWriteConflict)
+			}
+			current := &cliproxyauth.Auth{Provider: ge.String(metadata, "type"), Metadata: metadata}
+			if errRevision := cliproxyauth.CheckEnterpriseAuthorizationWrite(current, auth); errRevision != nil {
+				return "", errRevision
+			}
+		} else if !os.IsNotExist(errRead) {
+			return "", fmt.Errorf("auth filestore: read existing credential: %w", errRead)
+		}
 	}
 	if expected, hasExpected := cliproxyauth.EnterpriseAccountStoreRevision(ctx); hasExpected && cliproxyauth.IsEnterpriseAccountAuth(auth) && !cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
 		if data, errRead := os.ReadFile(path); errRead == nil {
@@ -140,7 +161,7 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 			return "", fmt.Errorf("auth filestore: read enterprise account revision failed: %w", errRead)
 		}
 	}
-	if cliproxyauth.IsEnterpriseAccountAuth(auth) && cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
+	if (cliproxyauth.IsEnterpriseAccountAuth(auth) || requiresExistingAuthorization) && cliproxyauth.IsEnterpriseReauthorizationSave(ctx) {
 		if data, errRead := os.ReadFile(path); errRead == nil {
 			var currentMetadata map[string]any
 			if json.Unmarshal(data, &currentMetadata) != nil {
@@ -149,12 +170,18 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 			current := auth.Clone()
 			current.Metadata = currentMetadata
 			current.Disabled, _ = currentMetadata["disabled"].(bool)
+			if requiresExistingAuthorization {
+				current.Provider = ge.String(currentMetadata, "type")
+				if errTarget := cliproxyauth.CheckExistingEnterpriseAuthorization(ctx, current); errTarget != nil {
+					return "", errTarget
+				}
+			}
 			if errImport := cliproxyauth.CheckEnterpriseOAuthImport(ctx, current); errImport != nil {
 				return "", errImport
 			}
 			if graph, errAccount := ge.ReadAccount(currentMetadata); errAccount != nil {
 				return "", errAccount
-			} else if graph != nil {
+			} else if graph != nil || requiresExistingAuthorization {
 				rebased, errRebase := cliproxyauth.RebaseEnterpriseAuthorization(current, auth)
 				if errRebase != nil {
 					return "", errRebase
@@ -164,6 +191,8 @@ func (s *FileTokenStore) Save(ctx context.Context, auth *cliproxyauth.Auth) (str
 			}
 		} else if !os.IsNotExist(errRead) {
 			return "", fmt.Errorf("auth filestore: read enterprise account for authorization failed: %w", errRead)
+		} else if requiresExistingAuthorization {
+			return "", cliproxyauth.ErrEnterpriseAccountChanged
 		} else if errImport := cliproxyauth.CheckEnterpriseOAuthImport(ctx, nil); errImport != nil {
 			return "", errImport
 		}
@@ -280,6 +309,33 @@ func (s *FileTokenStore) List(ctx context.Context) ([]*cliproxyauth.Auth, error)
 
 // Delete removes the auth file.
 func (s *FileTokenStore) Delete(ctx context.Context, id string) error {
+	err := s.DeleteAuthFile(ctx, id)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// WriteAuthFile preserves raw source payloads that expand into virtual runtime
+// records. It shares the write lock without requiring those records to persist.
+func (s *FileTokenStore) WriteAuthFile(ctx context.Context, path string, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	_, release, err := filelock.Try(path + ".write-lock")
+	if err != nil {
+		return fmt.Errorf("auth filestore: %w", cliproxyauth.ErrAuthFileWriteConflict)
+	}
+	defer release()
+	return os.WriteFile(path, data, 0o600)
+}
+
+// DeleteAuthFile owns source deletion under the same lock as exact renewal.
+// Management callers must not unlink the source before calling this method.
+// Unlike Delete, it reports a missing source so HTTP callers can return 404.
+func (s *FileTokenStore) DeleteAuthFile(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("auth filestore: id is empty")
@@ -288,7 +344,22 @@ func (s *FileTokenStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if err = os.Remove(path); err != nil && !os.IsNotExist(err) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ctx != nil {
+		if errContext := ctx.Err(); errContext != nil {
+			return errContext
+		}
+	}
+	if _, err = os.Stat(path); err != nil {
+		return err
+	}
+	_, release, errLock := filelock.Try(path + ".write-lock")
+	if errLock != nil {
+		return fmt.Errorf("auth filestore: credential is being persisted by another process: %w", errLock)
+	}
+	defer release()
+	if err = os.Remove(path); err != nil {
 		return fmt.Errorf("auth filestore: delete failed: %w", err)
 	}
 	return nil

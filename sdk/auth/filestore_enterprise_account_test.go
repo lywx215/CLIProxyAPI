@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -13,6 +14,65 @@ import (
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"golang.org/x/oauth2"
 )
+
+func TestFileStoreExactRenewalRejectsChangedSecretReference(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, diskOnly := range []bool{false, true} {
+			name := "account"
+			if legacy {
+				name = "legacy"
+			}
+			if diskOnly {
+				name += "/store"
+			} else {
+				name += "/runtime"
+			}
+			t.Run(name, func(t *testing.T) {
+				store := NewFileTokenStore()
+				store.SetBaseDir(t.TempDir())
+				manager := coreauth.NewManager(store, nil, nil)
+				fixture := fileEnterpriseFixture(t)
+				fixture.Metadata["client_secret_env"] = "FIXTURE_ORIGINAL_SECRET"
+				if legacy {
+					delete(fixture.Metadata, "enterprise_account")
+				}
+				base, err := manager.Register(t.Context(), fixture)
+				if err != nil {
+					t.Fatal(err)
+				}
+				changed := base.Clone()
+				changed.Metadata["client_secret_env"] = "FIXTURE_UPDATED_SECRET"
+				if diskOnly {
+					_, err = store.Save(t.Context(), changed)
+				} else {
+					_, err = manager.Update(t.Context(), changed)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := changed.Attributes[coreauth.AttributePath]
+				before, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				renewed := base.Clone()
+				renewed.Metadata["access_token"] = "fixture-new-access"
+				renewed.Metadata["refresh_token"] = "fixture-new-refresh"
+				if _, err = manager.ReauthorizeExistingGeminiEnterpriseCredential(t.Context(), base, renewed); !errors.Is(err, coreauth.ErrEnterpriseAccountChanged) {
+					t.Fatalf("expected changed authorization error, got %v", err)
+				}
+				after, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Fatal("rejected renewal changed the durable credential")
+				}
+				current, _ := manager.GetByID(base.ID)
+				if current.Metadata["access_token"] != base.Metadata["access_token"] {
+					t.Fatal("rejected renewal published new authorization")
+				}
+			})
+		}
+	}
+}
 
 func fileEnterpriseFixture(t *testing.T) *coreauth.Auth {
 	t.Helper()

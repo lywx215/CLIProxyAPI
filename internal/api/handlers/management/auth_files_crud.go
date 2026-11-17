@@ -68,7 +68,7 @@ func (h *Handler) UploadAuthFile(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "file must be .json"})
 				return
 			}
-			if errors.Is(errUpload, coreauth.ErrEnterpriseAuthVersionRequired) {
+			if errors.Is(errUpload, coreauth.ErrEnterpriseAuthVersionRequired) || errors.Is(errUpload, coreauth.ErrAuthFileWriteConflict) {
 				c.JSON(http.StatusConflict, gin.H{"error": errUpload.Error()})
 				return
 			}
@@ -128,7 +128,7 @@ func (h *Handler) UploadAuthFile(c *gin.Context) {
 		return
 	}
 	if err = h.writeAuthFile(ctx, filepath.Base(name), data); err != nil {
-		if errors.Is(err, coreauth.ErrEnterpriseAuthVersionRequired) {
+		if errors.Is(err, coreauth.ErrEnterpriseAuthVersionRequired) || errors.Is(err, coreauth.ErrAuthFileWriteConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -166,7 +166,8 @@ func (h *Handler) DeleteAuthFile(c *gin.Context) {
 					full = abs
 				}
 			}
-			if _, enabled := h.versionedAuthFileStore(); enabled {
+			_, atomicFileDelete := h.tokenStoreWithBaseDir().(atomicAuthFileDeleter)
+			if _, enabled := h.versionedAuthFileStore(); enabled || atomicFileDelete {
 				if _, status, errDelete := h.deleteAuthFileByName(ctx, name); errDelete != nil {
 					c.JSON(status, gin.H{"error": errDelete.Error(), "deleted": deleted})
 					return
@@ -301,7 +302,15 @@ func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) e
 	if auth.Provider == web.Provider {
 		return web.Fail(400, "Use the dedicated Web credential endpoint to preserve revisions")
 	}
-	if errWrite := os.WriteFile(dst, data, 0o600); errWrite != nil {
+	if auth.Provider == ge.Provider && h.authManager.OwnsAuthFileWrites() {
+		ctx = coreauth.WithAuthFileWriteLock(coreauth.WithAuthCreationIntent(ctx))
+	} else if store, ok := h.tokenStoreWithBaseDir().(interface {
+		WriteAuthFile(context.Context, string, []byte) error
+	}); ok {
+		if errWrite := store.WriteAuthFile(ctx, dst, data); errWrite != nil {
+			return fmt.Errorf("failed to write file: %w", errWrite)
+		}
+	} else if errWrite := os.WriteFile(dst, data, 0o600); errWrite != nil {
 		return fmt.Errorf("failed to write file: %w", errWrite)
 	}
 	if err := h.upsertAuthRecord(ctx, auth); err != nil {
@@ -398,6 +407,16 @@ func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string
 			targetPath = abs
 		}
 	}
+	if store, ok := h.tokenStoreWithBaseDir().(atomicAuthFileDeleter); ok {
+		if err := store.DeleteAuthFile(ctx, targetPath); err != nil {
+			if os.IsNotExist(err) {
+				return filepath.Base(name), http.StatusNotFound, errAuthFileNotFound
+			}
+			return filepath.Base(name), http.StatusConflict, err
+		}
+		h.removeAuthsForPath(ctx, targetPath, targetID)
+		return filepath.Base(name), http.StatusOK, nil
+	}
 	if store, enabled := h.versionedAuthFileStore(); enabled {
 		if err := store.GuardUnversionedEnterpriseAuth(ctx, targetPath); err != nil {
 			if errors.Is(err, coreauth.ErrEnterpriseAuthVersionRequired) {
@@ -428,6 +447,12 @@ func (h *Handler) deleteAuthFileByName(ctx context.Context, name string) (string
 	}
 	h.removeAuthsForPath(ctx, targetPath, targetID)
 	return filepath.Base(name), http.StatusOK, nil
+}
+
+// A file store may own its source deletion transaction. Never pre-delete its
+// file, which would bypass the store's protection against in-flight renewal.
+type atomicAuthFileDeleter interface {
+	DeleteAuthFile(context.Context, string) error
 }
 
 type versionedAuthFileStore interface {

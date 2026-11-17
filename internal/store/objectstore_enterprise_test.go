@@ -188,7 +188,7 @@ func installTestImport(ctx context.Context, manager *auth.Manager, j auth.Enterp
 func TestObjectStoreEnterpriseImportGateAndLegacyBehavior(t *testing.T) {
 	fake, endpoint := newTestS3(t)
 	s := checkedTestObjectStore(t, endpoint, t.TempDir(), false)
-	if s.SupportsEnterpriseOAuthImport() {
+	if s.SupportsEnterpriseOAuthImport() || s.SupportsExistingEnterpriseReauthorization() {
 		t.Fatal("S3 import must be explicitly enabled")
 	}
 	j := testImportIntent("fixture_request_gate", "create")
@@ -215,6 +215,30 @@ func TestObjectStoreEnterpriseImportGateAndLegacyBehavior(t *testing.T) {
 	}
 	if err = s.Delete(t.Context(), record.ID); err != nil || fake.deletes != 1 {
 		t.Fatalf("legacy deletion: %v, deletes=%d", err, fake.deletes)
+	}
+}
+
+func TestObjectStoreExactRenewalRequiresConditionalStorage(t *testing.T) {
+	_, endpoint := newTestS3(t)
+	store := checkedTestObjectStore(t, endpoint, t.TempDir(), true)
+	manager := auth.NewManager(store, nil, nil)
+	if !manager.SupportsExistingEnterpriseReauthorization() {
+		t.Fatal("conditional object store did not advertise exact renewal")
+	}
+	j := beginTestImport(t, store, testImportIntent("fixture_exact_renewal", "create"))
+	base, err := installTestImport(t.Context(), manager, j, "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed := base.Clone()
+	renewed.Metadata["access_token"] = "fixture-renewed-access"
+	renewed.Metadata["refresh_token"] = "fixture-renewed-refresh"
+	saved, err := manager.ReauthorizeExistingGeminiEnterpriseCredential(t.Context(), base, renewed)
+	if err != nil || saved.Metadata["refresh_token"] != "fixture-renewed-refresh" {
+		t.Fatalf("conditional renewal failed: %v", err)
+	}
+	if _, err = manager.ReauthorizeExistingGeminiEnterpriseCredential(t.Context(), base, renewed); err == nil {
+		t.Fatal("conditional renewal accepted a stale authorization")
 	}
 }
 

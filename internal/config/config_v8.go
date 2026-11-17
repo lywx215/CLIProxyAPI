@@ -264,6 +264,9 @@ func (cfg *Config) UnmarshalYAML(node *yaml.Node) error {
 			return errValidate
 		}
 	}
+	if errValidate := decoded.OAuth.ValidateGeminiEnterpriseApplications(); errValidate != nil {
+		return errValidate
+	}
 	if errValidate := decoded.Models.Validate(); errValidate != nil {
 		return errValidate
 	}
@@ -936,6 +939,9 @@ func ValidateV8Config(data []byte) error {
 	var cfg legacyConfig
 	if errDecode := decoder.Decode(&cfg); errDecode != nil {
 		return errDecode
+	}
+	if errApps := cfg.OAuth.ValidateGeminiEnterpriseApplications(); errApps != nil {
+		return errApps
 	}
 	if errWeb := cfg.GeminiEnterpriseWeb.WithDefaults().Validate(); errWeb != nil {
 		return errWeb

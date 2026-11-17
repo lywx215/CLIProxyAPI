@@ -960,6 +960,18 @@ oauth:
   # Authentication directory (supports ~ for home directory)
   auth-dir: "~/.cli-proxy-api"
 
+  # Additional Gemini Enterprise OAuth applications for new authorizations.
+  # Existing credentials and the provider default continue to use their saved client.
+  # Exact account reauthorization requires the file store or an object store with
+  # Enterprise OAuth conditional writes enabled. Other stores reject that flow
+  # before consent; ordinary token refresh retains its existing behavior.
+  # gemini-enterprise-applications:
+  #   new-account-default-client-id: "NEW_CLIENT_ID.apps.googleusercontent.com"
+  #   entries:
+  #     - name: "New Gemini Enterprise application"
+  #       client-id: "NEW_CLIENT_ID.apps.googleusercontent.com"
+  #       client-secret-env: "GEMINI_ENTERPRISE_CLIENT_SECRET_NEW"
+
   # Core auth auto-refresh and manual refresh-all worker pool size (OAuth/file-based auth token refresh).
   # When > 0, overrides the default worker count (16).
   # auth-auto-refresh-workers: 16

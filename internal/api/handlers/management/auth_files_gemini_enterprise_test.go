@@ -33,6 +33,7 @@ func enterpriseTestBinding() config.GeminiEnterpriseOAuth {
 }
 
 func TestEnterpriseV8StartAndManualCallback(t *testing.T) {
+	useManualEnterpriseCallback(t)
 	binding := enterpriseTestBinding()
 	h := &Handler{cfg: &config.Config{AuthDir: t.TempDir(), OAuth: config.OAuthConfig{Providers: config.OAuthProviders{GeminiEnterprise: &binding}}}}
 	router := gin.New()
@@ -188,7 +189,7 @@ func TestEnterpriseManagementExchangePersistenceAndRedaction(t *testing.T) {
 				return
 			}
 			_, _, _, _, completed, ok := GetOAuthSessionDetails(state)
-			if !ok || !completed || len(files) != 1 {
+			if !ok || !completed || len(files) != 2 || files[1].Name() != files[0].Name()+".write-lock" {
 				t.Fatal("credential was not saved before session completion")
 			}
 			data, _ := os.ReadFile(filepath.Join(h.cfg.AuthDir, files[0].Name()))
@@ -379,7 +380,7 @@ func TestEnterpriseManagementSaveOutcomePrecedesSuccess(t *testing.T) {
 				if len(files) != 0 || !strings.Contains(outcome, `"status":"error"`) || strings.Contains(outcome, "synthetic-sensitive-save-error") {
 					t.Fatal("persistence failure did not report a safe error without creating credentials")
 				}
-			} else if len(files) != 1 || outcome != `{"status":"ok"}` {
+			} else if len(files) != 2 || files[1].Name() != files[0].Name()+".write-lock" || outcome != `{"status":"ok"}` {
 				t.Fatal("persisted credentials did not produce a completed session")
 			}
 		})

@@ -7,7 +7,8 @@ import (
 )
 
 type OAuthConfig struct {
-	Providers OAuthProviders `yaml:"providers,omitempty" json:"providers,omitempty"`
+	Providers                    OAuthProviders                `yaml:"providers,omitempty" json:"providers,omitempty"`
+	GeminiEnterpriseApplications *GeminiEnterpriseApplications `yaml:"gemini-enterprise-applications,omitempty" json:"gemini-enterprise-applications,omitempty"`
 }
 
 type OAuthProviders struct {
@@ -29,6 +30,66 @@ type GeminiEnterpriseOAuth struct {
 	CollectionID    string `yaml:"collection-id,omitempty" json:"collection-id,omitempty"`
 	EngineID        string `yaml:"engine-id" json:"engine-id"`
 	AssistantID     string `yaml:"assistant-id,omitempty" json:"assistant-id,omitempty"`
+}
+
+type GeminiEnterpriseApplications struct {
+	NewAccountDefaultClientID string                             `yaml:"new-account-default-client-id,omitempty" json:"new-account-default-client-id,omitempty"`
+	Entries                   []GeminiEnterpriseApplicationEntry `yaml:"entries,omitempty" json:"entries,omitempty"`
+}
+
+type GeminiEnterpriseApplicationEntry struct {
+	Name            string `yaml:"name" json:"name"`
+	ClientID        string `yaml:"client-id" json:"client-id"`
+	ClientSecretEnv string `yaml:"client-secret-env" json:"client-secret-env"`
+}
+
+func (entry GeminiEnterpriseApplicationEntry) OAuth() GeminiEnterpriseOAuth {
+	return (GeminiEnterpriseOAuth{ClientID: entry.ClientID, ClientSecretEnv: entry.ClientSecretEnv}).WithDefaults()
+}
+
+// GeminiEnterpriseApplication resolves a configured client. An empty ID selects the legacy application.
+func (c OAuthConfig) GeminiEnterpriseApplication(clientID string) (GeminiEnterpriseOAuth, bool) {
+	if configured := c.Providers.GeminiEnterprise; configured != nil {
+		legacy := configured.WithDefaults()
+		if clientID == "" || clientID == legacy.ClientID {
+			return legacy, true
+		}
+	}
+	if clientID != "" && c.GeminiEnterpriseApplications != nil {
+		for _, entry := range c.GeminiEnterpriseApplications.Entries {
+			if app := entry.OAuth(); app.ClientID == clientID {
+				return app, true
+			}
+		}
+	}
+	return GeminiEnterpriseOAuth{}, false
+}
+
+func (c OAuthConfig) ValidateGeminiEnterpriseApplications() error {
+	applications := c.GeminiEnterpriseApplications
+	if applications == nil {
+		return nil
+	}
+	ids, secretRefs := make(map[string]bool), make(map[string]bool)
+	if legacy, ok := c.GeminiEnterpriseApplication(""); ok {
+		ids[legacy.ClientID] = true
+		secretRefs[strings.ToUpper(legacy.ClientSecretEnv)] = true
+	}
+	for index, entry := range applications.Entries {
+		app := entry.OAuth()
+		if strings.TrimSpace(entry.Name) == "" || app.ClientID == "" || !enterpriseEnvName.MatchString(app.ClientSecretEnv) {
+			return fmt.Errorf("oauth.gemini-enterprise-applications.entries[%d] requires a name, client-id and client-secret-env", index)
+		}
+		secretRef := strings.ToUpper(app.ClientSecretEnv)
+		if ids[app.ClientID] || secretRefs[secretRef] {
+			return fmt.Errorf("oauth.gemini-enterprise-applications.entries[%d] reuses a client-id or client-secret-env", index)
+		}
+		ids[app.ClientID], secretRefs[secretRef] = true, true
+	}
+	if preferred := strings.TrimSpace(applications.NewAccountDefaultClientID); preferred != "" && !ids[preferred] {
+		return fmt.Errorf("oauth.gemini-enterprise-applications.new-account-default-client-id must name a configured client")
+	}
+	return nil
 }
 
 func (c GeminiEnterpriseOAuth) WithDefaults() GeminiEnterpriseOAuth {

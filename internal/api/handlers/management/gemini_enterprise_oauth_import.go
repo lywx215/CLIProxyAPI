@@ -51,32 +51,59 @@ type enterpriseImportJournal struct {
 	CreatedAt     string `json:"created_at"`
 }
 
-func (h *Handler) enterpriseImportConfiguration() (config.GeminiEnterpriseOAuth, string, string, bool) {
+func (h *Handler) enterpriseOAuthSettings() (config.OAuthConfig, string, string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.cfg == nil || h.cfg.OAuth.Providers.GeminiEnterprise == nil {
-		return config.GeminiEnterpriseOAuth{}, "", "", false
+	if h.cfg == nil {
+		return config.OAuthConfig{}, "", ""
 	}
-	app := h.cfg.OAuth.Providers.GeminiEnterprise.WithDefaults()
-	return app, h.cfg.AuthDir, h.cfg.ProxyURL, true
+	return h.cfg.OAuth, h.cfg.AuthDir, h.cfg.ProxyURL
+}
+
+type enterpriseOAuthApplicationCapability struct {
+	Name              string   `json:"name"`
+	ClientID          string   `json:"client_id"`
+	ClientSecretReady bool     `json:"client_secret_ready"`
+	RequiredScopes    []string `json:"required_scopes"`
+	ImportSupported   bool     `json:"import_supported"`
+}
+
+func enterpriseApplicationCapability(name string, app config.GeminiEnterpriseOAuth, importSupported bool) enterpriseOAuthApplicationCapability {
+	capability := enterpriseOAuthApplicationCapability{
+		Name: name, ClientID: app.ClientID, RequiredScopes: []string{}, ImportSupported: importSupported,
+	}
+	if oauth, err := ge.ApplicationOAuth(app, ""); err == nil {
+		capability.ClientSecretReady, capability.RequiredScopes = true, oauth.Scopes
+	}
+	return capability
 }
 
 func (h *Handler) GeminiEnterpriseOAuthCapabilities(c *gin.Context) {
 	if !h.enterpriseManagementAllowed(c) {
 		return
 	}
-	app, directory, _, configured := h.enterpriseImportConfiguration()
-	ready := false
-	scopes := []string{}
+	settings, directory, _ := h.enterpriseOAuthSettings()
+	app, configured := settings.GeminiEnterpriseApplication("")
+	storeSupported := directory != "" && h.authManager.SupportsEnterpriseOAuthImport()
+	legacy := enterpriseApplicationCapability("", app, configured && storeSupported)
+	applications := make([]enterpriseOAuthApplicationCapability, 0)
 	if configured {
-		if oauth, err := ge.ApplicationOAuth(app, ""); err == nil {
-			ready, scopes = true, oauth.Scopes
+		applications = append(applications, legacy)
+	}
+	newAccountDefault := legacy.ClientID
+	if added := settings.GeminiEnterpriseApplications; added != nil {
+		if preferred := strings.TrimSpace(added.NewAccountDefaultClientID); preferred != "" {
+			newAccountDefault = preferred
+		}
+		for _, entry := range added.Entries {
+			applications = append(applications, enterpriseApplicationCapability(strings.TrimSpace(entry.Name), entry.OAuth(), storeSupported))
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"protocol_version": 1, "provider": ge.Provider,
-		"client_id": app.ClientID, "client_secret_ready": ready, "required_scopes": scopes,
-		"import_supported":  configured && directory != "" && h.authManager.SupportsEnterpriseOAuthImport(),
-		"initially_enabled": true})
+		"client_id": legacy.ClientID, "client_secret_ready": legacy.ClientSecretReady, "required_scopes": legacy.RequiredScopes,
+		"import_supported": legacy.ImportSupported, "initially_enabled": true,
+		"reauthorization_supported": directory != "" && h.authManager.SupportsExistingEnterpriseReauthorization(),
+		"applications":              applications, "new_account_default_client_id": newAccountDefault})
 }
 
 func enterpriseJournalPath(directory, requestID string) string {
@@ -212,9 +239,9 @@ func (h *Handler) enterpriseImportRequest(c *gin.Context) (string, string, bool)
 		enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_request_id", "A valid import request ID is required")
 		return "", "", false
 	}
-	_, directory, _, configured := h.enterpriseImportConfiguration()
-	if !configured || directory == "" {
-		enterpriseManagementFailure(c, 409, "oauth_application_not_ready", "Configure the Enterprise OAuth application first")
+	_, directory, _ := h.enterpriseOAuthSettings()
+	if directory == "" {
+		enterpriseManagementFailure(c, 409, "oauth_application_not_ready", "Configure the Enterprise OAuth credential directory first")
 		return "", "", false
 	}
 	return id, directory, true
@@ -273,7 +300,8 @@ func (h *Handler) ImportGeminiEnterpriseOAuth(c *gin.Context) {
 		return
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	app, directory, proxy, configured := h.enterpriseImportConfiguration()
+	settings, directory, proxy := h.enterpriseOAuthSettings()
+	app, configured := settings.GeminiEnterpriseApplication(input.ClientID)
 	if !configured || directory == "" || input.ClientID != app.ClientID || !h.authManager.SupportsEnterpriseOAuthImport() {
 		enterpriseManagementFailure(c, 409, "oauth_application_not_ready", "The configured application or credential store does not support this import")
 		return

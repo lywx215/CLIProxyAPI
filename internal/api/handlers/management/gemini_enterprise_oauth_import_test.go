@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,9 +18,13 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	"golang.org/x/oauth2"
 )
 
 type enterpriseImportTransport func(*http.Request) (*http.Response, error)
+
+// Delegating ordinary persistence does not opt a store into exact renewal.
+type enterpriseStoreWithoutExactRenewal struct{ coreauth.Store }
 
 func (f enterpriseImportTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
@@ -31,6 +36,7 @@ type enterpriseImportTest struct {
 	email        string
 	onRefresh    func()
 	refreshError bool
+	clientID     string
 }
 
 func newEnterpriseImportTest(t *testing.T) *enterpriseImportTest {
@@ -51,6 +57,11 @@ func newEnterpriseImportTest(t *testing.T) *enterpriseImportTest {
 			switch r.URL.Host + r.URL.Path {
 			case "oauth2.googleapis.com/token":
 				x.calls++
+				if id, _, ok := r.BasicAuth(); ok {
+					x.clientID = id
+				} else if r.ParseForm() == nil {
+					x.clientID = r.Form.Get("client_id")
+				}
 				if x.refreshError {
 					return nil, errors.New("synthetic transport interruption")
 				}
@@ -67,7 +78,7 @@ func newEnterpriseImportTest(t *testing.T) *enterpriseImportTest {
 				if r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer synthetic-private-access" {
 					t.Error("tokeninfo must carry authorization only in its bearer header")
 				}
-				result = map[string]any{"aud": "test-client", "sub": "stable-subject", "scope": x.scope}
+				result = map[string]any{"aud": x.clientID, "sub": "stable-subject", "scope": x.scope}
 			default:
 				t.Errorf("unexpected external operation: %s %s", r.Method, r.URL.Host+r.URL.Path)
 				return nil, errors.New("unexpected external operation")
@@ -160,6 +171,149 @@ func TestEnterpriseOAuthImportCreateReplayAndRestart(t *testing.T) {
 	data, err := os.ReadFile(enterpriseJournalPath(x.h.cfg.AuthDir, r.RequestID))
 	if err != nil || strings.Contains(string(data), "synthetic-") {
 		t.Fatal("unsafe or missing journal", err)
+	}
+}
+
+func TestEnterpriseOAuthApplicationsCoexist(t *testing.T) {
+	x := newEnterpriseImportTest(t)
+	t.Setenv("TEST_GE_NEW_SECRET", "synthetic-new-secret")
+	t.Setenv("TEST_GE_UNAVAILABLE_SECRET", "")
+	x.h.cfg.OAuth.GeminiEnterpriseApplications = &config.GeminiEnterpriseApplications{
+		NewAccountDefaultClientID: "new-client",
+		Entries: []config.GeminiEnterpriseApplicationEntry{
+			{Name: "New app", ClientID: "new-client", ClientSecretEnv: "TEST_GE_NEW_SECRET"},
+			{Name: "Unavailable app", ClientID: "unavailable-client", ClientSecretEnv: "TEST_GE_UNAVAILABLE_SECRET"},
+		},
+	}
+	capability := importResponse(t, enterpriseManagementRequest(t, x.h.GeminiEnterpriseOAuthCapabilities, "GET", nil))
+	rows := capability["applications"].([]any)
+	if capability["reauthorization_supported"] != true || capability["client_id"] != "test-client" || capability["new_account_default_client_id"] != "new-client" ||
+		len(rows) != 3 || rows[1].(map[string]any)["client_secret_ready"] != true ||
+		rows[2].(map[string]any)["client_secret_ready"] != false {
+		t.Fatalf("application capabilities: %v", capability)
+	}
+	old := x.request("old_app_request_0001")
+	if first := x.post(t, old); first["status"] != "saved" || x.clientID != old.ClientID {
+		t.Fatalf("legacy import: %v", first)
+	}
+	x.email = "new@example.test"
+	newGrant := x.request("new_app_request_0001")
+	newGrant.Email, newGrant.ClientID = x.email, "new-client"
+	if second := x.post(t, newGrant); second["status"] != "saved" || x.clientID != newGrant.ClientID {
+		t.Fatalf("new application import: %v", second)
+	}
+	for _, want := range []struct{ email, id, env string }{
+		{old.Email, old.ClientID, "TEST_GE_IMPORT_SECRET"}, {newGrant.Email, newGrant.ClientID, "TEST_GE_NEW_SECRET"},
+	} {
+		row, ok := x.h.authManager.GetByID(coreauth.EnterpriseOAuthCredentialID(ge.AccountID(want.email, want.id)))
+		if !ok || ge.String(row.Metadata, "client_secret_env") != want.env {
+			t.Fatalf("stored application for %s: missing or wrong reference", want.id)
+		}
+	}
+	calls := x.calls
+	unavailable := x.request("missing_app_request_0001")
+	unavailable.ClientID = "unavailable-client"
+	if rejected := x.post(t, unavailable); rejected["error"] != "oauth_application_not_ready" || x.calls != calls {
+		t.Fatalf("an unavailable application reached Google: %v", rejected)
+	}
+	x.h.cfg.OAuth.Providers.GeminiEnterprise = nil
+	if receipt := x.get(t, newGrant.RequestID); receipt["status"] != "saved" {
+		t.Fatalf("new import receipt depends on the legacy configuration: %v", receipt)
+	}
+}
+
+func TestEnterpriseOAuthApplicationAndExactRenewal(t *testing.T) {
+	x := newEnterpriseImportTest(t)
+	useManualEnterpriseCallback(t)
+	t.Setenv("TEST_GE_NEW_SECRET", "synthetic-new-secret")
+	x.h.cfg.OAuth.GeminiEnterpriseApplications = &config.GeminiEnterpriseApplications{
+		NewAccountDefaultClientID: "new-client",
+		Entries:                   []config.GeminiEnterpriseApplicationEntry{{Name: "New app", ClientID: "new-client", ClientSecretEnv: "TEST_GE_NEW_SECRET"}},
+	}
+	if first := x.post(t, x.request("renew_from_old_0001")); first["status"] != "saved" {
+		t.Fatalf("legacy import: %v", first)
+	}
+	current := x.root(t)
+	query := url.Values{"reauthorize_name": {current.FileName}, "reauthorize_auth_index": {current.EnsureIndex()}}
+	for _, attempt := range []struct {
+		params url.Values
+		client string
+	}{
+		{url.Values{"application_client_id": {"new-client"}, "auto_discover_resources": {"true"}}, "new-client"},
+		{query, "test-client"},
+		{url.Values{}, "test-client"},
+	} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("GET", "/?"+attempt.params.Encode(), nil)
+		x.h.RequestGeminiEnterpriseToken(c)
+		result := importResponse(t, w)
+		state, _ := result["state"].(string)
+		if state != "" {
+			CancelOAuthSession(state)
+		}
+		authorizationURL, _ := result["url"].(string)
+		login, err := url.Parse(authorizationURL)
+		if w.Code != http.StatusOK || err != nil || login.Query().Get("client_id") != attempt.client {
+			t.Fatalf("authorization did not use %s: %v", attempt.client, result)
+		}
+		if result["reauthorization"] != (attempt.params.Get("reauthorize_name") != "") {
+			t.Fatal("authorization did not acknowledge the requested renewal mode")
+		}
+	}
+	for _, attempt := range []struct{ state, email string }{
+		{"foreign-renewal", "other@example.test"}, {"exact-renewal", x.email},
+	} {
+		RegisterOAuthSession(attempt.state, ge.Provider)
+		x.h.finishGeminiEnterpriseReauthorization(context.Background(), attempt.state, current, attempt.email,
+			&oauth2.Token{AccessToken: "renewed-synthetic-access", RefreshToken: "renewed-synthetic-refresh"})
+	}
+	renewed := x.root(t)
+	if renewed.ID != current.ID || ge.String(renewed.Metadata, "client_id") != "test-client" ||
+		ge.String(renewed.Metadata, "refresh_token") != "renewed-synthetic-refresh" ||
+		coreauth.EnterpriseOAuthAuthorizationRevision(renewed) != coreauth.EnterpriseOAuthAuthorizationRevision(current)+1 {
+		t.Fatal("renewal did not update the exact old grant once")
+	}
+	if _, err := x.h.authManager.ReauthorizeExistingGeminiEnterpriseCredential(context.Background(), current, current); err == nil {
+		t.Fatal("a stale renewal could overwrite the newer authorization")
+	}
+	if err := os.Remove(filepath.Join(x.h.cfg.AuthDir, renewed.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.h.authManager.ReauthorizeExistingGeminiEnterpriseCredential(context.Background(), renewed, renewed); err == nil {
+		t.Fatal("an explicit renewal recreated a removed credential")
+	}
+}
+
+func TestEnterpriseExactRenewalRejectsUnsupportedStoreBeforeOAuth(t *testing.T) {
+	x := newEnterpriseImportTest(t)
+	if result := x.post(t, x.request("unsupported_renewal_0001")); result["status"] != "saved" {
+		t.Fatal("fixture import failed")
+	}
+	current := x.root(t)
+	x.h.authManager.SetStore(enterpriseStoreWithoutExactRenewal{Store: x.store})
+	capability := importResponse(t, enterpriseManagementRequest(t, x.h.GeminiEnterpriseOAuthCapabilities, "GET", nil))
+	if capability["reauthorization_supported"] != false {
+		t.Fatal("unsupported store advertised exact renewal")
+	}
+	before := acquireGeminiEnterpriseCallback
+	t.Cleanup(func() { acquireGeminiEnterpriseCallback = before })
+	acquireGeminiEnterpriseCallback = func(string, string, int) (func(), bool) {
+		t.Error("unsupported renewal acquired an OAuth callback listener")
+		return func() {}, false
+	}
+	query := url.Values{"reauthorize_name": {current.FileName}, "reauthorize_auth_index": {current.EnsureIndex()}}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/?"+query.Encode(), nil)
+	x.h.RequestGeminiEnterpriseToken(c)
+	result := importResponse(t, w)
+	if w.Code != http.StatusBadRequest || result["state"] != nil || result["url"] != nil ||
+		result["error"] != coreauth.ErrEnterpriseReauthorizationUnsupported.Error() {
+		t.Fatalf("unsupported renewal reached consent: %v", result)
+	}
+	if _, err := x.h.authManager.ReauthorizeExistingGeminiEnterpriseCredential(t.Context(), current, current); !errors.Is(err, coreauth.ErrEnterpriseReauthorizationUnsupported) {
+		t.Fatalf("SDK bypassed renewal support check: %v", err)
 	}
 }
 

@@ -17,7 +17,17 @@ import (
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 )
 
+func useManualEnterpriseCallback(t *testing.T) {
+	t.Helper()
+	before := acquireGeminiEnterpriseCallback
+	acquireGeminiEnterpriseCallback = func(_, _ string, _ int) (func(), bool) {
+		return func() {}, false
+	}
+	t.Cleanup(func() { acquireGeminiEnterpriseCallback = before })
+}
+
 func TestEnterpriseSessionResourceInputsWithoutGlobalBinding(t *testing.T) {
+	useManualEnterpriseCallback(t)
 	h := &Handler{cfg: &config.Config{AuthDir: t.TempDir()}}
 	for _, suffix := range []string{
 		"&auto_discover_resources=true&engine_id=manual-engine&assistant_id=custom-assistant",
@@ -45,6 +55,7 @@ func TestEnterpriseSessionResourceInputsWithoutGlobalBinding(t *testing.T) {
 }
 
 func TestEnterpriseDefaultLoginHintsUseAccountDiscovery(t *testing.T) {
+	useManualEnterpriseCallback(t)
 	for _, hint := range []config.GeminiEnterpriseOAuth{
 		{ClientID: "fixture-client", EngineID: "optional-engine"},
 		{ClientID: "fixture-client", ProjectID: "optional-project"},

@@ -86,7 +86,7 @@ func (h *Handler) PatchGeminiEnterpriseResources(c *gin.Context) {
 	}
 	updated, errUpdate := h.authManager.UpdateEnterpriseResources(c.Request.Context(), auth, ge.Resources(proposed))
 	if errUpdate != nil {
-		if errors.Is(errUpdate, coreauth.ErrEnterpriseResourcesChanged) {
+		if errors.Is(errUpdate, coreauth.ErrEnterpriseResourcesChanged) || errors.Is(errUpdate, coreauth.ErrAuthFileWriteConflict) {
 			fail(http.StatusConflict, "credential_changed", "Credential changed during validation; reload and try again")
 		} else {
 			fail(http.StatusInternalServerError, "resource_save_failed", "Could not save credential resources")

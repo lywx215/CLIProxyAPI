@@ -150,6 +150,10 @@ func (h *Handler) PatchAuthFileStatus(c *gin.Context) {
 		updatedAuth, err = h.authManager.Update(ctx, targetAuth)
 	}
 	if err != nil {
+		if errors.Is(err, coreauth.ErrAuthFileWriteConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update auth: %v", err)})
 		return
 	}
@@ -467,6 +471,10 @@ func (h *Handler) PatchAuthFileFields(c *gin.Context) {
 
 	updatedAuth, err := h.authManager.Update(ctx, targetAuth)
 	if err != nil {
+		if errors.Is(err, coreauth.ErrAuthFileWriteConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to update auth: %v", err)})
 		return
 	}

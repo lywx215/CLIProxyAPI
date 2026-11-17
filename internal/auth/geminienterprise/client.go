@@ -236,8 +236,14 @@ func ParseModels(data []byte) ([]Model, error) {
 
 // Email uses only the fixed Google user-info origin and never follows redirects.
 func Email(ctx context.Context, client *http.Client, token string) (string, error) {
+	email, _, err := UserIdentity(ctx, client, token)
+	return email, err
+}
+
+// UserIdentity also returns the Google subject when the user-info response provides it.
+func UserIdentity(ctx context.Context, client *http.Client, token string) (string, string, error) {
 	if client == nil {
-		return "", fmt.Errorf("gemini-enterprise: user info HTTP client is required")
+		return "", "", fmt.Errorf("gemini-enterprise: user info HTTP client is required")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -251,21 +257,24 @@ func Email(ctx context.Context, client *http.Client, token string) (string, erro
 	case resourceRequests <- struct{}{}:
 		defer func() { <-resourceRequests }()
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", "", ctx.Err()
 	}
 	r, err := clientCopy.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("gemini-enterprise: user info request failed")
+		return "", "", fmt.Errorf("gemini-enterprise: user info request failed")
 	}
 	defer func() { _ = r.Body.Close() }()
 	var body struct {
-		Email    string `json:"email"`
-		Verified bool   `json:"verified_email"`
+		Email    string          `json:"email"`
+		Verified bool            `json:"verified_email"`
+		ID       json.RawMessage `json:"id"`
 	}
 	if r.StatusCode != 200 || json.NewDecoder(io.LimitReader(r.Body, 1024*1024)).Decode(&body) != nil || !body.Verified || strings.TrimSpace(body.Email) == "" || strings.ContainsAny(body.Email, "\r\n\x00") {
-		return "", fmt.Errorf("gemini-enterprise: Google did not return a verified account email")
+		return "", "", fmt.Errorf("gemini-enterprise: Google did not return a verified account email")
 	}
-	return strings.ToLower(strings.TrimSpace(body.Email)), nil
+	var subject string
+	_ = json.Unmarshal(body.ID, &subject)
+	return strings.ToLower(strings.TrimSpace(body.Email)), subject, nil
 }
 
 // AuthorizationURL requests offline access with S256 PKCE and a random caller-owned state.
