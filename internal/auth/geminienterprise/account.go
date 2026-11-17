@@ -26,12 +26,34 @@ type Collection struct {
 
 // Account owns a single OAuth authorization and its collection graph.
 type Account struct {
-	Version       int            `json:"version"`
-	ID            string         `json:"account_id"`
-	Revision      uint64         `json:"revision"`
-	Collections   []Collection   `json:"collections"`
-	Discovery     map[string]any `json:"discovery,omitempty"`
-	MergedSources []string       `json:"merged_sources,omitempty"`
+	Version       int               `json:"version"`
+	ID            string            `json:"account_id"`
+	Revision      uint64            `json:"revision"`
+	Collections   []Collection      `json:"collections"`
+	Discovery     map[string]any    `json:"discovery,omitempty"`
+	MergedSources []string          `json:"merged_sources,omitempty"`
+	RotationHolds map[string]string `json:"rotation_holds,omitempty"`
+}
+
+// RotationScope identifies the shared license region, independent of engine choice.
+func RotationScope(project, location string) string {
+	if !numberProject.MatchString(project) {
+		return ""
+	}
+	switch location {
+	case "global", "us", "eu", "ca", "au", "in":
+		return project + "/" + location
+	default:
+		return ""
+	}
+}
+
+func ValidRotationOwner(owner string) bool {
+	if len(owner) != 32 || strings.ToLower(owner) != owner {
+		return false
+	}
+	_, err := hex.DecodeString(owner)
+	return err == nil
 }
 
 // AccountID must be called with an email verified by Google's userinfo endpoint.
@@ -100,6 +122,12 @@ func ReadAccount(metadata map[string]any) (*Account, error) {
 	}
 	if expected := AccountID(String(metadata, "email"), String(metadata, "client_id")); expected != "" && account.ID != expected {
 		return nil, fmt.Errorf("gemini-enterprise: account metadata identity mismatch")
+	}
+	for scope, owner := range account.RotationHolds {
+		project, location, ok := strings.Cut(scope, "/")
+		if !ok || RotationScope(project, location) != scope || !ValidRotationOwner(owner) {
+			return nil, fmt.Errorf("gemini-enterprise: invalid rotation hold")
+		}
 	}
 	seen := make(map[string]bool, len(account.Collections))
 	for i := range account.Collections {
@@ -194,6 +222,13 @@ func CloneAccount(account Account) Account {
 	}
 	account.Discovery, _ = cloneAccountValue(account.Discovery).(map[string]any)
 	account.MergedSources = append([]string(nil), account.MergedSources...)
+	if account.RotationHolds != nil {
+		holds := make(map[string]string, len(account.RotationHolds))
+		for scope, owner := range account.RotationHolds {
+			holds[scope] = owner
+		}
+		account.RotationHolds = holds
+	}
 	return account
 }
 

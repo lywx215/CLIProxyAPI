@@ -221,7 +221,9 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		if errSettings := applyEnterpriseCollectionSettings(child); errSettings != nil {
 			return nil, errSettings
 		}
-		child.Disabled = parent.Disabled || parent.Status == StatusDisabled || collection.Disabled || collection.Missing
+		rotationHeld := account.RotationHolds[ge.RotationScope(collection.ProjectID, collection.Location)] != ""
+		child.Metadata["enterprise_rotation_held"] = rotationHeld
+		child.Disabled = parent.Disabled || parent.Status == StatusDisabled || collection.Disabled || collection.Missing || rotationHeld
 		if child.Disabled {
 			child.Status = StatusDisabled
 		} else if child.Status == StatusDisabled {
@@ -718,6 +720,19 @@ func enterpriseAccountForAuth(auth *Auth) (ge.Account, error) {
 
 // UpdateEnterpriseAccount rebases graph changes on current OAuth and user state.
 func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expectedRevision uint64, mutate func(*ge.Account) error) (*Auth, error) {
+	return m.updateEnterpriseAccount(ctx, base, expectedRevision, 0, mutate)
+}
+
+// UpdateEnterpriseRotation checks the authorization version together with the
+// saved application graph before an administrative rotation write.
+func (m *Manager) UpdateEnterpriseRotation(ctx context.Context, base *Auth, expectedRevision, authorizationRevision uint64, mutate func(*ge.Account) error) (*Auth, error) {
+	if expectedRevision == 0 || authorizationRevision == 0 {
+		return nil, ErrEnterpriseAccountChanged
+	}
+	return m.updateEnterpriseAccount(ctx, base, expectedRevision, authorizationRevision, mutate)
+}
+
+func (m *Manager) updateEnterpriseAccount(ctx context.Context, base *Auth, expectedRevision, authorizationRevision uint64, mutate func(*ge.Account) error) (*Auth, error) {
 	if m == nil || base == nil || base.Provider != ge.Provider || IsPluginVirtualAuth(base) || mutate == nil {
 		return nil, ErrEnterpriseAccountChanged
 	}
@@ -729,7 +744,8 @@ func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expec
 	defer release()
 	m.mu.Lock()
 	current := m.auths[parentID]
-	if current == nil || current.Provider != ge.Provider || enterpriseRetired(current) || (base.RegistrationEpoch != 0 && !IsEnterpriseCollectionAuth(base) && current.RegistrationEpoch != base.RegistrationEpoch) || !sameEnterprisePrincipal(base, current) {
+	if current == nil || current.Provider != ge.Provider || enterpriseRetired(current) || (base.RegistrationEpoch != 0 && !IsEnterpriseCollectionAuth(base) && current.RegistrationEpoch != base.RegistrationEpoch) || !sameEnterprisePrincipal(base, current) ||
+		(authorizationRevision != 0 && (EnterpriseOAuthAuthorizationRevision(current) != authorizationRevision || current.Disabled || current.Status == StatusDisabled)) {
 		m.mu.Unlock()
 		return nil, ErrEnterpriseAccountChanged
 	}

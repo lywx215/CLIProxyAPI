@@ -2243,6 +2243,9 @@ func (m *Manager) HttpRequest(ctx context.Context, auth *Auth, req *http.Request
 	if exec == nil {
 		return nil, &Error{Code: "provider_not_found", Message: "executor not registered for provider: " + providerKey}
 	}
+	if auth.enterpriseQuota != nil && req.URL != nil && strings.HasSuffix(req.URL.Path, ":streamAssist") {
+		exec = executorForAuth(exec, auth)
+	}
 	return exec.HttpRequest(ctx, auth, req)
 }
 

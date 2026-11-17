@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/budget"
@@ -71,12 +72,27 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 	go func() {
 		defer close(out)
 		var finalErr error
-		defer func() { ticket.finish(finalErr) }()
+		var cancelled bool
+		defer func() {
+			if !cancelled {
+				ticket.finish(finalErr)
+				return
+			}
+			// Close the caller's stream promptly. The upstream request remains
+			// in flight until its producer finishes reacting to cancellation.
+			ticket.finishQuota(finalErr)
+			ticket.finishBalance(finalErr)
+			go func() {
+				for range source.Chunks {
+				}
+				ticket.finishRotation()
+			}()
+		}()
 		for {
 			select {
 			case <-ctx.Done():
 				finalErr = ctx.Err()
-				discardStreamChunks(source.Chunks)
+				cancelled = true
 				return
 			case chunk, ok := <-source.Chunks:
 				if !ok {
@@ -92,7 +108,7 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 				case out <- chunk:
 				case <-ctx.Done():
 					finalErr = ctx.Err()
-					discardStreamChunks(source.Chunks)
+					cancelled = true
 					return
 				}
 			}
@@ -101,5 +117,34 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 	return &exec.StreamResult{Chunks: out, Headers: source.Headers}, nil
 }
 func (e *enterpriseQuotaExecutor) HttpRequest(ctx context.Context, a *Auth, r *http.Request) (*http.Response, error) {
-	return e.ProviderExecutor.HttpRequest(ctx, a, r)
+	finish, err := a.enterpriseQuota.beginRotationRequest()
+	if err != nil {
+		return nil, err
+	}
+	response, err := e.ProviderExecutor.HttpRequest(ctx, a, r)
+	if err != nil || response == nil || response.Body == nil {
+		finish()
+		return response, err
+	}
+	response.Body = &enterpriseCountedBody{ReadCloser: response.Body, finish: finish}
+	return response, nil
+}
+
+type enterpriseCountedBody struct {
+	io.ReadCloser
+	finish func()
+}
+
+func (body *enterpriseCountedBody) Read(buffer []byte) (int, error) {
+	size, err := body.ReadCloser.Read(buffer)
+	if err != nil {
+		body.finish()
+	}
+	return size, err
+}
+
+func (body *enterpriseCountedBody) Close() error {
+	err := body.ReadCloser.Close()
+	body.finish()
+	return err
 }

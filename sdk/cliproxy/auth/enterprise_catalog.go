@@ -159,6 +159,19 @@ func (m *Manager) carryEnterprisePolicyRotationLocked(previous []*Auth) {
 // PersistEnterpriseCatalog updates only server-owned metadata under the same
 // mutation gate as settings and token refresh. Graph revisions remain untouched.
 func (m *Manager) PersistEnterpriseCatalog(ctx context.Context, auth *Auth, models []ge.Model, checkedAt time.Time) error {
+	return m.persistEnterpriseCatalog(ctx, auth, models, checkedAt, "")
+}
+
+// PersistEnterpriseRotationCatalog publishes a fresh catalog while the caller
+// owns the saved hold. The hold check and catalog write share the account lock.
+func (m *Manager) PersistEnterpriseRotationCatalog(ctx context.Context, auth *Auth, models []ge.Model, checkedAt time.Time, rotationOwner string) error {
+	if !ge.ValidRotationOwner(rotationOwner) {
+		return ErrEnterpriseAccountChanged
+	}
+	return m.persistEnterpriseCatalog(ctx, auth, models, checkedAt, rotationOwner)
+}
+
+func (m *Manager) persistEnterpriseCatalog(ctx context.Context, auth *Auth, models []ge.Model, checkedAt time.Time, rotationOwner string) error {
 	if auth == nil || auth.Provider != ge.Provider {
 		return ErrEnterpriseAccountChanged
 	}
@@ -171,7 +184,18 @@ func (m *Manager) PersistEnterpriseCatalog(ctx context.Context, auth *Auth, mode
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current, owner := m.auths[auth.ID], m.auths[ownerID]
-	if current == nil || owner == nil || current.Disabled || current.RegistrationEpoch != auth.RegistrationEpoch || enterprisePolicyCatalogKey(current) != enterprisePolicyCatalogKey(auth) {
+	if current == nil || owner == nil || current.RegistrationEpoch != auth.RegistrationEpoch || enterprisePolicyCatalogKey(current) != enterprisePolicyCatalogKey(auth) {
+		return ErrEnterpriseAccountChanged
+	}
+	if rotationOwner != "" {
+		graph, err := ge.ReadAccount(owner.Metadata)
+		binding := ge.FromMetadata(current.Metadata)
+		if err != nil || graph == nil || owner.Disabled || owner.Status == StatusDisabled ||
+			enterpriseOAuthAuthorizationRevision(owner) != enterpriseOAuthAuthorizationRevision(auth) ||
+			graph.RotationHolds[ge.RotationScope(binding.ProjectID, binding.Location)] != rotationOwner {
+			return ErrEnterpriseAccountChanged
+		}
+	} else if current.Disabled {
 		return ErrEnterpriseAccountChanged
 	}
 	snapshot := EnterpriseCatalogSnapshot{1, enterprisePolicyCatalogKey(auth), ge.Resources(ge.FromMetadata(auth.Metadata)), append([]ge.Model{}, models...), checkedAt.UTC()}
@@ -218,6 +242,9 @@ func (m *Manager) PersistEnterpriseCatalog(ctx context.Context, auth *Auth, mode
 	mergeAuthSaveDelta(updated, before, currentOwner, false)
 	updated.Generation = currentOwner.Generation + 1
 	m.auths[ownerID] = updated
+	if rotationOwner != "" {
+		m.PublishEnterprisePolicyCatalog(current, models)
+	}
 	return nil
 }
 
