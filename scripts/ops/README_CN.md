@@ -22,6 +22,9 @@ python -m pip install -r scripts/ops/requirements.txt
 # 在同一个队列中为指定目标记录例外。
 .\cpa-update.ps1 plan -Targets nc243,nc239 -Commit <完整40位提交SHA> -TargetOptions .\target-options.json
 
+# 并行进行远端只读预检和本地发布物资格检查。目标按后续部署顺序填写。
+.\cpa-update.ps1 plan -Targets nc73,nc243,c05,p3 -Commit <完整40位提交SHA> -PrepareRelease
+
 # 下列命令会维护生产。仅在本次获得对应目标的明确更新指令后执行。
 .\cpa-update.ps1 update -Plan plan-<编号>
 
@@ -50,6 +53,7 @@ python -m pip install -r scripts/ops/requirements.txt
 | `nc243` | 159.195.235.243:8317 | 现有 Docker Compose |
 | `nc239` | 159.195.239.153:8317 | 现有 Docker Compose |
 | `nc110` | 152.53.243.110:8317 | 现有 Docker Compose |
+| `nc127` | 159.195.237.127:8317 | 现有 Docker Compose |
 | `p1` | cpa-p1.zeabur.app | 已下线，退出运维清单 |
 | `A`、`B` | 152.53.208.245、159.195.16.180 | CLI 永久退役，不可选择 |
 
@@ -85,6 +89,8 @@ SSH JSON 记录须有 `host/user/port/password`；API JSON 记录须有 `origin/
 ## 队列和逐台例外
 
 `plan` 并行检查整轮目标，保存 DPAPI 加密备份。进入维护前重新读取当前台的部署、渠道、拓扑、配置和凭证。身份信息匹配时，模型目录可复用至原观测后 10 分钟，已确认的正余额在配额池匹配、观测不超过 120 秒且尚未重置时复用，文件版本一致的凭证备份可复用。无文件版本证据或内容发生变化时重新下载。
+
+使用 `-PrepareRelease` 时，本地 Go 测试、回环烟测和 Linux 包构建与远端预检重叠。后续 `update` 校验摘要并复用发布物。相同发布物的资格检查由本机文件锁协调，不同发布版本共享 Go 构建缓存。
 
 当前台排空时仅后台预取紧邻的下一台。全部只读网络操作共享 4 个名额，后台最多占 2 个，当前台排队读取优先。后台预检失败时，先完成当前台恢复，再报告失败目标并停止队列。发布物以完整提交 SHA 固定，在首台停流前完成资格验证和构建。当前入口要求已提交源码。
 

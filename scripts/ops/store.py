@@ -20,6 +20,8 @@ class Store:
         self.vault = vault or Vault()
         self.db = self.root / 'operations.sqlite3'
         with self.connect() as db:
+            if db.execute('PRAGMA journal_mode').fetchone()[0] != 'wal':
+                db.execute('PRAGMA journal_mode=WAL').fetchone()
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY, body TEXT NOT NULL, hash TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, plan TEXT NOT NULL UNIQUE,
@@ -35,10 +37,9 @@ class Store:
     @contextlib.contextmanager
     def connect(self):
         db = sqlite3.connect(self.db, timeout=10)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA synchronous=FULL')
         try:
+            db.row_factory = sqlite3.Row
+            db.execute('PRAGMA synchronous=FULL')
             yield db
             db.commit()
         except BaseException:
@@ -139,8 +140,9 @@ class Store:
 
 class ProcessLock:
     """OS-owned lock; crashes release it, unlike the persistent production lease."""
-    def __init__(self, path):
+    def __init__(self, path, busy_code='another_controller_running'):
         self.path = Path(path)
+        self.busy_code = busy_code
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +161,7 @@ class ProcessLock:
                 fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             self.stream.close()
-            require(False, 'another_controller_running')
+            require(False, self.busy_code)
         return self
 
     def __exit__(self, *args):

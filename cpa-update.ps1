@@ -10,6 +10,7 @@ param(
     [string]$ExcludeModelTest,
     [string]$Inventory,
     [string]$TargetOptions,
+    [switch]$PrepareRelease,
     [string]$StateDirectory,
     [string]$Python = $env:CPA_OPS_PYTHON
 )
@@ -30,6 +31,7 @@ if ($Run) { $cliArguments += @('--run', $Run) }
 if ($ExcludeModelTest) { $cliArguments += @('--exclude-model-test', $ExcludeModelTest) }
 if ($Inventory) { $cliArguments += @('--inventory', $Inventory) }
 if ($TargetOptions) { $cliArguments += @('--target-options', $TargetOptions) }
+if ($PrepareRelease) { $cliArguments += '--prepare-release' }
 
 Push-Location -LiteralPath $PSScriptRoot
 try {

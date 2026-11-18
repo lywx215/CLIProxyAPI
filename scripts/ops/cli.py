@@ -10,6 +10,7 @@ import time
 from .core import OpsError, require, validate_selection
 from .engine import Engine
 from .live import Live
+from .preparation import inspect_plan
 from .release import Releases, describe
 from .report import write as report_write
 from .store import Lease, Store
@@ -44,6 +45,7 @@ def parser():
     plan.add_argument('--targets', required=True)
     plan.add_argument('--commit', required=True)
     plan.add_argument('--target-options', type=Path, help='JSON file with exceptions keyed by selected target alias')
+    plan.add_argument('--prepare-release', action='store_true', help='Build and verify the local release while preflight runs')
     update = sub.add_parser('update', help='Execute the explicitly selected plan, serially')
     update.add_argument('--plan', required=True)
     for name in ['status', 'resume', 'pause', 'report']:
@@ -87,7 +89,11 @@ def main(arguments=None):
         targets = validate_selection(inventory, labels)
         options = load_target_options(args.target_options, labels)
         release = describe(inventory['repository'], args.commit)
-        results = driver.inspect(targets, release, options=options)
+        releases = Releases(inventory['repository'], root / 'releases', inventory.get('go'), emit) if args.prepare_release else None
+        results, qualified = inspect_plan(driver, targets, release, options, releases=releases)
+        if qualified is not None:
+            emit('release_prepared', commit=release['commit'], page_sha256=release['page_sha256'],
+                 binary_sha256=qualified['binary_sha256'], package_sha256=qualified['package_sha256'])
         for label, before, routes, _, _ in results:
             if label in options:
                 selected = options[label]

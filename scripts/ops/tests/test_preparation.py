@@ -1,5 +1,6 @@
 import contextlib
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import tempfile
 import threading
@@ -11,11 +12,66 @@ from scripts.ops.application import Application
 from scripts.ops.cache_observer import SyncEvents, timestamp_ns
 from scripts.ops.cache_sync import CacheObserver
 from scripts.ops.concurrency import ReadLimiter, TaskExecutor, background_reads
-from scripts.ops.core import OpsError
+from scripts.ops.core import OpsError, sha_file
 from scripts.ops.plans import execution_options, load_target_options
+from scripts.ops.preparation import inspect_plan
+from scripts.ops.release import Releases
 
 
 class PreparationTests(unittest.TestCase):
+    def test_release_qualification_overlaps_read_only_preflight(self):
+        release = {'commit': 'commit'}
+        driver, releases = MagicMock(), MagicMock()
+        build_started, read_done = threading.Event(), threading.Event()
+
+        def qualify(description):
+            self.assertEqual(description, release)
+            build_started.set()
+            self.assertTrue(read_done.wait(5))
+            return {'package': 'qualified'}
+
+        def inspect(targets, description, *, options):
+            try:
+                self.assertTrue(build_started.wait(5))
+                self.assertEqual(targets, ['vps', 'zeabur'])
+                self.assertEqual(description, release)
+                self.assertEqual(options, {})
+                return ['vps-ready', 'zeabur-ready']
+            finally:
+                read_done.set()
+
+        releases.prepare.side_effect = qualify
+        driver.inspect.side_effect = inspect
+        self.assertEqual(
+            inspect_plan(driver, ['vps', 'zeabur'], release, {}, releases=releases),
+            (['vps-ready', 'zeabur-ready'], {'package': 'qualified'}),
+        )
+
+    def test_qualified_release_reuses_the_same_verified_artifacts(self):
+        release = {'commit': 'commit'}
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Releases('repository', temporary, go='go')
+
+            def build(description, directory, receipt, version, identity):
+                binary = directory / 'binary'
+                package = directory / 'package'
+                binary.write_bytes(b'binary')
+                package.write_bytes(b'package')
+                result = {'identity': identity, 'binary': str(binary), 'package': str(package),
+                          'binary_sha256': sha_file(binary), 'package_sha256': sha_file(package)}
+                receipt.write_text(json.dumps(result), encoding='utf-8')
+                return result
+
+            with patch('scripts.ops.release.describe', return_value=release), \
+                    patch('scripts.ops.release.subprocess.check_output', return_value='go version'), \
+                    patch.object(releases, '_build', side_effect=build) as rebuild:
+                qualified = releases.prepare(release)
+                self.assertEqual(releases.prepare(release), qualified)
+                rebuild.assert_called_once()
+                Path(qualified['package']).write_bytes(b'corrupt')
+                with self.assertRaisesRegex(OpsError, 'cached_release_corrupt'):
+                    releases.prepare(release)
+
     def test_background_reads_are_capped_and_a_waiting_foreground_read_goes_first(self):
         limiter = ReadLimiter(4, 2)
         waiting = {name: threading.Event() for name in ['background-3', 'foreground-3']}

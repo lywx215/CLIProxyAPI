@@ -15,6 +15,7 @@ import time
 import uuid
 
 from .core import OpsError, digest, require, sha_file
+from .store import ProcessLock
 from .telemetry import operation, note
 
 
@@ -42,7 +43,7 @@ def environment(directory, repository):
         capture_output=True,
     )
     require(setting.returncode == 0 or (setting.returncode == 1 and not setting.stderr), 'git_operation_failed')
-    cache = directory / 'go-cache'
+    cache = directory.parent / 'go-cache'
     if setting.returncode == 0:
         cache = Path(setting.stdout.decode('utf-8').rstrip('\r\n'))
         require(cache.is_absolute(), 'go_cache_path_must_be_absolute')
@@ -138,13 +139,16 @@ class Releases:
         identity = digest({'release': release, 'go': version, 'builder': sha_file(__file__)})
         directory = self.root / identity
         receipt = directory / 'release.json'
-        if receipt.is_file():
-            data = json.loads(receipt.read_text(encoding='utf-8'))
-            require(data['identity'] == identity and sha_file(data['package']) == data['package_sha256']
-                    and sha_file(data['binary']) == data['binary_sha256'], 'cached_release_corrupt')
-            note('cache_hit', scope='release')
-            return data
-        directory.mkdir(parents=True, exist_ok=True)
+        with ProcessLock(directory / 'qualification.lock', busy_code='release_qualification_in_progress'):
+            if receipt.is_file():
+                data = json.loads(receipt.read_text(encoding='utf-8'))
+                require(data['identity'] == identity and sha_file(data['package']) == data['package_sha256']
+                        and sha_file(data['binary']) == data['binary_sha256'], 'cached_release_corrupt')
+                note('cache_hit', scope='release')
+                return data
+            return self._build(release, directory, receipt, version, identity)
+
+    def _build(self, release, directory, receipt, version, identity):
         env = environment(directory, self.repository)
         source = directory / ('source-' + uuid.uuid4().hex[:8])
         source.mkdir()

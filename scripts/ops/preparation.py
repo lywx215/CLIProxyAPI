@@ -4,6 +4,15 @@ from .telemetry import recording, operation, note
 from .plans import validate_observed_options
 
 
+def inspect_plan(driver, targets, release, options, *, releases=None):
+    if releases is None:
+        return driver.inspect(targets, release, options=options), None
+    with TaskExecutor(max_workers=1) as executor:
+        qualification = executor.submit(releases.prepare, release)
+        preflight = driver.inspect(targets, release, options=options)
+        return preflight, qualification.result()
+
+
 class Lookahead:
     def __init__(self, driver, store, run_id, release):
         self.driver, self.store, self.run_id, self.release = driver, store, run_id, release
