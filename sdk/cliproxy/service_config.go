@@ -2,9 +2,11 @@ package cliproxy
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"time"
 
+	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/synthesizer"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -21,8 +23,9 @@ func (s *Service) applyWatcherConfigUpdate(newCfg *config.Config) {
 }
 
 type configCommit struct {
-	cfg      *config.Config
-	sequence uint64
+	cfg                          *config.Config
+	sequence                     uint64
+	enterpriseDefinitionsChanged bool
 }
 
 type routingRuntimeState struct {
@@ -126,6 +129,7 @@ func (s *Service) commitConfigUpdate(newCfg *config.Config) configCommit {
 		return configCommit{}
 	}
 	s.cfgMu.Lock()
+	definitionsChanged := s.cfg == nil || !reflect.DeepEqual(s.cfg.GeminiEnterpriseModels, newCfg.GeminiEnterpriseModels)
 	s.cfg = newCfg
 	s.cfgMu.Unlock()
 	s.cancelStaleAntigravityProbes("")
@@ -134,7 +138,7 @@ func (s *Service) commitConfigUpdate(newCfg *config.Config) configCommit {
 	}
 	s.configSequence++
 	registry.UpdateModelCatalogSources(newCfg.Models, newCfg.Home.Enabled)
-	return configCommit{cfg: newCfg, sequence: s.configSequence}
+	return configCommit{cfg: newCfg, sequence: s.configSequence, enterpriseDefinitionsChanged: definitionsChanged}
 }
 
 func (s *Service) configCommitCurrent(commit configCommit) bool {
@@ -216,7 +220,27 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 		return false
 	}
 	s.syncPluginModelRuntime(registrationCtx)
+	if commit.enterpriseDefinitionsChanged && !cfg.Home.Enabled {
+		s.republishEnterpriseDefinitionModels(registrationCtx, auths)
+	}
+	if ctx.Err() == nil && s.coreManager != nil {
+		s.coreManager.MarkEnterpriseModelDefinitionsApplied(cfg.GeminiEnterpriseModels.Revision)
+	}
 	return ctx.Err() == nil
+}
+
+func (s *Service) republishEnterpriseDefinitionModels(ctx context.Context, auths []*coreauth.Auth) {
+	d := s.enterpriseState()
+	for _, auth := range auths {
+		if auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == coreauth.StatusDisabled {
+			continue
+		}
+		key := s.enterpriseKey(auth)
+		d.mu.Lock()
+		catalog := d.catalogs[key]
+		d.mu.Unlock()
+		s.publishEnterpriseCatalog(ctx, auth, key, catalog, registry.GetGlobalRegistry().ClientRegistrationEpoch(auth.ID))
+	}
 }
 
 func (s *Service) applyManagerConfig(ctx context.Context, commit configCommit) bool {

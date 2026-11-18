@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -80,7 +81,11 @@ func (m *Manager) EnterpriseModelRouteKnown(model string) bool {
 		return false
 	}
 	table, _ := m.oauthModelAlias.Load().(*oauthModelAliasTable)
+	definitions := m.enterpriseModelDefinitions()
 	known := func(name string) bool {
+		if _, configured := definitions.Definition(name); configured {
+			return true
+		}
 		if table != nil {
 			if _, ok := table.reverse[ge.Provider][strings.ToLower(name)]; ok {
 				return true
@@ -320,6 +325,7 @@ type EnterprisePolicyModel struct {
 	Reason         string `json:"reason,omitempty"`
 	CatalogSource  string `json:"catalog_source"`
 	UpstreamListed bool   `json:"upstream_listed"`
+	Configured     bool   `json:"configured,omitempty"`
 }
 
 type EnterpriseModelPolicyView struct {
@@ -406,6 +412,7 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		}
 	}
 	view.CatalogState, view.CatalogKnown = state, known
+	definitions := m.enterpriseModelDefinitions()
 	manualModels := map[string]bool{}
 	supplement := func(id string) {
 		if !slices.ContainsFunc(models, func(model ge.Model) bool { return model.ID == id }) {
@@ -419,6 +426,11 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 	}
 	if enabled, err := ge.ReadCarbonEnabled(auth.Metadata); err == nil && enabled {
 		supplement(ge.CarbonModel)
+	}
+	for _, definition := range definitions.Definitions {
+		if _, targeted := configuredEnterpriseTarget(auth, definition); targeted {
+			supplement(definition.ModelID)
+		}
 	}
 	view.ImageGenerationDisabled = cfg != nil && cfg.DisableImageGeneration == config.DisableImageGenerationAll
 	for _, model := range models {
@@ -454,7 +466,21 @@ func (m *Manager) enterpriseModelPolicyView(auth *Auth, includeCarbon bool) Ente
 		if manualModels[model.ID] {
 			source = "manual"
 		}
-		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: source, UpstreamListed: source == "upstream" || source == "cached"})
+		definition, defined := definitions.Definition(model.ID)
+		target, targeted := configuredEnterpriseTarget(auth, definition)
+		if defined && targeted {
+			reason = m.configuredModelGate(auth, view, definition, model)
+			if reason == "" {
+				if !m.configuredModelProof(auth, definition, target) {
+					reason = "model_verification_required"
+				}
+			}
+			allowed = reason == ""
+			if allowed && source != "upstream" && source != "cached" {
+				source = "verified_application"
+			}
+		}
+		view.CatalogModels = append(view.CatalogModels, EnterprisePolicyModel{ID: model.ID, DisplayName: model.DisplayName, MediaKind: model.MediaKind, Allowed: allowed, Reason: reason, CatalogSource: source, UpstreamListed: source == "upstream" || source == "cached", Configured: targeted})
 		if allowed {
 			view.EffectiveModels = append(view.EffectiveModels, model.ID)
 		}
@@ -524,6 +550,9 @@ func (m *Manager) ValidateEnterpriseModelCatalog(auth *Auth, model string) error
 }
 
 func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *Auth, model string, catalog bool) error {
+	if probe := configuredEnterpriseProbe(ctx); probe != nil && model != "" {
+		return m.validateConfiguredModelVerification(auth, probe.proof)
+	}
 	if scope := enterpriseCarbonTestScope(ctx); scope != nil && enterpriseCarbonTestMatches(ctx, auth, model) {
 		return m.EnterpriseAdmissionTestEligibility(auth, scope.model)
 	}
@@ -533,6 +562,17 @@ func (m *Manager) validateEnterprisePolicyForRequest(ctx context.Context, auth *
 
 func (m *Manager) validateEnterpriseCatalogPolicy(auth *Auth, view EnterpriseModelPolicyView, model string, catalog bool) error {
 	model = strings.TrimPrefix(canonicalModelKey(model), "models/")
+	if _, configured := m.configuredEnterpriseDefinition(auth, model); configured {
+		for _, entry := range view.CatalogModels {
+			if entry.ID == model {
+				if entry.Allowed {
+					return nil
+				}
+				return configuredVerificationError(entry.Reason, http.StatusConflict)
+			}
+		}
+		return configuredVerificationError("model_not_in_catalog", http.StatusConflict)
+	}
 	// A deferred model is checked again after payload rules resolve its final ID.
 	if view.ForcesArgon(model) || model == "" && !catalog && view.ArgonForceEnabled {
 		return nil

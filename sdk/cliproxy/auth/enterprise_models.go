@@ -41,10 +41,11 @@ func (c *enterpriseModelCoordinator) now() time.Time {
 
 type enterpriseModelContextKey struct{}
 type enterpriseModelProbe struct {
-	authID   string
-	expected ge.ResourceBinding
-	model    string
-	version  *enterpriseModelProbeVersion
+	authID     string
+	expected   ge.ResourceBinding
+	model      string
+	version    *enterpriseModelProbeVersion
+	configured *enterpriseConfiguredModelProbe
 }
 
 type enterpriseModelProbeVersion struct {
@@ -282,11 +283,19 @@ func ValidateEnterpriseModelRequest(ctx context.Context, auth *Auth, model strin
 // CommitEnterpriseModelSubmission rechecks policy at the last local step before sending.
 func CommitEnterpriseModelSubmission(ctx context.Context, auth *Auth, model string) error {
 	modelKey := strings.TrimPrefix(canonicalModelKey(model), "models/")
+	if configuredEnterpriseProbe(ctx) != nil {
+		return ValidateEnterpriseModelRequest(ctx, auth, model)
+	}
 	if scope := enterpriseCarbonTestScope(ctx); scope != nil {
 		return CommitEnterpriseAdmissionSubmission(ctx, auth, model, scope.model)
 	}
 	if auth == nil || auth.Provider != ge.Provider {
 		return nil
+	}
+	if auth.enterpriseQuota != nil {
+		if _, configured := auth.enterpriseQuota.manager.configuredEnterpriseDefinition(auth, modelKey); configured {
+			return ValidateEnterpriseModelRequest(ctx, auth, model)
+		}
 	}
 	allModels, _ := ge.ReadAllModelsEnabled(auth.Metadata)
 	// An unset switch may have admitted this request under the paid default.

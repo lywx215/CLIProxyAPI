@@ -960,7 +960,7 @@ func builtinSchedulerStrategy(delegate string) (schedulerStrategy, bool) {
 }
 
 func (m *Manager) pickViaBuiltinScheduler(ctx context.Context, strategy schedulerStrategy, provider string, providers []string, model string, opts cliproxyexecutor.Options, tried map[string]struct{}) (*Auth, bool, error) {
-	if EnterpriseCarbonModelTestActive(ctx) {
+	if EnterpriseCarbonModelTestActive(ctx) || ConfiguredEnterpriseModelProbeActive(ctx) {
 		// The fixed closed candidate is intentionally absent from public shards.
 		return nil, false, nil
 	}
@@ -1062,6 +1062,10 @@ func (m *Manager) authSupportsRouteModel(registryRef *registry.ModelRegistry, au
 }
 
 func (m *Manager) authSupportsRouteModelForRequest(ctx context.Context, registryRef *registry.ModelRegistry, auth *Auth, routeModel string) bool {
+	if probe := configuredEnterpriseProbe(ctx); probe != nil {
+		attempts := enterpriseAttempts(ctx)
+		return auth != nil && auth.ID == attempts.probe.authID && m.selectionModelForAuth(auth, routeModel) == probe.proof.ModelID
+	}
 	if m.authSupportsRouteModel(registryRef, auth, routeModel) {
 		return true
 	}

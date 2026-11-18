@@ -63,6 +63,8 @@ type FileTokenStore struct {
 // SupportsEnterpriseOAuthImport advertises the conditional atomic account save.
 func (s *FileTokenStore) SupportsEnterpriseOAuthImport() bool { return true }
 
+func (s *FileTokenStore) SupportsLocalEnterpriseModelVerifications() bool { return true }
+
 func (s *FileTokenStore) SupportsExistingEnterpriseReauthorization() bool { return true }
 
 func (s *FileTokenStore) OwnsAuthFileWrites() bool { return true }
