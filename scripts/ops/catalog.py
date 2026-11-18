@@ -28,7 +28,27 @@ def matching_bindings(snapshot, credential, model):
             and any(entry['id'] == model for entry in scope[binding['binding_id']]['models'])]
 
 
+def acceptance_model_jobs(snapshot, model):
+    if not any(row['id'] == model for row in snapshot['models']):
+        return [], [{'model': model, 'provider': 'gemini-enterprise', 'reason': 'acceptance_model_unavailable'}]
+    indexes, names = set(), set()
+    for credential in snapshot['credentials']:
+        if provider(credential) != 'gemini-enterprise' or credential.get('disabled'):
+            continue
+        routes = enabled_bindings(credential) if bindings(credential) else [credential]
+        active = {row['auth_index'] for row in routes if row.get('auth_index')}
+        if active:
+            names.add(credential['name'])
+            indexes.update(active)
+    require(indexes, 'acceptance_model_provider_route_unavailable', category='authorization')
+    return [{'id': 'gemini-enterprise:' + model, 'model': model, 'provider': 'gemini-enterprise',
+             'resources': ['*'], 'credentials': sorted(names), 'upstream_models': [model],
+             'auth_indexes': sorted(indexes)}], []
+
+
 def jobs(snapshot):
+    if model := snapshot.get('acceptance_model'):
+        return acceptance_model_jobs(snapshot, model)
     public = {row['id'] for row in snapshot['models']}
     claude_models = {model['id'] for entries in [snapshot['models'], *snapshot['catalogs'].values()]
                      for model in entries

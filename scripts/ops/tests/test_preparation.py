@@ -16,9 +16,24 @@ from scripts.ops.core import OpsError, sha_file
 from scripts.ops.plans import execution_options, load_target_options
 from scripts.ops.preparation import inspect_plan
 from scripts.ops.release import Releases
+from scripts.ops.routing import channel_accepted, channel_test_model
 
 
 class PreparationTests(unittest.TestCase):
+    def test_selected_model_uses_only_matching_channel_alias(self):
+        row = {'models': 'gemini-2.5-pro,neon-channel', 'test_model': 'gemini-2.5-pro',
+               'model_mapping': {'neon-channel': 'gemini-4-neon'}}
+        self.assertEqual(channel_test_model(row, set(), acceptance_model='gemini-4-neon'),
+                         ('neon-channel', 'gemini-4-neon'))
+        with self.assertRaisesRegex(OpsError, 'acceptance_model_not_configured'):
+            channel_test_model(row, set(), acceptance_model='gemini-4-argon')
+
+    def test_health_checks_need_explicit_model_scope_and_unavailability_evidence(self):
+        receipt = {'acceptance_mode': 'health_only', 'reason': 'model_price_error', 'success': False}
+        self.assertFalse(channel_accepted(receipt))
+        self.assertTrue(channel_accepted(receipt, allow_health_only=True))
+        self.assertFalse(channel_accepted({**receipt, 'reason': 'quota'}, allow_health_only=True))
+
     def test_release_qualification_overlaps_read_only_preflight(self):
         release = {'commit': 'commit'}
         driver, releases = MagicMock(), MagicMock()

@@ -94,7 +94,12 @@ def build(store, run_id, *, offline=False):
                         'models': models, 'rollback_models': data.get('rollback_model_results', {}),
                         'required_models': required_models, 'models_not_called': sorted(set(required_models) - models.keys()),
                         'channels': channels, 'original_statuses': statuses, 'required_channels': required_channels,
-                        'channels_not_called': sorted(set(required_channels) - channels.keys()),
+                        'channels_not_called': sorted(set(required_channels) -
+                                                      {name for name, value in channels.items()
+                                                       if value.get('acceptance_mode') != 'health_only'}),
+                        'channels_checked_by_health': sorted(name for name, value in channels.items()
+                                                             if value.get('acceptance_mode') == 'health_only'),
+                        'acceptance_model': plan.get('acceptance_model'),
                         'restored': data.get('original_routing_restored', False),
                         'held_channels': data.get('held_channels', []),
                         'fast_model_tests': data.get('fast_model_tests', []),

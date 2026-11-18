@@ -5,7 +5,7 @@ from pathlib import Path
 from scripts.ops import catalog
 from scripts.ops.adapters import Adapter as LiveAdapter
 from scripts.ops.core import OpsError, digest, require
-from scripts.ops.routing import Routing
+from scripts.ops.routing import Routing, channel_accepted
 
 
 COMMIT = 'a' * 40
@@ -90,12 +90,15 @@ class Adapter:
     def __init__(self, driver, target, guard):
         self.driver, self.target, self.guard = driver, target, guard
         self.label = target['label']
+        self.acceptance_model = None
 
     def preflight(self, release, *, deferred_web_tests=(), reuse=None, on_identity=None):
         self.driver.calls.append(('preflight', self.label))
         if self.driver.failure == 'preflight_auth' and self.label == self.driver.fail_target:
             raise OpsError('oauth_application_secret_missing', category='authorization')
         value = baseline(self.label)
+        if self.acceptance_model:
+            value['acceptance_model'] = self.acceptance_model
         if on_identity:
             on_identity(value)
         return value
@@ -148,6 +151,8 @@ class Adapter:
         if self.driver.config_drift:
             raise OpsError('configuration_changed_outside_update')
         value = baseline(self.label)
+        if self.acceptance_model:
+            value['acceptance_model'] = self.acceptance_model
         value['runtime'] = {'binary_sha256': 'old-' + self.label if rollback else 'new-binary'}
         value['page_sha256'] = before['page_sha256'] if rollback else release['page_sha256']
         catalog.preserve(before, value, expected_config=expected)
@@ -196,7 +201,7 @@ class Routes:
         return snapshot['channels']
 
     def set_stopped(self, snapshot, restore=False, passed_channels=None, initial=False, validate_before_write=None,
-                    record_intent=None):
+                    record_intent=None, allow_health_only=False):
         self.guard()
         self.confirm(snapshot, restored=initial and not restore, transitional=not initial)
         if validate_before_write:
@@ -209,7 +214,8 @@ class Routes:
             raise OpsError('channel_stop_or_restore_propagation_incomplete')
         for row in snapshot['channels']['main']:
             if row['status'] == 1:
-                require(not restore or passed_channels.get('main:' + str(row['id']), {}).get('success') is True,
+                require(not restore or channel_accepted(passed_channels.get('main:' + str(row['id']), {}),
+                                                        allow_health_only=allow_health_only),
                         'restore_requires_successful_channel_calls')
                 self.driver.channels[label][row['id']] = 1 if restore else 2
         self.driver.calls.append(('restore' if restore else 'stop', label))

@@ -15,7 +15,7 @@ from .release import Releases, describe
 from .report import write as report_write
 from .store import Lease, Store
 from .inventory import install as install_inventory
-from .plans import load_target_options, routing_fingerprint, validate_observed_options
+from .plans import load_target_options, routing_fingerprint, validate_acceptance_model, validate_observed_options
 
 
 DEFAULT_ROOT = Path.home() / '.codex/private/cliproxy-ops'
@@ -46,6 +46,7 @@ def parser():
     plan.add_argument('--commit', required=True)
     plan.add_argument('--target-options', type=Path, help='JSON file with exceptions keyed by selected target alias')
     plan.add_argument('--prepare-release', action='store_true', help='Build and verify the local release while preflight runs')
+    plan.add_argument('--acceptance-model', help='Only call this Enterprise model. Accept verified runtime and routing where it is unavailable.')
     update = sub.add_parser('update', help='Execute the explicitly selected plan, serially')
     update.add_argument('--plan', required=True)
     for name in ['status', 'resume', 'pause', 'report']:
@@ -88,9 +89,12 @@ def main(arguments=None):
         labels = [name.strip() for name in args.targets.split(',') if name.strip()]
         targets = validate_selection(inventory, labels)
         options = load_target_options(args.target_options, labels)
+        model = validate_acceptance_model(args.acceptance_model)
+        require(not model or not options, 'acceptance_model_conflicts_with_target_options')
+        inspect_options = {label: {'acceptance_model': model} for label in labels} if model else options
         release = describe(inventory['repository'], args.commit)
         releases = Releases(inventory['repository'], root / 'releases', inventory.get('go'), emit) if args.prepare_release else None
-        results, qualified = inspect_plan(driver, targets, release, options, releases=releases)
+        results, qualified = inspect_plan(driver, targets, release, inspect_options, releases=releases)
         if qualified is not None:
             emit('release_prepared', commit=release['commit'], page_sha256=release['page_sha256'],
                  binary_sha256=qualified['binary_sha256'], package_sha256=qualified['package_sha256'])
@@ -101,6 +105,7 @@ def main(arguments=None):
                 selected['routing_fingerprint'] = routing_fingerprint(routes, include_status=False)
         body = {'schema': 2, 'created_at': time.time(), 'targets': targets, 'release': release,
                 'acceptance_mode': 'availability',
+                **({'acceptance_model': model} if model else {}),
                 'target_options': options,
                 'inventory_fingerprint': driver.inventory_fingerprint(), 'authorization': 'explicit_target_list_only',
                 'warnings': {label: before.get('warnings', []) for label, before, _, _, _ in results}}

@@ -20,7 +20,7 @@ from .cache_sync import CacheObserver
 from .telemetry import operation, note
 
 
-def channel_test_model(row, exclusions):
+def channel_test_model(row, exclusions, *, acceptance_model=None):
     models = [name.strip() for name in row.get('models', '').split(',') if name.strip()]
     mapping = row.get('model_mapping') or {}
     if isinstance(mapping, str):
@@ -32,17 +32,32 @@ def channel_test_model(row, exclusions):
         mapping = {}
     require(isinstance(mapping, dict) and all(value is None or isinstance(value, str) for value in mapping.values()),
             'channel_model_mapping_invalid')
+    if acceptance_model:
+        override = row.get('param_override') or ''
+        require((mapping.get(acceptance_model) or acceptance_model).strip() == acceptance_model
+                and not re.search(r'(?i)["\x27](?:model|modelName|model_id)["\x27]', str(override)),
+                'acceptance_model_not_configured')
     eligible = []
     for name in models:
         mapped = (mapping.get(name) or name).strip()
         if name in exclusions or mapped in exclusions or is_claude_model(name) or is_claude_model(mapped):
             continue
+        if acceptance_model and mapped != acceptance_model:
+            continue
         eligible.append(name)
     chosen = row.get('test_model')
-    if not chosen or chosen in exclusions or is_claude_model(chosen) or (chosen in models and chosen not in eligible):
+    if (not chosen or chosen in exclusions or is_claude_model(chosen)
+            or ((acceptance_model or chosen in models) and chosen not in eligible)):
         chosen = next(iter(eligible), None)
-    require(chosen in eligible, 'channel_has_no_eligible_test_model')
+    require(chosen in eligible, 'acceptance_model_not_configured' if acceptance_model else 'channel_has_no_eligible_test_model')
     return chosen, (mapping.get(chosen) or chosen).strip()
+
+
+def channel_accepted(result, *, allow_health_only=False):
+    return result.get('success') is True or (
+        allow_health_only and result.get('acceptance_mode') == 'health_only'
+        and result.get('reason') in {'acceptance_model_unavailable', 'acceptance_model_not_configured', 'model_price_error'}
+    )
 
 
 class Observer:
@@ -477,11 +492,12 @@ class Routing:
         return None
 
     def set_stopped(self, snapshot, *, restore=False, passed_channels=None, initial=False, validate_before_write=None,
-                    record_intent=None):
+                    record_intent=None, allow_health_only=False):
         if not self.active_session:
             with self.session():
                 return self.set_stopped(snapshot, restore=restore, passed_channels=passed_channels, initial=initial,
-                                        validate_before_write=validate_before_write, record_intent=record_intent)
+                                        validate_before_write=validate_before_write, record_intent=record_intent,
+                                        allow_health_only=allow_health_only)
         self.guard()
         with ThreadPoolExecutor(max_workers=2) as executor:
             topology = executor.submit(self.topology)
@@ -503,8 +519,9 @@ class Routing:
         for site, rows in snapshot['channels'].items():
             ids = [row['id'] for row in rows if row['status'] == 1]
             if restore:
-                require(all((passed_channels or {}).get(site + ':' + str(cid), {}).get('success') is True
-                            for cid in ids), 'restore_requires_successful_channel_calls')
+                require(all(channel_accepted((passed_channels or {}).get(site + ':' + str(cid), {}),
+                                             allow_health_only=allow_health_only) for cid in ids),
+                        'restore_requires_successful_channel_calls')
             require(not ids or site in snapshot.get('startups', {}), 'newapi_startup_observation_incomplete')
             tasks[site] = ids
         intent = uuid.uuid4().hex
@@ -545,12 +562,12 @@ class Routing:
         with ThreadPoolExecutor(max_workers=2) as executor:
             return dict(executor.map(read, self.sites))
 
-    def test_channel(self, snapshot, site, row, exclusions, *, verify_snapshot=True):
+    def test_channel(self, snapshot, site, row, exclusions, *, verify_snapshot=True, acceptance_model=None):
         self.guard()
         if verify_snapshot:
             self.confirm(snapshot)
         require(row['status'] == 1, 'cannot_test_restore_of_originally_disabled_channel')
-        chosen, _ = channel_test_model(row, exclusions)
+        chosen, _ = channel_test_model(row, exclusions, acceptance_model=acceptance_model)
         query = {'model': chosen, 'stream': 'true'}
         if row.get('type') == 24:
             query['endpoint_type'] = 'gemini'

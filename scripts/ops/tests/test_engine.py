@@ -31,13 +31,15 @@ class EngineTests(unittest.TestCase):
         self.network.stop()
         self.temporary.cleanup()
 
-    def start(self, *, deferrals=None, fast_model_tests=None, acceptance_mode='full', target_options=None):
+    def start(self, *, deferrals=None, fast_model_tests=None, acceptance_mode='full', target_options=None,
+              acceptance_model=None):
         targets = validate_selection(self.driver.inventory, list(self.driver.inventory['targets']))
         exceptions = {'target_options': target_options} if target_options is not None else {
             'operator_deferrals': deferrals, 'fast_model_tests': fast_model_tests}
         plan = self.store.plan({'schema': 2 if target_options is not None else 1,
                                'targets': targets, 'release': {'commit': COMMIT, 'page_sha256': 'new-page'},
                                'inventory_fingerprint': self.driver.inventory_fingerprint(),
+                               **({'acceptance_model': acceptance_model} if acceptance_model else {}),
                                **exceptions,
                                **({'acceptance_mode': acceptance_mode} if acceptance_mode is not None else {})})
         self.run_id = self.store.begin(plan)
@@ -54,6 +56,17 @@ class EngineTests(unittest.TestCase):
         self.assertFalse(self.lease.path.exists())
         self.assertEqual(run['targets'][0]['data']['drain']['criterion'], 'fallback_wait_limit_180_seconds')
         self.assertFalse(run['targets'][0]['data']['drain']['completion_verified'])
+
+    def test_unavailable_selected_model_restores_only_originally_enabled_channels(self):
+        run = self.start(acceptance_mode='availability', acceptance_model='gemini-4-neon')
+        self.assertEqual(run['status'], 'complete')
+        self.assertFalse(any(call[0] in {'model', 'channel'} for call in self.driver.calls))
+        for item in run['targets']:
+            receipt = item['data']['channel_results']['main:1']
+            self.assertEqual(receipt['acceptance_mode'], 'health_only')
+            self.assertNotEqual(receipt['success'], True)
+            self.assertEqual(receipt['reason'], 'acceptance_model_unavailable')
+            self.assertEqual(self.driver.channels[item['target']], {1: 1, 2: 2, 3: 3})
 
     def test_startup_rechecks_missing_models_before_calls_with_channels_disabled(self):
         self.driver = Driver(('one',))

@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from .application import Application
 from . import catalog
-from .core import READ_SLOTS, OpsError, deployment_identity, digest, require, sha_file
+from .core import READ_SLOTS, OpsError, credential_settings, deployment_identity, digest, require, sha_file
 from .release import git
 from .transport import HTTP, remote_json
 from .telemetry import operation, note
@@ -32,6 +32,7 @@ class Adapter:
         self.cloud_peers = cloud_peers
         self.clients, self.client_lock = {}, threading.Lock()
         self.cloud_access, self.previous_snapshot = None, None
+        self.acceptance_model = None
 
     def client(self, origin, key, ssh=None):
         identity = (origin, digest(key), id(ssh.get_transport()) if ssh is not None else None)
@@ -85,7 +86,7 @@ class Adapter:
             return app.snapshot(quotas=quotas, quota_models=quota_models, legacy_raw=legacy_raw, reuse=reuse,
                                 on_identity=(lambda value: on_identity({**value, 'domains': domains, 'host': host}))
                                 if on_identity else None, refresh_catalog=refresh_catalog,
-                                verify_credential_content=verify_credential_content)
+                                verify_credential_content=verify_credential_content, acceptance_model=self.acceptance_model)
         if self.target['kind'] == 'vps':
             host = self.remote('snapshot')
             domains = self.vps_domains()
@@ -120,9 +121,9 @@ class Adapter:
         return value
 
     def preflight(self, release, *, deferred_web_tests=(), reuse=None, on_identity=None):
-        before = self.snapshot(quotas=True, reuse=reuse, on_identity=on_identity)
+        before = self.snapshot(quotas=not self.acceptance_model, reuse=reuse, on_identity=on_identity)
         jobs, excluded = catalog.jobs(before)
-        require(jobs, 'no_eligible_credentials_or_models')
+        require(jobs or self.acceptance_model, 'no_eligible_credentials_or_models')
         web_jobs = {job['id']: set(job['credentials']) for job in jobs if job['provider'] == 'gemini-enterprise-web'}
         rejected = {row['name'] for row in before['credentials']
                     if (row.get('gemini_enterprise_web') or {}).get('cookie_check_status') == 'relogin_required'}
@@ -131,8 +132,8 @@ class Adapter:
         require(deferred <= unavailable, 'web_deferral_does_not_match_known_auth_failure', category='authorization')
         require(not any(credentials & rejected for job_id, credentials in web_jobs.items() if job_id not in deferred),
                 'required_web_credential_relogin', category='authorization')
-        require(any(job['id'] not in deferred for job in jobs), 'no_eligible_models_for_verification')
-        warnings = catalog.quota_check(before, jobs)
+        require(self.acceptance_model or any(job['id'] not in deferred for job in jobs), 'no_eligible_models_for_verification')
+        warnings = [] if self.acceptance_model else catalog.quota_check(before, jobs)
         section = 'remote-management' if before['legacy'] else 'management'
         require(not before['legacy'] or (before['config_semantics'].get(section) or {}).get('disable-auto-update-panel') is True,
                 'legacy_panel_pin_requires_separate_preparation')
@@ -169,6 +170,11 @@ class Adapter:
         return before
 
     def backup(self, before, *, reuse=None):
+        if self.acceptance_model:
+            # The old image and persistent volumes are recorded separately by staging.
+            return {'config_yaml': before['raw'], 'files': {},
+                    'credential_settings_sha256': digest(credential_settings(before['credentials'])),
+                    'preset': 'configuration_and_credential_settings'}
         with self.application(before.get('host')) as app:
             return app.backup(before, reuse=reuse)
 
@@ -340,8 +346,10 @@ class Adapter:
 
     def postflight(self, before, release, staged, expected_config, *, rollback=False):
         after = self.verify(before, release, staged, expected_config, rollback=rollback)
-        with self.application(after.get('host')) as app:
-            logs = app.log_review()
+        logs = None
+        if not self.acceptance_model:
+            with self.application(after.get('host')) as app:
+                logs = app.log_review()
         summary = {'health_http': after['health_http'], 'management_http': after['management_http'],
                    'runtime': after['runtime'], 'page_sha256': after['page_sha256'],
                    'version_header': after['version_header'], 'commit_header': after['commit_header'],

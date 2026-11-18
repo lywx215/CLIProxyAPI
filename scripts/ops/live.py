@@ -43,6 +43,7 @@ class Live:
     def prepare(self, target, release, options=None):
         readonly = lambda: require(False, 'mutation_during_readonly_preparation')
         adapter, routing = self.adapter(target, readonly), self.routing(readonly)
+        adapter.acceptance_model = (options or {}).get('acceptance_model')
         try:
             return adapter.prepare(routing, release, deferred_web_tests=(options or {}).get('web_model_tests', ()))
         finally:

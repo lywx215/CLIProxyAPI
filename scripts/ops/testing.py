@@ -241,7 +241,8 @@ def conflicts(resources, active):
     return '*' in resources or '*' in active or bool(set(resources) & active)
 
 
-def run_jobs(jobs, call, save, cached=None, *, clock=time.time, ttl=600, workers=MAX_TEST_WORKERS):
+def run_jobs(jobs, call, save, cached=None, *, clock=time.time, ttl=600, workers=MAX_TEST_WORKERS,
+             accepted=lambda result: result.get('success') is True):
     """At most two jobs, and never overlap possibly shared quota/cookie resources."""
     require(1 <= workers <= MAX_TEST_WORKERS, 'test_concurrency_exceeded')
     pending = list(jobs)
@@ -277,6 +278,6 @@ def run_jobs(jobs, call, save, cached=None, *, clock=time.time, ttl=600, workers
                 results[job['id']] = result
                 save(job['id'], result)
             # Finish already-issued calls naturally, but do not issue new calls after failure.
-            if any(not value.get('success') for value in results.values()):
+            if any(not accepted(value) for value in results.values()):
                 pending.clear()
     return results

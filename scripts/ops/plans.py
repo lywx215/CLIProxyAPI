@@ -3,7 +3,14 @@ import json
 import re
 
 from . import catalog
-from .core import channel_fingerprint, digest, require
+from .core import EXCLUDED_MODELS, channel_fingerprint, digest, is_claude_model, require
+
+
+def validate_acceptance_model(model):
+    require(model is None or (isinstance(model, str) and re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}', model)
+                              and model not in EXCLUDED_MODELS and not is_claude_model(model)),
+            'invalid_acceptance_model')
+    return model
 
 
 def load_target_options(path, labels):
@@ -60,11 +67,13 @@ def execution_options(plan):
         options = target_options({labels[0]: {**legacy, 'fast_model_tests': fast}} if legacy or fast else {}, labels)
     mode = plan.get('acceptance_mode', 'availability')
     require(mode in {'full', 'availability'}, 'invalid_acceptance_mode')
+    model = validate_acceptance_model(plan.get('acceptance_model'))
+    require(not model or (mode == 'availability' and not options), 'acceptance_model_conflicts_with_target_options')
     return {label: {'deferred_web_tests': frozenset(options.get(label, {}).get('web_model_tests', [])),
                     'held_channels': frozenset(options.get(label, {}).get('hold_channels', [])),
                     'fast_model_tests': frozenset(options.get(label, {}).get('fast_model_tests', [])),
                     'approved_routing': options.get(label, {}).get('routing_fingerprint'),
-                    'acceptance_mode': mode} for label in labels}
+                    'acceptance_mode': mode, **({'acceptance_model': model} if model else {})} for label in labels}
 
 
 def routing_fingerprint(snapshot, *, include_status=True):

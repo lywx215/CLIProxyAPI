@@ -10,7 +10,7 @@ from scripts.vps.maintenance import FALLBACK_WAIT_SECONDS, evaluate_drain
 from . import catalog, testing
 from .core import EXCLUDED_MODELS, OpsError, TEST_TTL, channel_fingerprint, deployment_identity, digest, is_claude_model, require, validate_selection
 from .store import ProcessLock
-from .routing import channel_test_model
+from .routing import channel_accepted, channel_test_model
 from .plans import execution_options, validate_observed_options
 from .preparation import Lookahead
 from .telemetry import PHASE, recording, operation, note
@@ -82,6 +82,7 @@ class Engine:
             self.prepared.clear()
             self.lookahead = cleanup.enter_context(Lookahead(self.driver, self.store, run_id, plan['release']))
             if exclude_model_test:
+                require(not plan.get('acceptance_model'), 'acceptance_model_cannot_be_excluded')
                 run = self.store.run(run_id)
                 require(run['status'] == 'blocked' and len(run['targets']) == 1, 'model_test_exclusion_requires_blocked_single_target')
                 item = run['targets'][0]
@@ -240,8 +241,11 @@ class Engine:
             return self._target(run, target, adapter, release_description, routing, **options)
 
     def _target(self, run, target, adapter, release_description, routing, *, deferred_web_tests=(), held_channels=frozenset(),
-                approved_routing=None, fast_model_tests=(), acceptance_mode='full', routing_states_frozen=True):
+                approved_routing=None, fast_model_tests=(), acceptance_mode='full', routing_states_frozen=True,
+                acceptance_model=None):
         label = target['label']
+        if acceptance_model:
+            adapter.acceptance_model = acceptance_model
         deferred_rows = [{'provider': 'gemini-enterprise-web', 'model': job.split(':', 1)[1],
                           'reason': 'user_deferred_web_authorization'} for job in sorted(deferred_web_tests)]
         while True:
@@ -395,7 +399,7 @@ class Engine:
                     excluded.extend({'provider': job['provider'], 'model': job['model'], 'reason': 'manual_validation_pending'}
                                     for job in jobs if job['id'] not in fast_model_tests)
                     jobs = [job for job in jobs if job['id'] in fast_model_tests]
-                require(jobs, 'no_eligible_models_for_verification')
+                require(jobs or acceptance_model, 'no_eligible_models_for_verification')
                 if failed_quota_models and acceptance_mode == 'full':
                     catalog.quota_check(after, [job for job in jobs if job['model'] in failed_quota_models],
                                         require_positive=True)
@@ -441,12 +445,29 @@ class Engine:
                     model_jobs, _ = catalog.jobs(verified)
                     verification_identity = [deployment_identity(verified), catalog.fingerprint(verified), digest(model_jobs)]
                     jobs, rows_by_id = [], {}
+                    required_channels = set()
                     for site, rows in routes['channels'].items():
                         for row in rows:
                             channel_id = f"{site}:{row['id']}"
                             if row['status'] != 1 or channel_id in held_channels:
                                 continue
-                            chosen, mapped = channel_test_model(row, channel_exclusions)
+                            required_channels.add(channel_id)
+                            if acceptance_model:
+                                reason = 'acceptance_model_unavailable' if not model_jobs else None
+                                if not reason:
+                                    try:
+                                        chosen, mapped = channel_test_model(row, channel_exclusions, acceptance_model=acceptance_model)
+                                    except OpsError as error:
+                                        if error.code != 'acceptance_model_not_configured':
+                                            raise
+                                        reason = error.code
+                                if reason:
+                                    results[channel_id] = {'site': site, 'channel': row['id'], 'model': acceptance_model,
+                                                           'success': None, 'acceptance_mode': 'health_only',
+                                                           'reason': reason, 'checked_at': self.clock()}
+                                    continue
+                            else:
+                                chosen, mapped = channel_test_model(row, channel_exclusions)
                             matches = [job for job in model_jobs if chosen == job['model'] or mapped in job['upstream_models']]
                             resources = sorted({resource for job in matches for resource in job['resources']}) or ['*']
                             jobs.append({'id': channel_id, 'model': chosen, 'provider': 'new-api', 'resources': resources,
@@ -460,15 +481,22 @@ class Engine:
 
                     def call_channel(job):
                         site, row = rows_by_id[job['id']]
-                        return testing.retry_call(lambda: routing.test_channel(
-                            routes, site, row, channel_exclusions, verify_snapshot=False), sleep=self.sleep)
+                        result = testing.retry_call(lambda: routing.test_channel(
+                            routes, site, row, channel_exclusions, verify_snapshot=False,
+                            **({'acceptance_model': acceptance_model} if acceptance_model else {})), sleep=self.sleep)
+                        if acceptance_model and result.get('error_code') == 'model_price_error':
+                            return {**result, 'acceptance_mode': 'health_only', 'reason': 'model_price_error'}
+                        return result
 
-                    results = testing.run_jobs(jobs, call_channel, save_channel,
-                                               data.get('channel_results', {}), clock=self.clock, ttl=TEST_TTL)
-                    failures = [result for result in results.values() if result.get('success') is not True]
+                    def accepted(result):
+                        return channel_accepted(result, allow_health_only=bool(acceptance_model))
+
+                    results.update(testing.run_jobs(jobs, call_channel, save_channel, data.get('channel_results', {}),
+                                                    clock=self.clock, ttl=TEST_TTL, accepted=accepted))
+                    failures = [result for result in results.values() if not accepted(result)]
                     if failures:
                         raise OpsError('channel_functional_test_failed', category=failures[0].get('category', 'functional'))
-                    require(all(job['id'] in results for job in jobs), 'required_channels_not_all_tested')
+                    require(required_channels == set(results), 'required_channels_not_all_tested')
                     checked_at = min((result['checked_at'] for result in results.values()), default=self.clock())
                     self.save(run, label, 'rollback_tested' if rollback else 'tested', channel_results=results,
                               channel_tests_at=checked_at)
@@ -515,7 +543,8 @@ class Engine:
 
                 try:
                     propagation = routing.set_stopped(restore, restore=True, initial=not restoring_started, passed_channels=data['channel_results'],
-                                                      validate_before_write=still_fresh)
+                                                      validate_before_write=still_fresh,
+                                                      **({'allow_health_only': True} if acceptance_model else {}))
                 except OpsError as error:
                     if error.code != 'acceptance_expired_before_restore':
                         raise

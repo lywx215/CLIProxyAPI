@@ -65,7 +65,7 @@ class Application:
         return digest(document)
 
     def snapshot(self, *, quotas=False, quota_models=None, legacy_raw=False, reuse=None, on_identity=None,
-                 refresh_catalog=False, verify_credential_content=False):
+                 refresh_catalog=False, verify_credential_content=False, acceptance_model=None):
         config = self.read('/v8/management/config', optional=True)
         legacy = config['http'] == 404
         prefix = '/v0/management' if legacy else '/v8/management'
@@ -82,7 +82,8 @@ class Application:
             models_future = executor.submit(self.read, '/v1/models', key=model_key)
             health_future = executor.submit(self.read, '/healthz', optional=True)
             page_future = executor.submit(self.read, '/management.html', raw=True)
-            web_future = executor.submit(self.read, '/v8/management/credentials/gemini-enterprise-web/status', optional=True)
+            web_future = (None if acceptance_model else executor.submit(
+                self.read, '/v8/management/credentials/gemini-enterprise-web/status', optional=True))
             raw = raw_future.result()
             files = files_future.result()['data'].get('files')
             credential_observed_at = datetime.now(timezone.utc).isoformat()
@@ -90,7 +91,8 @@ class Application:
             health = health_future.result()
             if health['http'] == 404:
                 health = executor.submit(self.read, '/').result()
-            page, web = page_future.result(), web_future.result()
+            page = page_future.result()
+            web = web_future.result() if web_future else {'http': 0}
         require(isinstance(files, list), 'credentials_unavailable')
         require(isinstance(models, list), 'model_list_invalid')
         require(health['http'] == 200, 'application_unhealthy', category='regression')
@@ -123,7 +125,8 @@ class Application:
                 return {'http': 200, 'data': prior}
             return self.read(path, optional=True)
         files_to_verify = []
-        if verify_credential_content and not legacy:
+        if verify_credential_content and not legacy and (not acceptance_model or any(
+                row.get('id') == acceptance_model for row in models)):
             files_to_verify = [row['name'] for row in files
                                if catalog.provider(row) == 'gemini-enterprise' and not row.get('disabled')
                                and not row.get('runtime_only') and
@@ -131,7 +134,7 @@ class Application:
         require(len(files_to_verify) == len(set(files_to_verify)), 'ambiguous_active_credential_content')
         with ThreadPoolExecutor(max_workers=MAX_READ_WORKERS) as executor:
             file_versions = {name: executor.submit(self._enterprise_file_version, name) for name in files_to_verify}
-            for row in files:
+            for row in (() if acceptance_model else files):
                 if row.get('disabled') or catalog.provider(row) not in PROVIDERS:
                     continue
                 endpoint = prefix + ('/auth-files/models' if legacy else '/credentials/models')
@@ -178,6 +181,7 @@ class Application:
                 'catalog_observed_at': reuse['catalog_observed_at'] if reusable and not refresh_catalog else catalog_observed_at,
                 'etag': raw['headers'].get('etag'), 'legacy': legacy, 'credentials': files,
                 'enterprise_file_versions': file_versions,
+                **({'acceptance_model': acceptance_model} if acceptance_model else {}),
                 'models': models, 'model_key': model_key, 'catalogs': catalogs, 'quotas': observations,
                 'binding_observations': binding_observations, 'credential_observed_at': credential_observed_at,
                 'health_http': health['http'], 'management_http': config['http'], 'page_sha256': digest(page['data'].encode()),

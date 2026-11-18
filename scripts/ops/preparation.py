@@ -31,7 +31,10 @@ class Lookahead:
         self.label = target['label']
         def read():
             with background_reads(), recording(self.store, self.run_id, self.label):
-                prepared = self.driver.prepare(target, self.release, {'web_model_tests': list(options['deferred_web_tests'])})
+                selected = {'web_model_tests': list(options['deferred_web_tests'])}
+                if options.get('acceptance_model'):
+                    selected['acceptance_model'] = options['acceptance_model']
+                prepared = self.driver.prepare(target, self.release, selected)
                 if options['held_channels'] or options['fast_model_tests'] or options['approved_routing']:
                     validate_observed_options(prepared['target'], prepared['routing'], options['deferred_web_tests'],
                                               options['held_channels'], options['fast_model_tests'],
