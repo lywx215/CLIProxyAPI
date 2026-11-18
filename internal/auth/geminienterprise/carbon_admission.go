@@ -18,6 +18,7 @@ const (
 	HydrogenEnabledKey       = "hydrogen_enabled"
 	HydrogenEvidenceKey      = "hydrogen_test_evidence"
 	HydrogenEvidenceStoreKey = "enterprise_hydrogen_evidence"
+	ConfiguredModelProofKey  = "enterprise_model_verification_proofs"
 )
 
 // AdmissionModel identifies independently stored application settings and evidence.

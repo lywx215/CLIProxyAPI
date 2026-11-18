@@ -208,7 +208,8 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	expectedEpoch := reg.ClientRegistrationEpoch(auth.ID)
 	d.mu.Unlock()
 	forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
-	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available {
+	if catalog.known || catalog.revision > 0 || forceArgon || s.coreManager.EnterpriseCarbonAdmissionView(auth).Available ||
+		coreauth.IsEnterpriseModelProofPublication(ctx) || s.coreManager.HasActiveConfiguredEnterpriseModel(auth) {
 		s.publishEnterpriseCatalog(ctx, auth, key, catalog, expectedEpoch)
 	} else {
 		// A rebound account must not retain the old resource's entitlements while
@@ -229,7 +230,7 @@ func (s *Service) registerEnterpriseModels(ctx context.Context, auth *coreauth.A
 	}
 	// Publish saved routes before a new subscription observation can invalidate
 	// the policy signature used by this synchronous registry update.
-	if coreauth.IsEnterpriseOAuthRuntimeSync(ctx) {
+	if coreauth.IsEnterpriseOAuthRuntimeSync(ctx) || coreauth.IsEnterpriseModelProofPublication(ctx) {
 		return
 	}
 	s.queueEnterpriseSubscription(ctx, auth)
@@ -438,7 +439,8 @@ func (s *Service) refreshEnterpriseModels(ctx context.Context) {
 		d.mu.Unlock()
 		epoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
 		forceArgon, _ := ge.ReadArgonForceEnabled(auth.Metadata)
-		if (catalog.revision > 0 || forceArgon) && (catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
+		if (catalog.revision > 0 || catalog.appliedEpoch > 0 || forceArgon || s.coreManager.HasActiveConfiguredEnterpriseModel(auth)) &&
+			(catalog.appliedEpoch != epoch || catalog.appliedRevision != catalog.revision || catalog.appliedPolicy != s.coreManager.EnterpriseModelPolicySignature(auth)) {
 			s.publishEnterpriseCatalog(ctx, auth, key, catalog, epoch)
 		}
 		if due {

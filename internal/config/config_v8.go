@@ -71,6 +71,7 @@ var v8KeyFamilies = []configPath{
 func buildV8Paths() []configPath {
 	prefixes := []configPath{
 		{"gemini-enterprise-web", "upstream.gemini-enterprise-web"},
+		{"gemini-enterprise-model-definitions", "upstream.gemini-enterprise.model-definitions"},
 		{"host", "server.host"}, {"port", "server.port"}, {"trusted-proxies", "server.trusted-proxies"},
 		{"github-token", "server.github-token"},
 		{"tls", "server.tls"}, {"commercial-mode", "server.commercial-mode"}, {"discovery", "server.discovery"},
@@ -265,6 +266,9 @@ func (cfg *Config) UnmarshalYAML(node *yaml.Node) error {
 		}
 	}
 	if errValidate := decoded.OAuth.ValidateGeminiEnterpriseApplications(); errValidate != nil {
+		return errValidate
+	}
+	if errValidate := decoded.GeminiEnterpriseModels.Validate(); errValidate != nil {
 		return errValidate
 	}
 	if errValidate := decoded.Models.Validate(); errValidate != nil {
@@ -945,6 +949,9 @@ func ValidateV8Config(data []byte) error {
 	}
 	if errWeb := cfg.GeminiEnterpriseWeb.WithDefaults().Validate(); errWeb != nil {
 		return errWeb
+	}
+	if errModels := cfg.GeminiEnterpriseModels.Validate(); errModels != nil {
+		return errModels
 	}
 	if errPolicy := cfg.GeminiFreeTierPolicy.Validate(); errPolicy != nil {
 		return errPolicy

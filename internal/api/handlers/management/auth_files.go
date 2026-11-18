@@ -449,17 +449,18 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 					actual = strings.TrimPrefix(model.ID, strings.TrimSpace(auth.Prefix)+"/")
 				}
 				actual = strings.TrimPrefix(actual, "models/")
-				allowed := view.Allows(actual)
-				if view.CatalogKnown {
-					allowed = false
-					for _, entry := range view.CatalogModels {
-						if entry.ID == actual && entry.Allowed {
-							allowed = true
-							break
-						}
+				var observed coreauth.EnterprisePolicyModel
+				for _, entry := range view.CatalogModels {
+					if entry.ID == actual {
+						observed = entry
+						break
 					}
 				}
-				if actual == ge.HydrogenModel && !view.CatalogKnown {
+				allowed := view.Allows(actual)
+				if view.CatalogKnown || observed.Configured {
+					allowed = observed.Allowed
+				}
+				if actual == ge.HydrogenModel && !view.CatalogKnown && !observed.Configured {
 					allowed = false
 				}
 				if !allowed {
@@ -471,13 +472,10 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
 				result[i]["upstream_model"], result[i]["policy_allowed"] = actual, true
 				result[i]["catalog_source"] = view.CatalogState.Source
 				result[i]["upstream_listed"] = view.CatalogState.Source == "upstream" || view.CatalogState.Source == "cached"
-				for _, entry := range view.CatalogModels {
-					if entry.ID == actual {
-						result[i]["catalog_source"], result[i]["upstream_listed"] = entry.CatalogSource, entry.UpstreamListed
-						break
-					}
+				if observed.ID != "" {
+					result[i]["catalog_source"], result[i]["upstream_listed"] = observed.CatalogSource, observed.UpstreamListed
 				}
-				if actual == ge.CarbonModel && !view.CatalogKnown {
+				if actual == ge.CarbonModel && !view.CatalogKnown && !observed.Configured {
 					result[i]["catalog_source"], result[i]["upstream_listed"] = "manual", false
 				}
 				visible = append(visible, result[i])

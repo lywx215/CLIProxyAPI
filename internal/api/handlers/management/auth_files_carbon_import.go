@@ -15,7 +15,7 @@ func carbonManagedKey(key string) bool {
 			return true
 		}
 	}
-	return key == ge.HydrogenEnabledKey || key == ge.HydrogenEvidenceKey || key == "hydrogen_test_id" || key == "hydrogen_admission" || key == "hydrogen_admission_supported" || strings.HasPrefix(key, "enterprise_hydrogen_") || key == ge.CarbonEnabledKey || key == ge.CarbonEvidenceKey || key == "carbon_test_id" || key == "carbon_admission" || key == "carbon_admission_supported" || strings.HasPrefix(key, "enterprise_carbon_")
+	return key == ge.ConfiguredModelProofKey || key == ge.HydrogenEnabledKey || key == ge.HydrogenEvidenceKey || key == "hydrogen_test_id" || key == "hydrogen_admission" || key == "hydrogen_admission_supported" || strings.HasPrefix(key, "enterprise_hydrogen_") || key == ge.CarbonEnabledKey || key == ge.CarbonEvidenceKey || key == "carbon_test_id" || key == "carbon_admission" || key == "carbon_admission_supported" || strings.HasPrefix(key, "enterprise_carbon_")
 }
 
 func containsCarbonManagedFields(value any) bool {

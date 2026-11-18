@@ -18,11 +18,12 @@ import (
 // configV8Document keeps the persisted revision separate from runtime ownership
 // revisions and auth indexes. Callers hold Handler.mu throughout a transaction.
 type configV8Document struct {
-	Document yaml.Node
-	Root     *yaml.Node
-	Before   *yaml.Node
-	Revision string
-	Data     []byte
+	Document                   yaml.Node
+	Root                       *yaml.Node
+	Before                     *yaml.Node
+	Revision                   string
+	Data                       []byte
+	allowEnterpriseDefinitions bool
 }
 
 type configV8Error struct {
@@ -120,6 +121,9 @@ func (h *Handler) commitConfigV8Locked(ctx context.Context, state *configV8Docum
 	next, err := config.ParseConfigBytes(data)
 	if err != nil {
 		return "", &configV8Error{Status: http.StatusUnprocessableEntity, Code: "invalid_config", Message: err.Error()}
+	}
+	if err = checkEnterpriseDefinitionsConfigWrite(state, next); err != nil {
+		return "", err
 	}
 	if err = validateConfigV8WithExistingExtensions(state); err != nil {
 		return "", &configV8Error{Status: http.StatusBadRequest, Code: "invalid_config", Message: err.Error()}

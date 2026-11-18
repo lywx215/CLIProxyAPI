@@ -112,6 +112,10 @@ func enterpriseJournalPath(directory, requestID string) string {
 }
 
 func writeEnterpriseImportJournal(path string, value enterpriseImportJournal, exclusive bool) error {
+	return writeEnterpriseJournalJSON(path, value, exclusive)
+}
+
+func writeEnterpriseJournalJSON(path string, value any, exclusive bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}

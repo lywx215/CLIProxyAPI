@@ -34,6 +34,10 @@ func (h *Handler) ConfigV8(c *gin.Context) {
 		}
 	}
 	path := strings.Trim(c.Param("path"), "/")
+	if path == enterpriseDefinitionsV8Path {
+		h.enterpriseDefinitionsV8Locked(c, state)
+		return
+	}
 	parts := []string{}
 	if path != "" {
 		parts = strings.Split(path, "/")

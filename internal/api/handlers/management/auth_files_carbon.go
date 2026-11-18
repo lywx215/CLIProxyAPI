@@ -150,6 +150,11 @@ func (h *Handler) testGeminiEnterpriseAdmissionModel(c *gin.Context, auth *corea
 }
 
 func enterpriseCarbonNonceMatches(payload []byte, nonce string) bool {
+	text, complete := enterpriseVerificationText(payload)
+	return complete && text == nonce
+}
+
+func enterpriseVerificationText(payload []byte) (string, bool) {
 	var response struct {
 		Candidates []struct {
 			FinishReason string `json:"finishReason"`
@@ -162,7 +167,7 @@ func enterpriseCarbonNonceMatches(payload []byte, nonce string) bool {
 		} `json:"candidates"`
 	}
 	if json.Unmarshal(payload, &response) != nil || len(response.Candidates) != 1 || response.Candidates[0].FinishReason != "STOP" {
-		return false
+		return "", false
 	}
 	var text strings.Builder
 	for _, part := range response.Candidates[0].Content.Parts {
@@ -170,7 +175,7 @@ func enterpriseCarbonNonceMatches(payload []byte, nonce string) bool {
 			text.WriteString(part.Text)
 		}
 	}
-	return strings.TrimSpace(text.String()) == nonce
+	return strings.TrimSpace(text.String()), true
 }
 
 var enterpriseCarbonSessionID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,160}$`)
@@ -180,6 +185,11 @@ var enterpriseCarbonSessionID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,160}$`)
 func (h *Handler) verifyEnterpriseAdmissionSession(ctx context.Context, authID string, metadata map[string]any, nonce string, modelID string) (string, string, int) {
 	session, _ := metadata["enterprise_carbon_session"].(string)
 	model, _ := metadata["enterprise_carbon_model"].(string)
+	exactQuery := coreauth.ConfiguredEnterpriseModelProbeActive(ctx)
+	if exactQuery {
+		session, _ = metadata["enterprise_model_session"].(string)
+		model, _ = metadata["enterprise_upstream_model"].(string)
+	}
 	if model != modelID || session == "" {
 		return "", "model_verification_incomplete", http.StatusBadGateway
 	}
@@ -249,14 +259,14 @@ func (h *Handler) verifyEnterpriseAdmissionSession(ctx context.Context, authID s
 	}
 	matched := ""
 	for _, turn := range saved.Turns {
-		if !strings.Contains(turn.Query.Text, nonce) {
+		if exactQuery && turn.Query.Text != nonce || !exactQuery && !strings.Contains(turn.Query.Text, nonce) {
 			continue
 		}
 		actual, valid := turn.QueryConfig["google.discoveryengine.googleapis.com.Assistant.model_id"].(string)
 		if !valid || actual == "" {
 			return "", "model_verification_incomplete", http.StatusBadGateway
 		}
-		if matched != "" && matched != actual {
+		if matched != "" && (exactQuery || matched != actual) {
 			return "", "model_verification_mismatch", http.StatusBadGateway
 		}
 		matched = actual
