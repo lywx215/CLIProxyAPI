@@ -221,7 +221,9 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 		if errSettings := applyEnterpriseCollectionSettings(child); errSettings != nil {
 			return nil, errSettings
 		}
-		child.Disabled = parent.Disabled || parent.Status == StatusDisabled || collection.Disabled || collection.Missing
+		rotationHeld := account.RotationIsolationOwner != "" || account.RotationHolds[ge.RotationScope(collection.ProjectID, collection.Location)] != ""
+		child.Metadata["enterprise_rotation_held"] = rotationHeld
+		child.Disabled = parent.Disabled || parent.Status == StatusDisabled || collection.Disabled || collection.Missing || rotationHeld
 		if child.Disabled {
 			child.Status = StatusDisabled
 		} else if child.Status == StatusDisabled {
@@ -718,6 +720,110 @@ func enterpriseAccountForAuth(auth *Auth) (ge.Account, error) {
 
 // UpdateEnterpriseAccount rebases graph changes on current OAuth and user state.
 func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expectedRevision uint64, mutate func(*ge.Account) error) (*Auth, error) {
+	return m.updateEnterpriseAccount(ctx, base, expectedRevision, 0, enterpriseRotationNormal, mutate)
+}
+
+// UpdateEnterpriseRotation checks the authorization version together with the
+// saved application graph before an administrative rotation write.
+func (m *Manager) UpdateEnterpriseRotation(ctx context.Context, base *Auth, expectedRevision, authorizationRevision uint64, mutate func(*ge.Account) error) (*Auth, error) {
+	if expectedRevision == 0 || authorizationRevision == 0 {
+		return nil, ErrEnterpriseAccountChanged
+	}
+	return m.updateEnterpriseAccount(ctx, base, expectedRevision, authorizationRevision, enterpriseRotationNormal, mutate)
+}
+
+type enterpriseRotationMode uint8
+
+const (
+	enterpriseRotationNormal enterpriseRotationMode = iota
+	enterpriseRotationIsolated
+	enterpriseRotationActivateIsolated
+)
+
+// EnterpriseIsolatedRotation describes one exact region of a disabled account.
+type EnterpriseIsolatedRotation struct {
+	Project  string
+	Location string
+	Owner    string
+	Action   string
+	Engines  []string
+}
+
+// UpdateEnterpriseIsolatedRotation keeps an opted-out account disabled until
+// activation saves the target and every sibling switch together.
+func (m *Manager) UpdateEnterpriseIsolatedRotation(ctx context.Context, base *Auth, expectedRevision, authorizationRevision uint64, request EnterpriseIsolatedRotation) (*Auth, error) {
+	scope := ge.RotationScope(request.Project, request.Location)
+	if !IsEnterpriseAccountAuth(base) || expectedRevision == 0 || authorizationRevision == 0 || scope == "" ||
+		!ge.ValidRotationOwner(request.Owner) || len(request.Engines) == 0 {
+		return nil, ErrEnterpriseAccountChanged
+	}
+	mode := enterpriseRotationIsolated
+	switch request.Action {
+	case "hold", "release", "retire":
+	case "activate":
+		mode = enterpriseRotationActivateIsolated
+	default:
+		return nil, ErrEnterpriseAccountChanged
+	}
+	return m.updateEnterpriseAccount(ctx, base, expectedRevision, authorizationRevision, mode, func(account *ge.Account) error {
+		if account.RotationIsolationOwner != request.Owner &&
+			(account.RotationIsolationOwner != "" || len(account.RotationHolds) != 0 || request.Action != "hold") {
+			return ErrEnterpriseAccountChanged
+		}
+		engines := make(map[string]bool, len(request.Engines))
+		for _, engine := range request.Engines {
+			if engines[engine] {
+				return ErrEnterpriseAccountChanged
+			}
+			engines[engine] = true
+		}
+		binding := ge.FromMetadata(base.Metadata)
+		matches := 0
+		for _, item := range account.Collections {
+			if ge.RotationScope(item.ProjectID, item.Location) != scope {
+				continue
+			}
+			if item.Missing || !engines[ge.Engine(item.ResourceBinding.Apply(binding))] {
+				return ErrEnterpriseAccountChanged
+			}
+			matches++
+		}
+		owner := account.RotationHolds[scope]
+		if matches != len(engines) || (owner != "" && owner != request.Owner) || (request.Action != "hold" && owner != request.Owner) {
+			return ErrEnterpriseAccountChanged
+		}
+		for heldScope, heldOwner := range account.RotationHolds {
+			if heldOwner != request.Owner || (mode == enterpriseRotationActivateIsolated && heldScope != scope) {
+				return ErrEnterpriseAccountChanged
+			}
+		}
+		if request.Action == "hold" {
+			if account.RotationHolds == nil {
+				account.RotationHolds = map[string]string{}
+			}
+			account.RotationHolds[scope] = request.Owner
+			account.RotationIsolationOwner = request.Owner
+			return nil
+		}
+		for i := range account.Collections {
+			item := &account.Collections[i]
+			inScope := ge.RotationScope(item.ProjectID, item.Location) == scope
+			if mode == enterpriseRotationActivateIsolated {
+				item.Disabled = !inScope
+			} else if request.Action == "retire" && inScope {
+				item.Disabled = true
+			}
+		}
+		delete(account.RotationHolds, scope)
+		if len(account.RotationHolds) == 0 {
+			account.RotationHolds = nil
+			account.RotationIsolationOwner = ""
+		}
+		return nil
+	})
+}
+
+func (m *Manager) updateEnterpriseAccount(ctx context.Context, base *Auth, expectedRevision, authorizationRevision uint64, mode enterpriseRotationMode, mutate func(*ge.Account) error) (*Auth, error) {
 	if m == nil || base == nil || base.Provider != ge.Provider || IsPluginVirtualAuth(base) || mutate == nil {
 		return nil, ErrEnterpriseAccountChanged
 	}
@@ -733,12 +839,25 @@ func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expec
 		m.mu.Unlock()
 		return nil, ErrEnterpriseAccountChanged
 	}
+	if authorizationRevision != 0 {
+		disabled := current.Disabled || current.Status == StatusDisabled
+		isolated := mode != enterpriseRotationNormal
+		if EnterpriseOAuthAuthorizationRevision(current) != authorizationRevision || disabled != isolated ||
+			(isolated && (hasUnauthorizedAuthFailure(current) || hasDisabledInvalidGrantFailure(current))) {
+			m.mu.Unlock()
+			return nil, ErrEnterpriseAccountChanged
+		}
+	}
 	account, err := enterpriseAccountForAuth(current)
 	if err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
 	if expectedRevision != 0 && expectedRevision != account.Revision {
+		m.mu.Unlock()
+		return nil, ErrEnterpriseAccountChanged
+	}
+	if authorizationRevision != 0 && mode == enterpriseRotationNormal && account.RotationIsolationOwner != "" {
 		m.mu.Unlock()
 		return nil, ErrEnterpriseAccountChanged
 	}
@@ -761,6 +880,10 @@ func (m *Manager) UpdateEnterpriseAccount(ctx context.Context, base *Auth, expec
 	}
 	updated := current.Clone()
 	updated.Metadata = ge.PutAccount(carbonMetadata, next)
+	if mode == enterpriseRotationActivateIsolated {
+		updated.Disabled, updated.Status, updated.StatusMessage = false, StatusActive, ""
+		updated.Metadata["disabled"] = false
+	}
 	updated.Storage = nil
 	if _, errProject := ProjectEnterpriseAuth(updated); errProject != nil {
 		m.mu.Unlock()

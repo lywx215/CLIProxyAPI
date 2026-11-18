@@ -18,14 +18,15 @@ import (
 // Lock order: Manager.mu -> enterpriseQuota.mu. The coordinator never calls the
 // manager, storage or network while locked. Publication and persistence follow unlock.
 type enterpriseQuotaCoordinator struct {
-	storeVersion uint64
-	mu           sync.Mutex
-	pools        map[string]*SharedQuotaState
-	bindings     map[string]*enterpriseQuotaGate
-	nowFunc      func() time.Time
-	nextProbe    uint64
-	balances     map[string]*enterpriseBalancePool
-	balanceTurn  chan struct{}
+	storeVersion     uint64
+	mu               sync.Mutex
+	pools            map[string]*SharedQuotaState
+	bindings         map[string]*enterpriseQuotaGate
+	nowFunc          func() time.Time
+	nextProbe        uint64
+	balances         map[string]*enterpriseBalancePool
+	balanceTurn      chan struct{}
+	rotationInFlight map[string]int64
 }
 
 // SharedQuotaState is one authoritative restriction, independent of Auth/ModelState.
@@ -63,16 +64,17 @@ type enterpriseQuotaGate struct {
 
 type quotaTicketVersion struct{ reset, version uint64 }
 type enterpriseQuotaTicket struct {
-	gate            *enterpriseQuotaGate
-	balance         *enterpriseBalancePool
-	versions        map[string]quotaTicketVersion
-	probes          map[string]uint64
-	request         *enterpriseQuotaRequest
-	admittedAt      time.Time
-	paidRecovery    bool
-	sharedRateLimit bool
-	finished        sync.Once
-	balanceFinished sync.Once
+	gate             *enterpriseQuotaGate
+	balance          *enterpriseBalancePool
+	versions         map[string]quotaTicketVersion
+	probes           map[string]uint64
+	request          *enterpriseQuotaRequest
+	admittedAt       time.Time
+	paidRecovery     bool
+	sharedRateLimit  bool
+	finished         sync.Once
+	balanceFinished  sync.Once
+	rotationFinished sync.Once
 }
 
 func quotaDigest(value string) string {
@@ -320,6 +322,7 @@ func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicke
 	t.balance = c.balancePoolLocked(g)
 	t.balance.inFlight++
 	t.balance.byAuth[g.authID]++
+	c.startRotationRequestLocked(g.authID)
 	c.mu.Unlock()
 	if len(t.probes) > 0 {
 		g.manager.publishEnterpriseQuota()
@@ -334,6 +337,11 @@ func (t *enterpriseQuotaTicket) finish(err error) {
 		return
 	}
 	t.finishQuota(err)
+	t.finishBalance(err)
+	t.finishRotation()
+}
+
+func (t *enterpriseQuotaTicket) finishBalance(err error) {
 	t.balanceFinished.Do(func() {
 		c := &t.gate.manager.enterpriseQuota
 		c.mu.Lock()
@@ -341,6 +349,52 @@ func (t *enterpriseQuotaTicket) finish(err error) {
 		// Always release live occupancy, even if a refresh/removal fenced results.
 		t.finishBalanceLocked(c.now(), err)
 	})
+}
+
+func (t *enterpriseQuotaTicket) finishRotation() {
+	t.rotationFinished.Do(func() {
+		t.gate.manager.enterpriseQuota.finishRotationRequest(t.gate.authID)
+	})
+}
+
+func (c *enterpriseQuotaCoordinator) startRotationRequestLocked(authID string) {
+	if c.rotationInFlight == nil {
+		c.rotationInFlight = map[string]int64{}
+	}
+	c.rotationInFlight[authID]++
+}
+
+func (c *enterpriseQuotaCoordinator) finishRotationRequest(authID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.rotationInFlight[authID] > 1 {
+		c.rotationInFlight[authID]--
+	} else {
+		delete(c.rotationInFlight, authID)
+	}
+}
+
+func (g *enterpriseQuotaGate) beginRotationRequest() (func(), error) {
+	c := &g.manager.enterpriseQuota
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	current := c.bindings[g.authID]
+	if current == nil || current.epoch != g.epoch || current.credential != g.credential ||
+		current.fingerprint != g.fingerprint || current.policy.Disabled || current.policy.Status == StatusDisabled ||
+		current.policy.Metadata["enterprise_rotation_held"] == true {
+		return nil, &Error{Code: ErrorCodeRequestScoped, Message: "Gemini Enterprise application is paused or changed", HTTPStatus: 409}
+	}
+	c.startRotationRequestLocked(g.authID)
+	return sync.OnceFunc(func() { c.finishRotationRequest(g.authID) }), nil
+}
+
+// EnterpriseRotationInFlight counts admitted generation requests independently
+// of the current quota identity, including requests started before a hold.
+func (m *Manager) EnterpriseRotationInFlight(authID string) int64 {
+	c := &m.enterpriseQuota
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.rotationInFlight[authID]
 }
 
 func (t *enterpriseQuotaTicket) finishQuota(err error) {
