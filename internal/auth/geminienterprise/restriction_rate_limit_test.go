@@ -61,6 +61,63 @@ func TestEnterpriseUnscopedRateLimitClassification(t *testing.T) {
 	}
 }
 
+func TestEnterpriseGenerationErrorWrappersPreserveQuotaScope(t *testing.T) {
+	now := time.Date(2026, 11, 19, 4, 20, 0, 0, time.UTC)
+	binding := config.GeminiEnterpriseOAuth{ProjectID: "12345", Location: "eu"}
+	identity := &QuotaIdentity{Verified: true, Paid: true, Binding: Binding(binding), ProjectNumber: "12345", Location: "eu", Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: now}
+	const metric = "discoveryengine.googleapis.com/quota/text_answer_gen_tier_enterprise_plus_regional"
+	for _, test := range []struct {
+		name, scope string
+		body        []byte
+		pressure    bool
+	}{
+		{name: "generic429", body: []byte(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`), pressure: true},
+		{name: "daily", body: restrictionFixture(metric, "TextAnswersPerDay", "12345", "eu"), scope: "edition"},
+		{name: "user", body: restrictionFixture(metric, "TextAnswersPerDayPerUser", "12345", "eu"), scope: "user"},
+		{name: "technical", body: restrictionFixture("discoveryengine.googleapis.com/requests", "RequestsPerMinute", "12345", "eu"), scope: "project"},
+		{name: "foreign_project", body: restrictionFixture(metric, "TextAnswersPerDay", "99999", "eu")},
+		{name: "foreign_region", body: restrictionFixture(metric, "TextAnswersPerDay", "12345", "us")},
+		{name: "conflicting_status", body: []byte(`{"error":{"code":403,"status":"RESOURCE_EXHAUSTED"}}`)},
+	} {
+		for _, wrapper := range []string{"array", "nested_error", "nested_array"} {
+			t.Run(test.name+"/"+wrapper, func(t *testing.T) {
+				raw := "[" + string(test.body) + "]"
+				if wrapper == "nested_error" {
+					raw = `{"error":` + string(test.body) + "}"
+				}
+				if wrapper == "nested_array" {
+					raw = `{"error":[` + string(test.body) + "]}"
+				}
+				got := ParseGenerationError([]byte(raw), 429, nil, binding, identity, now, false)
+				if got.UnscopedRateLimit != test.pressure {
+					t.Fatalf("wrapped quota pressure evidence = %v, want %v", got.UnscopedRateLimit, test.pressure)
+				}
+				scope := ""
+				if got.Restriction != nil {
+					scope = got.Restriction.Scope
+				}
+				if scope != test.scope {
+					t.Fatalf("wrapped restriction scope = %q, want %q", scope, test.scope)
+				}
+				if (test.pressure || test.scope != "") && (got.UpstreamCode != 429 || got.RPCStatus != "RESOURCE_EXHAUSTED") {
+					t.Fatalf("wrapped error lost upstream classification: %+v", got)
+				}
+			})
+		}
+	}
+	for _, raw := range []string{
+		"[]",
+		`[{"error":{"code":429}},{"error":{"code":403}}]`,
+		`[{"error":{"code":429}}`,
+		`{"error":"quota exceeded"}`,
+		`[[[[[[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}]]]]]]`,
+	} {
+		if got := ParseGenerationError([]byte(raw), 429, nil, binding, identity, now, false); got.UnscopedRateLimit || got.Restriction != nil {
+			t.Fatalf("ambiguous wrapper contributed shared quota evidence: %s", raw)
+		}
+	}
+}
+
 func TestEnterpriseVerifiedDailyResetPrecedence(t *testing.T) {
 	now := time.Date(2026, 11, 17, 3, 0, 0, 0, time.UTC)
 	binding := config.GeminiEnterpriseOAuth{ProjectID: "12345", Location: "us"}

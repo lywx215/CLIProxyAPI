@@ -136,24 +136,42 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		Status  string            `json:"status"`
 		Details []json.RawMessage `json:"details"`
 	}
-	var envelope struct {
-		Error json.RawMessage `json:"error"`
-		rpcStatus
-	}
 	if len(raw) > 1024*1024 {
 		return e
 	}
-	if json.Unmarshal(raw, &envelope) != nil {
-		trimmed := bytes.TrimSpace(raw)
-		e.UnscopedRateLimit = e.HTTPStatus == 429 && (len(trimmed) == 0 || trimmed[0] != '{' && trimmed[0] != '[')
-		return e
-	}
-	body := envelope.rpcStatus
-	if len(envelope.Error) > 0 {
-		body = rpcStatus{}
-		if json.Unmarshal(envelope.Error, &body) != nil {
+	var body rpcStatus
+	// The public diagnostic decoder accepts single-element Google error
+	// arrays and nested error envelopes. Quota attribution must decode those
+	// same bounded wrappers before validating status, resource and scope.
+	for depth := 0; ; depth++ {
+		if depth > 4 {
 			return e
 		}
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) > 0 && trimmed[0] == '[' {
+			var items []json.RawMessage
+			if json.Unmarshal(trimmed, &items) != nil || len(items) != 1 {
+				return e
+			}
+			raw = items[0]
+			continue
+		}
+		var envelope struct {
+			Error json.RawMessage `json:"error"`
+			rpcStatus
+		}
+		if json.Unmarshal(trimmed, &envelope) != nil {
+			e.UnscopedRateLimit = depth == 0 && e.HTTPStatus == 429 &&
+				(len(trimmed) == 0 || trimmed[0] != '{')
+			return e
+		}
+		nested := bytes.TrimSpace(envelope.Error)
+		if len(nested) > 0 && !bytes.Equal(nested, []byte("null")) {
+			raw = nested
+			continue
+		}
+		body = envelope.rpcStatus
+		break
 	}
 	if mapped, name := generationStatus(body.Code, body.Status); mapped != 0 {
 		e.RPCStatus, e.UpstreamCode = name, body.Code

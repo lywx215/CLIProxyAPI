@@ -18,6 +18,7 @@ import (
 type enterpriseQuotaPressureExecutor struct {
 	coreauth.ProviderExecutor
 	calls int
+	body  []byte
 }
 
 func (*enterpriseQuotaPressureExecutor) Identifier() string { return ge.Provider }
@@ -25,7 +26,7 @@ func (*enterpriseQuotaPressureExecutor) Identifier() string { return ge.Provider
 func (e *enterpriseQuotaPressureExecutor) Execute(_ context.Context, auth *coreauth.Auth, req coreexec.Request, _ coreexec.Options) (coreexec.Response, error) {
 	e.calls++
 	binding := ge.FromMetadata(auth.Metadata)
-	rejection := ge.ParseGenerationError(nil, http.StatusTooManyRequests, nil, binding, auth.EnterpriseQuotaIdentity, time.Now(), false)
+	rejection := ge.ParseGenerationError(e.body, http.StatusTooManyRequests, nil, binding, auth.EnterpriseQuotaIdentity, time.Now(), false)
 	rejection.Model = req.Model
 	return coreexec.Response{}, rejection
 }
@@ -34,9 +35,28 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 	for _, test := range []struct {
 		name             string
 		usageBeforeThird bool
+		responseBody     []byte
 	}{
 		{name: "observation before third request", usageBeforeThird: true},
 		{name: "observation after third request"},
+		{
+			name:             "Google array error before quota read",
+			usageBeforeThird: true,
+			responseBody:     []byte(`[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota reached"}}]`),
+		},
+		{
+			name:         "Google array error after quota read",
+			responseBody: []byte(`[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota reached"}}]`),
+		},
+		{
+			name:             "nested Google error before quota read",
+			usageBeforeThird: true,
+			responseBody:     []byte(`{"error":{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}}`),
+		},
+		{
+			name:         "nested Google error after quota read",
+			responseBody: []byte(`{"error":{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}}`),
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, a := enterpriseTestService(t, "quota-pressure-service")
@@ -101,7 +121,7 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 					return ge.QuotaSnapshot{}
 				}
 			}
-			executor := &enterpriseQuotaPressureExecutor{}
+			executor := &enterpriseQuotaPressureExecutor{body: test.responseBody}
 			m.RegisterExecutor(executor)
 			m.SetRetryConfig(0, 0, 1)
 			execute := func(ctx context.Context, auth *coreauth.Auth, model ge.Model) error {
