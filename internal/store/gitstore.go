@@ -98,6 +98,16 @@ func (s *GitTokenStore) AuthDir() string {
 	return s.baseDirSnapshot()
 }
 
+// LocalRuntimeStateDir keeps instance history outside the synchronized repository.
+func (s *GitTokenStore) LocalRuntimeStateDir() string {
+	s.dirLock.RLock()
+	defer s.dirLock.RUnlock()
+	if s.repoDir == "" {
+		return ""
+	}
+	return s.repoDir + "-runtime"
+}
+
 // ConfigPath returns the managed config file path.
 func (s *GitTokenStore) ConfigPath() string {
 	s.dirLock.RLock()

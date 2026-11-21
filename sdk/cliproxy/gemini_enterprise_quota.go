@@ -7,9 +7,31 @@ import (
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
+	log "github.com/sirupsen/logrus"
 )
 
 const enterpriseQuotaRefreshInterval = 2 * time.Minute
+const enterpriseQuotaRetryInterval = 30 * time.Second
+
+func (s *Service) configureEnterpriseQuotaProtection(ctx context.Context, cfg *config.Config) {
+	if s.coreManager == nil || cfg == nil {
+		return
+	}
+	dir := ""
+	if !cfg.Home.Enabled {
+		var errResolve error
+		dir, errResolve = resolveCooldownStateAuthDir(cfg)
+		if errResolve != nil {
+			log.WithError(errResolve).Warn("failed to resolve Gemini Enterprise quota protection directory")
+			return
+		}
+		dir = s.coreManager.RuntimeStateDir(dir)
+	}
+	if err := s.coreManager.ConfigureEnterpriseQuotaProtectionStore(ctx, dir); err != nil && ctx.Err() == nil {
+		log.WithError(err).Warn("failed to restore Gemini Enterprise quota protection")
+	}
+}
 
 // Quota reads share the bounded, cancellable discovery workers. They never run
 // on the inference path and do not depend on an open management dashboard.
@@ -97,14 +119,16 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 			return
 		}
 		now := d.now()
-		// Retry another credential in the pool after a permission/transport error.
+		// Keep retries bounded across the whole pool. A different credential
+		// can supply the next reading after a permission or transport error.
 		d.quotaNext[authKey] = now.Add(enterpriseQuotaRefreshInterval)
+		next := now.Add(enterpriseQuotaRetryInterval)
 		if accepted {
-			next := now.Add(enterpriseQuotaRefreshInterval)
-			if reset := ge.NextPacificMidnight(now); reset.Before(next) {
-				next = reset
-			}
-			d.quotaNext[poolKey] = next
+			next = now.Add(enterpriseQuotaRefreshInterval)
 		}
+		if reset := ge.NextPacificMidnight(now); reset.Before(next) {
+			next = reset
+		}
+		d.quotaNext[poolKey] = next
 	}()
 }

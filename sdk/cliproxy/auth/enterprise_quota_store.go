@@ -11,6 +11,7 @@ import (
 	"time"
 
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
+	log "github.com/sirupsen/logrus"
 )
 
 // SharedQuotaStateStore is optional so existing cooldown stores remain compatible.
@@ -66,22 +67,34 @@ func (s SharedQuotaSnapshot) Validate() error {
 const sha256HexLength = 64
 
 func (m *Manager) sharedQuotaSnapshot() SharedQuotaSnapshot {
+	return m.quotaSnapshot(false)
+}
+
+func (m *Manager) quotaSnapshot(protectionOnly bool) SharedQuotaSnapshot {
 	c := &m.enterpriseQuota
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.storeVersion++
 	snapshot := SharedQuotaSnapshot{SchemaVersion: 1, Version: c.storeVersion, Pools: []SharedQuotaState{}, Bindings: []SharedQuotaBinding{}}
 	for _, s := range c.pools {
-		if s.Restriction.Kind == enterpriseNearLimitKind {
+		if protectionOnly && !s.durableProtection() ||
+			!protectionOnly && (s.Restriction.Kind == enterpriseNearLimitKind || enterpriseLocalProtectionKind(s.Restriction.Kind)) {
 			continue
 		}
 		state := *s
 		state.clearProbe()
 		state.legacyReadyAt = time.Time{}
 		state.rejections = nil
+		state.streak = nil
 		snapshot.Pools = append(snapshot.Pools, state)
 	}
 	for _, g := range c.bindings {
+		if protectionOnly {
+			s := c.pools[quotaDigest(g.keys()["edition"])]
+			if s == nil || !s.durableProtection() || !g.matchesProtectedPool(s) {
+				continue
+			}
+		}
 		binding := SharedQuotaBinding{AuthID: g.authID, Fingerprint: g.fingerprint}
 		if g.identity != nil {
 			identity := *g.identity
@@ -109,6 +122,61 @@ func (m *Manager) restoreSharedQuota(ctx context.Context, store CooldownStateSto
 	if err := snapshot.Validate(); err != nil {
 		return err
 	}
+	m.restoreQuotaSnapshot(snapshot, false)
+	return nil
+}
+
+// ConfigureEnterpriseQuotaProtectionStore restores paid-pool protection before
+// traffic starts, even when ordinary cooldown persistence is disabled.
+func (m *Manager) ConfigureEnterpriseQuotaProtectionStore(ctx context.Context, dir string) error {
+	if m == nil {
+		return nil
+	}
+	c := &m.enterpriseQuota
+	c.protectionMu.Lock()
+	defer c.protectionMu.Unlock()
+	if dir == "" || m.HomeEnabled() {
+		c.protectionPath = ""
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	path := filepath.Join(dir, "enterprise-quota-protection.sqs")
+	if path == c.protectionPath {
+		return nil
+	}
+	snapshot, err := readSharedQuotaSnapshot(ctx, path)
+	if err != nil {
+		return err
+	}
+	for _, pool := range snapshot.Pools {
+		if !pool.durableProtection() {
+			return fmt.Errorf("unexpected pool in Enterprise quota protection state")
+		}
+	}
+	m.restoreQuotaSnapshot(snapshot, true)
+	c.protectionPath = path
+	current := m.quotaSnapshot(true)
+	if len(current.Pools) == 0 && snapshot.Version == 0 {
+		return nil
+	}
+	return writeSharedQuotaSnapshot(ctx, path, current)
+}
+
+func (m *Manager) persistEnterpriseQuotaProtection() {
+	c := &m.enterpriseQuota
+	c.protectionMu.Lock()
+	defer c.protectionMu.Unlock()
+	if c.protectionPath == "" || m.HomeEnabled() {
+		return
+	}
+	if err := writeSharedQuotaSnapshot(context.Background(), c.protectionPath, m.quotaSnapshot(true)); err != nil {
+		log.WithError(err).Warn("failed to persist Gemini Enterprise quota protection")
+	}
+}
+
+func (m *Manager) restoreQuotaSnapshot(snapshot SharedQuotaSnapshot, protectionOnly bool) {
 	c := &m.enterpriseQuota
 	m.mu.Lock()
 	c.mu.Lock()
@@ -146,16 +214,26 @@ func (m *Manager) restoreSharedQuota(ctx context.Context, store CooldownStateSto
 	c.mu.Unlock()
 	for _, binding := range snapshot.Bindings {
 		a := m.auths[binding.AuthID]
-		if a == nil || a.Provider != ge.Provider || a.EnterpriseQuotaIdentity != nil || enterpriseFingerprint(a) != binding.Fingerprint || !binding.Identity.ValidFor(ge.FromMetadata(a.Metadata)) {
+		if a == nil || a.Provider != ge.Provider || enterpriseFingerprint(a) != binding.Fingerprint || !binding.Identity.ValidFor(ge.FromMetadata(a.Metadata)) {
 			continue
 		}
-		identity := *binding.Identity
-		a.EnterpriseQuotaIdentity = &identity
-		m.attachEnterpriseQuotaLocked(a)
+		if a.EnterpriseQuotaIdentity == nil {
+			identity := *binding.Identity
+			a.EnterpriseQuotaIdentity = &identity
+			m.attachEnterpriseQuotaLocked(a)
+		}
+		if protectionOnly {
+			c.mu.Lock()
+			if g := c.bindings[a.ID]; g != nil && g.identity != nil && *g.identity == *binding.Identity {
+				if s := c.pools[quotaDigest(g.keys()["edition"])]; s != nil && s.durableProtection() {
+					g.restoredProtectionPaid = true
+				}
+			}
+			c.mu.Unlock()
+		}
 	}
 	m.mu.Unlock()
 	m.publishEnterpriseQuota()
-	return nil
 }
 
 func (s *FileCooldownStateStore) LoadSharedQuota(ctx context.Context) (SharedQuotaSnapshot, error) {
@@ -170,11 +248,15 @@ func (s *FileCooldownStateStore) LoadSharedQuota(ctx context.Context) (SharedQuo
 	return s.readSharedQuota(ctx)
 }
 func (s *FileCooldownStateStore) readSharedQuota(ctx context.Context) (SharedQuotaSnapshot, error) {
+	return readSharedQuotaSnapshot(ctx, filepath.Join(s.dir, "shared-quota-state.sqs"))
+}
+
+func readSharedQuotaSnapshot(ctx context.Context, path string) (SharedQuotaSnapshot, error) {
 	var snapshot SharedQuotaSnapshot
 	if err := ctx.Err(); err != nil {
 		return snapshot, err
 	}
-	data, err := os.ReadFile(filepath.Join(s.dir, "shared-quota-state.sqs"))
+	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return snapshot, nil
 	}
@@ -204,7 +286,11 @@ func (s *FileCooldownStateStore) SaveSharedQuota(ctx context.Context, snapshot S
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	previous, err := s.readSharedQuota(ctx)
+	return writeSharedQuotaSnapshot(ctx, filepath.Join(s.dir, "shared-quota-state.sqs"), snapshot)
+}
+
+func writeSharedQuotaSnapshot(ctx context.Context, path string, snapshot SharedQuotaSnapshot) error {
+	previous, err := readSharedQuotaSnapshot(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -218,10 +304,11 @@ func (s *FileCooldownStateStore) SaveSharedQuota(ctx context.Context, snapshot S
 	if err != nil {
 		return fmt.Errorf("encode shared quota state: %w", err)
 	}
-	if err := os.MkdirAll(s.dir, 0700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create shared quota state directory: %w", err)
 	}
-	file, err := os.CreateTemp(s.dir, "shared-quota-*.tmp")
+	file, err := os.CreateTemp(dir, "shared-quota-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -241,7 +328,7 @@ func (s *FileCooldownStateStore) SaveSharedQuota(ctx context.Context, snapshot S
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(s.dir, "shared-quota-state.sqs")); err != nil {
+	if err := os.Rename(name, path); err != nil {
 		return fmt.Errorf("replace shared quota state: %w", err)
 	}
 	return nil

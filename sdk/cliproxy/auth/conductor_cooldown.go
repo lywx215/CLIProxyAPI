@@ -813,6 +813,9 @@ func isStaleExecutionResult(result Result, current *Auth) bool {
 
 // MarkResult records an execution result and notifies hooks.
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
+	if m != nil && result.Provider == ge.Provider && m.enterpriseHistory.Load() != nil {
+		defer m.recordEnterpriseHistory(result, time.Now())
+	}
 	if result.Provider == ae.Provider && result.Error != nil && result.Error.Code == "antigravity_enterprise_local_gate" {
 		return
 	}

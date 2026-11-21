@@ -780,6 +780,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 				applyRequestScopedActionToResult(action, okAction, &result)
 				if isResponsesCompactAvailabilityNeutralError(execOpts, errExec, result.Error) {
 					m.recordAvailabilityNeutralResult(execCtx, result)
+					m.recordEnterpriseHistory(result, time.Now())
 				} else {
 					m.MarkResult(execCtx, result)
 				}
@@ -993,6 +994,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 				// that remains usable through the messages endpoint.
 				if isCountTokensEndpointNotFoundError(errExec, execReq.Model) && (result.Error == nil || result.Error.Code != ErrorCodeForceCooldown) {
 					m.recordAvailabilityNeutralResult(execCtx, result)
+					m.recordEnterpriseHistory(result, time.Now())
 				} else {
 					if isCredentialScopedError(errExec) {
 						result.CredentialScope = true

@@ -34,6 +34,7 @@ type enterpriseBalancePool struct {
 	pool            *ge.QuotaPool
 	paidObservation bool
 	inFlight        int64
+	liveGeneration  int64
 	byAuth          map[string]int64
 	debits          []enterpriseQuotaDebit
 }
@@ -60,6 +61,7 @@ func (c *enterpriseQuotaCoordinator) migrateBalanceLocked(old, next *enterpriseQ
 		return
 	}
 	current.inFlight += previous.inFlight
+	current.liveGeneration += previous.liveGeneration
 	for id, count := range previous.byAuth {
 		current.byAuth[id] += count
 	}
@@ -84,6 +86,10 @@ type EnterpriseQuotaBalanceView struct {
 	CredentialInFlight int64      `json:"credential_in_flight"`
 	LocalUnreported    int64      `json:"local_unreported"`
 	Reserve            int64      `json:"reserve"`
+	ProtectionStatus   string     `json:"protection_status,omitempty"`
+	ProtectionReason   string     `json:"protection_reason,omitempty"`
+	RetryAt            *time.Time `json:"retry_at,omitempty"`
+	UsedPercent        *float64   `json:"used_percent,omitempty"`
 }
 
 func (m *Manager) EnterpriseQuotaBalance(auth *Auth) EnterpriseQuotaBalanceView {
@@ -100,6 +106,29 @@ func (m *Manager) EnterpriseQuotaBalance(auth *Auth) EnterpriseQuotaBalanceView 
 	}
 	key := g.balanceKey()
 	view.PoolID = quotaDigest(key)
+	now := c.now()
+	if s := c.pools[view.PoolID]; s != nil && g.enabled() && g.appliesToQuota(s, now) {
+		phase := quotaPhase(s, now)
+		switch {
+		case s.Restriction.Kind == enterpriseRateLimitedKind:
+			view.ProtectionStatus, view.ProtectionReason = "rate_limited", "consecutive_429"
+		case enterpriseObservedPause(s.Restriction.Kind):
+			view.ProtectionStatus, view.ProtectionReason = "paused", s.Restriction.Kind
+		case s.PaidRecovery && s.Restriction.Kind == "daily":
+			view.ProtectionStatus, view.ProtectionReason = "paused", "daily_quota"
+		case s.Restriction.Kind == enterpriseNearLimitKind:
+			view.ProtectionStatus, view.ProtectionReason = "paused", "high_usage"
+		}
+		if view.ProtectionStatus != "" {
+			if phase == "probing" || phase == "probe_pending" && (s.Restriction.Kind != enterpriseRateLimitedKind || g.rateLimitedPoolReadyLocked(s, now)) {
+				view.ProtectionStatus = "recovering"
+			}
+			if s.Restriction.RetryAt.After(now) {
+				retryAt := s.Restriction.RetryAt
+				view.RetryAt = &retryAt
+			}
+		}
+	}
 	p := c.balances[key]
 	if p == nil {
 		return view
@@ -113,7 +142,11 @@ func (m *Manager) EnterpriseQuotaBalance(auth *Auth) EnterpriseQuotaBalanceView 
 		view.ObservedAt, view.ResetAt, view.Remaining = &observed, &reset, &remaining
 		view.Status = "stale"
 	}
-	if left, known := p.remaining(c.now(), view.Reserve); known {
+	if p.currentPaidObservation(now) && *p.pool.Limit > 0 {
+		percent := 100 * float64(*p.pool.Used) / float64(*p.pool.Limit)
+		view.UsedPercent = &percent
+	}
+	if left, known := p.remaining(now, view.Reserve); known {
 		view.Status, view.EffectiveRemaining = "ok", &left
 		if left == 0 {
 			view.Status = "exhausted"
@@ -163,7 +196,7 @@ func (c *enterpriseQuotaCoordinator) balancePoolLocked(g *enterpriseQuotaGate) *
 			active[binding.balanceKey()] = true
 		}
 		for key, pool := range c.balances {
-			if !active[key] && pool.current().inFlight == 0 {
+			if !active[key] && pool.current().liveGeneration == 0 {
 				delete(c.balances, key)
 			}
 		}
@@ -173,8 +206,8 @@ func (c *enterpriseQuotaCoordinator) balancePoolLocked(g *enterpriseQuotaGate) *
 	return p
 }
 
-// EnterpriseQuotaRefreshNeeded retains the balancing refresh policy and lets
-// a recent paid-pool rejection request a quota read with balancing disabled.
+// EnterpriseQuotaRefreshNeeded keeps paid pressure and recovery polling active
+// even when continuous balance monitoring is disabled.
 func (m *Manager) EnterpriseQuotaRefreshNeeded(source *Auth) bool {
 	if source == nil || source.enterpriseQuota == nil || m.HomeEnabled() {
 		return false
@@ -191,7 +224,8 @@ func (m *Manager) EnterpriseQuotaRefreshNeeded(source *Auth) bool {
 
 // ObserveEnterpriseQuota accepts only a current credential's verified edition.
 // A failed, stale, foreign or out-of-order read cannot replenish a routing pool.
-// A positive balance never clears a Google restriction.
+// A positive balance can verify recovery from a local observation-based pause.
+// Google restrictions retain their own recovery deadline.
 func (m *Manager) ObserveEnterpriseQuota(source *Auth, snapshot ge.QuotaSnapshot) bool {
 	if source == nil || source.enterpriseQuota == nil || m.HomeEnabled() {
 		return false
@@ -199,35 +233,41 @@ func (m *Manager) ObserveEnterpriseQuota(source *Auth, snapshot ge.QuotaSnapshot
 	c := &m.enterpriseQuota
 	c.mu.Lock()
 	g := c.bindings[source.ID]
-	accepted, paused := m.observeEnterpriseQuotaLocked(source, g, snapshot, c.now())
+	accepted, changed, persist := m.observeEnterpriseQuotaLocked(source, g, snapshot, c.now())
 	c.mu.Unlock()
-	if paused {
+	if changed {
 		m.publishEnterpriseQuota()
+	}
+	if persist {
+		m.persistEnterpriseQuotaProtection()
 	}
 	return accepted
 }
 
-func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaGate, snapshot ge.QuotaSnapshot, now time.Time) (accepted, paused bool) {
+func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaGate, snapshot ge.QuotaSnapshot, now time.Time) (accepted, changed, persist bool) {
 	c := &m.enterpriseQuota
-	if m.HomeEnabled() || !source.enterpriseQuota.sameCredential(g) || (!m.EnterpriseQuotaBalancingEnabled() && !g.needsQuotaObservationLocked(now)) {
-		return false, false
+	if m.HomeEnabled() || !source.enterpriseQuota.sameCredential(g) || (!m.EnterpriseQuotaBalancingEnabled() && g.paidQuotaKey(now) == "") {
+		return false, false, false
 	}
 	binding := ge.FromMetadata(g.policy.Metadata)
-	if !g.identity.ValidFor(binding) || snapshot.ProjectID != binding.ProjectID || snapshot.Location != binding.Location {
-		return false, false
+	sourceIdentity := source.enterpriseQuota.identity
+	if !g.identity.ValidFor(binding) || !sourceIdentity.ValidFor(binding) || sourceIdentity.ProjectNumber != g.identity.ProjectNumber ||
+		sourceIdentity.Edition != g.identity.Edition || sourceIdentity.PrincipalHash != g.identity.PrincipalHash ||
+		snapshot.ProjectID != binding.ProjectID || snapshot.Location != binding.Location {
+		return false, false, false
 	}
 	pool := ge.SelectQuotaPool(snapshot, g.identity, binding)
 	if pool == nil || pool.Status != "ok" || pool.Remaining == nil || pool.Limit == nil || pool.Used == nil || pool.UsageUpdatedAt == nil || snapshot.PeriodStart == nil || snapshot.ResetAt == nil ||
 		snapshot.ObservedAt.After(now) || now.Sub(snapshot.ObservedAt) > EnterpriseQuotaObservationTTL || !snapshot.PeriodStart.Equal(enterpriseQuotaDayStart(now)) || !snapshot.ResetAt.Equal(ge.NextPacificMidnight(now)) ||
 		pool.UsageUpdatedAt.Before(*snapshot.PeriodStart) || pool.UsageUpdatedAt.After(snapshot.ObservedAt) || *pool.Remaining < 0 || *pool.Limit < 0 || *pool.Used < 0 {
-		return false, false
+		return false, false, false
 	}
 	p := c.balancePoolLocked(g)
 	if p.snapshot.ObservedAt.After(snapshot.ObservedAt) {
-		return false, false
+		return false, false, false
 	}
 	if p.pool != nil && p.snapshot.PeriodStart != nil && p.snapshot.PeriodStart.Equal(*snapshot.PeriodStart) && p.pool.UsageUpdatedAt.After(*pool.UsageUpdatedAt) {
-		return false, false
+		return false, false, false
 	}
 	p.snapshot = ge.CloneQuotaSnapshot(snapshot)
 	p.pool = ge.SelectQuotaPool(p.snapshot, g.identity, binding)
@@ -236,10 +276,20 @@ func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaG
 	remaining := max(int64(0), *p.pool.Limit-*p.pool.Used)
 	p.pool.Remaining = &remaining
 	p.pruneDebits(*pool.UsageUpdatedAt)
-	if s := g.quotaPressureStateLocked(now); s != nil {
-		paused = g.pauseNearQuotaLimitLocked(s, now)
+	if key := g.paidQuotaKey(now); key != "" && g.enabled() {
+		s := c.poolStateLocked(key)
+		if g.protectObservedQuotaLocked(s, p, now) {
+			return true, true, true
+		}
+		if g.pauseNearQuotaLimitLocked(s, now) {
+			return true, true, true
+		}
+		if enterpriseObservedPause(s.Restriction.Kind) && p.pool.UsageUpdatedAt.After(s.ProtectionUsageAt) {
+			s.ProtectionUsageAt, s.ProtectionObservedAt = p.pool.UsageUpdatedAt.UTC(), p.snapshot.ObservedAt.UTC()
+			return true, false, true
+		}
 	}
-	return true, paused
+	return true, false, false
 }
 
 func (p *enterpriseBalancePool) pruneDebits(watermark time.Time) {
@@ -465,6 +515,9 @@ func (s *QuotaBalancedSelector) Pick(ctx context.Context, provider, model string
 			left = unknownCapacity
 		}
 		score := float64(left) / float64(p.pool.inFlight+1)
+		if p.pool.usedAtLeast(now, 95) {
+			score *= 0.5
+		}
 		weights[key] = score
 	}
 	if len(weights) == 0 {

@@ -194,6 +194,16 @@ HTML／JSON 记录操作起止时间、缓存命中、重试原因和后台预�
 
 特别注意：旧版 c03 如果只有 v0 管理接口且没有固定管理页自动更新开关，会在停流前报 `legacy_panel_pin_requires_separate_preparation`。工具不通过已弃用的 v0 全量配置写入去绕开冲突检查；需要一次单独、明确授权的兼容准备。没有为本工具修改应用公开 API 或新增 v0 功能。
 
+## Gemini Enterprise 历史统计首次升级
+
+在目标实例停止接收新请求、已在途请求排空后，从旧进程读取 `/v8/management/credentials` 的完整响应。若接口分页，保存全部页。保留本次读取时间和旧进程的时区，再离线生成基线文件。
+
+```powershell
+python -B -m scripts.ops.enterprise_history_baseline credentials.json --captured-at 2026-11-20T02:15:00Z --source-timezone '+08:00' --output .gemini-enterprise-history.baseline
+```
+
+把文件放入同一目标实例的持久化运行目录。文件存储使用 `auth-dir`。Postgres 和对象存储使用本地镜像根目录，Git 使用工作区旁的 `gitstore-runtime`。新进程启动时导入成功数、失败数及近期计数，然后把新请求的结果追加到 `.gemini-enterprise-history.v1.wal`。恢复会跳过已导入的计数。可信的本服首次上传时间可通过 `--trusted-first-uploads` 指定一个以账号 ID 为键、带 UTC 偏移的时间字符串为值的 JSON 文件。例行服务重启及容器更新都需要继续挂载这个实例的原数据卷。
+
 ## 离线验收和结构
 
 ```powershell

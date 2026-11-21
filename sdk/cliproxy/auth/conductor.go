@@ -162,6 +162,7 @@ type Manager struct {
 	enterprisePolicies        enterprisePolicyCoordinator
 	enterpriseCarbonEvidence  enterpriseCarbonEvidenceCoordinator
 	enterpriseQuota           enterpriseQuotaCoordinator
+	enterpriseHistory         atomic.Pointer[enterpriseHistoryStore]
 	geminiBudgetMu            sync.Mutex
 	geminiBudget              *budget.Engine
 	geminiBudgetPath          string

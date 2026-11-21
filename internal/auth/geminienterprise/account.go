@@ -8,9 +8,25 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 )
 
 const AccountVersion = 1
+const MaxRoutingPriority = 1_000_000
+
+// AccountRouting applies only when a collection has no setting of its own.
+type AccountRouting struct {
+	Priority int    `json:"priority,omitempty"`
+	Weight   *int64 `json:"weight,omitempty"`
+}
+
+func (r AccountRouting) EffectiveWeight() int64 {
+	if r.Weight == nil {
+		return credentialweight.Default
+	}
+	return *r.Weight
+}
 
 // Collection is one independently configurable inference binding in an account.
 type Collection struct {
@@ -30,6 +46,7 @@ type Account struct {
 	ID                     string            `json:"account_id"`
 	Revision               uint64            `json:"revision"`
 	Collections            []Collection      `json:"collections"`
+	Routing                AccountRouting    `json:"routing,omitzero"`
 	Discovery              map[string]any    `json:"discovery,omitempty"`
 	MergedSources          []string          `json:"merged_sources,omitempty"`
 	RotationHolds          map[string]string `json:"rotation_holds,omitempty"`
@@ -124,6 +141,9 @@ func ReadAccount(metadata map[string]any) (*Account, error) {
 	if expected := AccountID(String(metadata, "email"), String(metadata, "client_id")); expected != "" && account.ID != expected {
 		return nil, fmt.Errorf("gemini-enterprise: account metadata identity mismatch")
 	}
+	if weight := account.Routing.EffectiveWeight(); account.Routing.Priority < -MaxRoutingPriority || account.Routing.Priority > MaxRoutingPriority || weight < 0 || weight > credentialweight.Max {
+		return nil, fmt.Errorf("gemini-enterprise: invalid account routing settings")
+	}
 	if account.RotationIsolationOwner != "" && (!ValidRotationOwner(account.RotationIsolationOwner) || len(account.RotationHolds) == 0) {
 		return nil, fmt.Errorf("gemini-enterprise: invalid rotation isolation owner")
 	}
@@ -216,6 +236,10 @@ func AccountFromLegacy(metadata map[string]any) (Account, error) {
 }
 
 func CloneAccount(account Account) Account {
+	if account.Routing.Weight != nil {
+		weight := *account.Routing.Weight
+		account.Routing.Weight = &weight
+	}
 	if account.Collections != nil {
 		collections := make([]Collection, len(account.Collections))
 		for i, collection := range account.Collections {

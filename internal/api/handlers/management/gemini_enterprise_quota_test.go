@@ -66,6 +66,85 @@ func TestEnterpriseQuotaHandlerKeepsPermissionFailuresOutOfCredentialHealth(t *t
 	}
 }
 
+func TestEnterpriseQuotaHandlerPublishesVerifiedPaidDepletion(t *testing.T) {
+	previous := newGeminiEnterpriseQuotaClient
+	t.Cleanup(func() { newGeminiEnterpriseQuotaClient = previous })
+	failRead := false
+	newGeminiEnterpriseQuotaClient = func(string) (*http.Client, error) {
+		return &http.Client{Transport: enterpriseTestTransport(func(r *http.Request) (*http.Response, error) {
+			if failRead {
+				return &http.Response{StatusCode: 403, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+			}
+			if strings.HasSuffix(r.URL.Path, "/licenseConfigs") {
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"licenseConfigs":[{"state":"ACTIVE","subscriptionTier":"SEARCH_AND_ASSISTANT"}]}`))}, nil
+			}
+			end, err := time.Parse(time.RFC3339Nano, r.URL.Query().Get("interval.endTime"))
+			if err != nil {
+				return nil, err
+			}
+			start, err := time.Parse(time.RFC3339Nano, r.URL.Query().Get("interval.startTime"))
+			if err != nil {
+				return nil, err
+			}
+			at := end.Add(-time.Millisecond)
+			if at.Before(start) {
+				at = end
+			}
+			metric := "discoveryengine.googleapis.com/quota/text_answer_gen_tier_enterprise_plus_regional"
+			suffix, kind := "/usage", "DELTA"
+			if strings.Contains(r.URL.Query().Get("filter"), "/limit") {
+				suffix, kind = "/limit", "GAUGE"
+			}
+			body, err := json.Marshal(map[string]any{"timeSeries": []any{map[string]any{
+				"metric":     map[string]any{"type": metric + suffix, "labels": map[string]string{"regional_location": "global", "limit_name": "TextAnswerGenPerDayPerProjectRegional"}},
+				"resource":   map[string]string{"type": "discoveryengine.googleapis.com/Location"},
+				"metricKind": kind,
+				"points": []any{map[string]any{
+					"interval": map[string]time.Time{"startTime": at.Add(-time.Nanosecond), "endTime": at},
+					"value":    map[string]string{"int64Value": "10200"},
+				}},
+			}}})
+			if err != nil {
+				return nil, err
+			}
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(body)))}, nil
+		})}, nil
+	}
+	manager := coreauth.NewManager(nil, nil, nil)
+	metadata := map[string]any{
+		"client_id": "fixture", "project_id": "123", "engine_id": "fixture-engine",
+		"access_token": "synthetic-secret", "expiry": time.Now().Add(time.Hour).Format(time.RFC3339),
+	}
+	binding := ge.FromMetadata(metadata)
+	registered, err := manager.Register(t.Context(), &coreauth.Auth{
+		ID: "quota-management-protection", Provider: ge.Provider, Metadata: metadata,
+		EnterpriseQuotaIdentity: &ge.QuotaIdentity{Verified: true, Paid: true, Binding: ge.Binding(binding), ProjectNumber: "123",
+			Location: binding.Location, Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered.EnsureIndex()
+	h := &Handler{authManager: manager}
+	r := gin.New()
+	r.GET("/v8/management/quota/gemini-enterprise", h.GetGeminiEnterpriseQuota)
+	url := "/v8/management/quota/gemini-enterprise?refresh=true&auth_index=" + registered.Index
+	for _, failed := range []bool{false, true} {
+		failRead = failed
+		response := httptest.NewRecorder()
+		r.ServeHTTP(response, httptest.NewRequest(http.MethodGet, url, nil))
+		var result enterpriseQuotaResponse
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil ||
+			result.SelectedPool == nil || result.SelectedPool.Remaining == nil || *result.SelectedPool.Remaining != 0 {
+			t.Fatalf("unexpected quota response: %d %s", response.Code, response.Body.String())
+		}
+		view := manager.EnterpriseQuotaBalance(registered)
+		if view.Enabled || view.ProtectionStatus != "paused" || view.ProtectionReason != "quota_exhausted" || view.RetryAt == nil {
+			t.Fatalf("manual verified observation failed to protect routing (failed=%v): %+v", failed, view)
+		}
+	}
+}
+
 func TestEnterpriseQuotaHandlerUsesUnifiedSavedTokenRefresh(t *testing.T) {
 	previousClient, previousRefresh := newGeminiEnterpriseQuotaClient, ensureGeminiEnterpriseManagementToken
 	previousIdentity := resolveGeminiEnterpriseQuotaIdentity

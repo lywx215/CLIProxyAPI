@@ -649,7 +649,7 @@ func (m *Manager) availableAuthsForRouteModelForRequest(ctx context.Context, aut
 		return nil, newAuthUnavailableErrorWithCause(earliest, now, lastCandidateErr)
 	}
 
-	return availableAuthsFromPriorityBuckets(availableByPriority, allPriorities), nil
+	return availableAuthsFromPriorityBuckets(preferHealthyEnterprisePools(availableByPriority, now), allPriorities), nil
 }
 
 // availableAuthsForSelector reports the candidates handed to priority-scoped consumers such as
@@ -657,8 +657,17 @@ func (m *Manager) availableAuthsForRouteModelForRequest(ctx context.Context, aut
 // unless session affinity or an across-priorities scheduler is active, in which case the selector
 // or scheduler additionally receives lower priority tiers.
 func (m *Manager) availableAuthsForSelector(ctx context.Context, selector Selector, auths []*Auth, provider, routeModel string, now time.Time) (priorityAuths, selectorAuths []*Auth, err error) {
-	_, sessionAffinity := selector.(*SessionAffinitySelector)
+	affinity, sessionAffinity := selector.(*SessionAffinitySelector)
 	schedulerAcross := m.pluginSchedulerWantsAcrossPrioritiesLocked()
+	weightedSelector := selector
+	if sessionAffinity {
+		weightedSelector = affinity.fallback
+	}
+	if _, weighted := weightedSelector.(*WeightedRoundRobinSelector); weighted && m.pluginScheduler == nil {
+		// A zero-weight credential cannot stand in for a healthy candidate
+		// when deciding whether to defer a rate-limited pool.
+		auths = positiveWeightAuths(auths)
+	}
 
 	if !sessionAffinity && !schedulerAcross {
 		priorityAuths, err = m.availableAuthsForRouteModelForRequest(ctx, auths, provider, routeModel, now, false)

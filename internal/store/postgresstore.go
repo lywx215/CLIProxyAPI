@@ -199,6 +199,11 @@ func (s *PostgresStore) AuthDir() string {
 	return s.authDir
 }
 
+// LocalRuntimeStateDir keeps instance history outside the rebuilt auth mirror.
+func (s *PostgresStore) LocalRuntimeStateDir() string {
+	return s.WorkDir()
+}
+
 // WorkDir exposes the root spool directory used for mirroring.
 func (s *PostgresStore) WorkDir() string {
 	if s == nil {

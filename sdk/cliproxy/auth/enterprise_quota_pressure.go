@@ -63,17 +63,15 @@ func (g *enterpriseQuotaGate) paidQuotaKey(now time.Time) string {
 }
 
 func (g *enterpriseQuotaGate) appliesToQuota(s *SharedQuotaState, now time.Time) bool {
-	return s.Restriction.Kind != enterpriseNearLimitKind || g.paidQuotaKey(now) == s.Key
+	if enterpriseLocalProtectionKind(s.Restriction.Kind) {
+		return g.matchesProtectedPool(s)
+	}
+	return s.Restriction.Kind != enterpriseNearLimitKind || g.paidQuotaKey(now) == s.Key ||
+		g.restoredProtectionPaid && g.matchesProtectedPool(s)
 }
 
 func (p *enterpriseBalancePool) nearDailyLimit(now time.Time) bool {
-	if p == nil || !p.paidObservation || p.pool == nil || p.snapshot.ResetAt == nil || !now.Before(*p.snapshot.ResetAt) ||
-		p.snapshot.ObservedAt.After(now) || now.Sub(p.snapshot.ObservedAt) >= EnterpriseQuotaObservationTTL {
-		return false
-	}
-	limit, used := *p.pool.Limit, *p.pool.Used
-	// ceil(0.99 * limit), calculated without multiplying potentially large values.
-	return limit > 0 && used >= limit-limit/100
+	return p.usedAtLeast(now, 99)
 }
 
 func (g *enterpriseQuotaGate) quotaPressureStateLocked(now time.Time) *SharedQuotaState {
@@ -91,35 +89,56 @@ func enterpriseQuotaTextModel(model string) bool {
 	return model != "" && model != "gemini-3-pro-image" && model != "veo-3.1" && registry.EnterpriseMediaKind(model) == ""
 }
 
-func (t *enterpriseQuotaTicket) recordQuotaPressureLocked(g *enterpriseQuotaGate, upstream *ge.GenerationError, now time.Time) bool {
-	if t.request == nil {
-		return false
+func (t *enterpriseQuotaTicket) recordQuotaPressureLocked(g *enterpriseQuotaGate, upstream *ge.GenerationError, now time.Time) (changed, persist bool) {
+	if t.request == nil || t.admittedAt.Before(enterpriseQuotaDayStart(now)) {
+		return false, false
 	}
 	s := g.quotaPressureStateLocked(now)
 	if s == nil {
-		return false
+		return false, false
 	}
 	captured, ok := t.versions[s.PoolID]
 	if !ok || s.ResetEpoch != captured.reset {
-		return false
+		return false, false
 	}
 	if s.Phase == "cooling" && s.Restriction.Kind == enterpriseNearLimitKind {
 		t.sharedRateLimit = true
 	}
+	if enterpriseLocalProtectionKind(s.Restriction.Kind) {
+		t.sharedRateLimit = true
+		if t.probes[s.PoolID] == 0 && upstream.RetryAt.After(s.ProtectionRetryAt) {
+			// Requests admitted just before the limiting decision may still
+			// return a longer upstream delay after it takes effect.
+			s.ProtectionRetryAt = upstream.RetryAt.UTC()
+			if s.ProtectionRetryAt.After(s.Restriction.RetryAt) {
+				s.Restriction.RetryAt = s.ProtectionRetryAt
+				s.Phase = "cooling"
+				s.Version++
+			}
+			return true, true
+		}
+	}
 	if s.Phase != "normal" || s.Version != captured.version {
-		return false
+		return false, false
 	}
 	if _, seen := t.request.pools.LoadOrStore(s.PoolID, struct{}{}); seen {
-		return false
+		return false, false
 	}
 	s.pruneRejections(now)
 	if len(s.rejections) == enterpriseQuotaRejectionCount {
 		s.rejections = s.rejections[1:]
 	}
 	s.rejections = append(s.rejections, enterpriseQuotaRejection{at: now, retryAt: upstream.RetryAt})
-	paused := g.pauseNearQuotaLimitLocked(s, now)
-	t.sharedRateLimit = paused
-	return paused
+	if g.pauseNearQuotaLimitLocked(s, now) {
+		t.sharedRateLimit = true
+		return true, true
+	}
+	if !s.recordRateLimit(now, upstream.RetryAt) {
+		return false, false
+	}
+	g.protectObservedQuotaLocked(s, g.manager.enterpriseQuota.balances[s.Key], now)
+	t.sharedRateLimit = true
+	return true, true
 }
 
 func (g *enterpriseQuotaGate) pauseNearQuotaLimitLocked(s *SharedQuotaState, now time.Time) bool {
@@ -139,13 +158,19 @@ func (g *enterpriseQuotaGate) pauseNearQuotaLimitLocked(s *SharedQuotaState, now
 	s.PaidRecovery = true
 	s.Restriction = ge.Restriction{Kind: enterpriseNearLimitKind, Scope: "edition", Feature: "assistant_search", Edition: g.identity.Edition, RetryAt: retryAt.UTC(), TimeSource: "local_quota_pressure"}
 	s.LastRejectedAt = s.rejections[len(s.rejections)-1].at.UTC()
-	s.rejections = nil
+	s.rejections, s.streak = nil, nil
 	return true
 }
 
 func (g *enterpriseQuotaGate) needsQuotaObservationLocked(now time.Time) bool {
 	s := g.quotaPressureStateLocked(now)
-	if s == nil || s.Phase != "normal" {
+	if s == nil {
+		return false
+	}
+	if s.durableProtection() && s.Restriction.Kind != enterpriseNearLimitKind {
+		return true
+	}
+	if s.Phase != "normal" {
 		return false
 	}
 	s.pruneRejections(now)

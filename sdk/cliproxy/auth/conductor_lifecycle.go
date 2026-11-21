@@ -173,6 +173,9 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	// Serialize this credential, but release the manager lock during store I/O.
 	// Persist failures stay non-fatal, but must not be silent: a restart would
 	// lose the credential that only exists in memory.
+	if auth.Provider == ge.Provider && m.enterpriseHistory.Load() != nil {
+		ctx = withEnterpriseCredentialUpload(ctx)
+	}
 	if errPersist := m.persistLocked(ctx, auth); errPersist != nil {
 		if IsBoundAccountAuth(auth) || auth.Provider == web.Provider ||
 			RequiresAuthFileWriteLock(ctx) || errors.Is(errPersist, ErrAuthFileWriteConflict) {
@@ -874,7 +877,7 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 		if shouldSkipPersist(ctx) {
 			return nil
 		}
-		_, err := store.Save(ctx, auth)
+		err := m.saveCredentialWithHistory(ctx, store, auth)
 		if err != nil && (IsBoundAccountAuth(auth) || auth.Provider == web.Provider ||
 			RequiresExistingEnterpriseAuthorization(ctx) || RequiresAuthFileWriteLock(ctx) ||
 			errors.Is(err, ErrAuthFileWriteConflict)) {
@@ -886,6 +889,5 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	if shouldSkipPersist(ctx) {
 		return nil
 	}
-	_, err := store.Save(ctx, auth)
-	return err
+	return m.saveCredentialWithHistory(ctx, store, auth)
 }

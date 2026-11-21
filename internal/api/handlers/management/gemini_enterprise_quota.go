@@ -47,8 +47,8 @@ type enterpriseQuotaResponse struct {
 	Revision     uint64        `json:"revision,omitempty"`
 }
 
-// GetGeminiEnterpriseQuota is a management read, including for disabled
-// collections. Neither observations nor permission failures alter routing.
+// GetGeminiEnterpriseQuota reads an application's quota, including disabled
+// collections. Current, verified readings also reach runtime quota protection.
 func (h *Handler) GetGeminiEnterpriseQuota(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	now := time.Now().UTC()
@@ -135,7 +135,8 @@ func (h *Handler) GetGeminiEnterpriseQuota(c *gin.Context) {
 		return
 	}
 	current, exists := h.authManager.GetByID(auth.ID)
-	if !exists || current == nil || ge.Resources(ge.FromMetadata(current.Metadata)) != ge.Resources(binding) {
+	if !exists || current == nil || ge.Resources(ge.FromMetadata(current.Metadata)) != ge.Resources(binding) ||
+		current.RegistrationEpoch != fresh.RegistrationEpoch || current.CredentialVersion != fresh.CredentialVersion {
 		enterpriseManagementFailure(c, 409, "credential_changed", "Collection changed during quota reading; reload")
 		return
 	}
@@ -148,6 +149,12 @@ func (h *Handler) GetGeminiEnterpriseQuota(c *gin.Context) {
 		identity = &copyIdentity
 	}
 	result.SelectedPool = ge.SelectQuotaPool(result.QuotaSnapshot, identity, binding)
+	if result.SelectedPool != nil && result.SelectedPool.Status == "ok" && identity.ValidFor(binding) &&
+		fresh.EnterpriseQuotaIdentity.ValidFor(binding) && identity.Edition == fresh.EnterpriseQuotaIdentity.Edition &&
+		identity.ProjectNumber == fresh.EnterpriseQuotaIdentity.ProjectNumber &&
+		identity.PrincipalHash == fresh.EnterpriseQuotaIdentity.PrincipalHash {
+		h.authManager.ObserveEnterpriseQuota(fresh, result.QuotaSnapshot)
+	}
 	respond()
 }
 

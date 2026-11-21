@@ -37,6 +37,14 @@ func (t *enterpriseQuotaTicket) resultError(err error) error {
 var errUnrelatedQuotaProbe = errors.New("gemini-enterprise: probe used a different quota feature")
 
 func (t *enterpriseQuotaTicket) verifyProbe(ctx context.Context, model string, hasPayload bool) error {
+	if state := enterpriseAttempts(ctx); state != nil {
+		state.mu.Lock()
+		if state.generationModel != "" {
+			model = state.generationModel
+		}
+		state.mu.Unlock()
+	}
+	t.model = model
 	if len(t.probes) == 0 {
 		return nil
 	}
@@ -48,13 +56,6 @@ func (t *enterpriseQuotaTicket) verifyProbe(ctx context.Context, model string, h
 	}
 	if !t.paidRecovery {
 		return nil
-	}
-	if state := enterpriseAttempts(ctx); state != nil {
-		state.mu.Lock()
-		if state.generationModel != "" {
-			model = state.generationModel
-		}
-		state.mu.Unlock()
 	}
 	if !enterpriseQuotaTextModel(model) {
 		return errUnrelatedQuotaProbe

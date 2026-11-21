@@ -180,7 +180,7 @@ func TestEnterprisePaidQuotaPressureSingleProbeAndLateObservation(t *testing.T) 
 		}
 	}
 	if snapshot := m.sharedQuotaSnapshot(); snapshot.Validate() != nil {
-		t.Fatal("runtime-only near-limit cooldown corrupted the existing persistence format")
+		t.Fatal("near-limit cooldown corrupted the legacy shared persistence format")
 	}
 	*now = now.Add(time.Minute)
 	leases := make(chan *enterpriseQuotaTicket, 32)
@@ -270,15 +270,15 @@ func TestEnterprisePaidDailyQuotaRecoveryAfterBeijingReset(t *testing.T) {
 	}
 }
 
-func TestEnterprisePaidQuotaProbeWithZeroBalanceAndCredentialRotation(t *testing.T) {
+func TestEnterprisePaidQuotaProbeWithReservedBalanceAndCredentialRotation(t *testing.T) {
 	m, now := quotaPressureTestManager()
 	a := quotaPressureAuth(t, m, "pressure-balance-a", "12345", "us", true)
 	b := quotaPressureAuth(t, m, "pressure-balance-b", "12345", "us", true)
 	for range 3 {
 		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, plainGoogleRateLimit(a, *now, quotaPressureTestModel, ""))
 	}
-	m.SetConfig(&config.Config{Routing: config.RoutingConfig{GeminiEnterpriseQuotaBalancing: true}})
-	observeBalance(t, m, a, *now, 0)
+	m.SetConfig(&config.Config{Routing: config.RoutingConfig{GeminiEnterpriseQuotaBalancing: true, GeminiEnterpriseQuotaReserve: 1}})
+	observeBalance(t, m, a, *now, 1)
 	*now = now.Add(time.Minute)
 	if _, err := a.enterpriseQuota.beginForModel("gemini-3-pro-image"); err == nil {
 		t.Fatal("image request was allowed to verify the text quota")

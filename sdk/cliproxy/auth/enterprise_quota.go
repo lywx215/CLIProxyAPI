@@ -19,6 +19,8 @@ import (
 // manager, storage or network while locked. Publication and persistence follow unlock.
 type enterpriseQuotaCoordinator struct {
 	storeVersion     uint64
+	protectionMu     sync.Mutex
+	protectionPath   string
 	mu               sync.Mutex
 	pools            map[string]*SharedQuotaState
 	bindings         map[string]*enterpriseQuotaGate
@@ -40,12 +42,17 @@ type SharedQuotaState struct {
 	Restriction    ge.Restriction `json:"restriction"`
 	LastRejectedAt time.Time      `json:"last_rejected_at,omitempty"`
 	// PaidRecovery stays set across quota kinds until a current probe succeeds.
-	PaidRecovery  bool `json:"paid_recovery,omitempty"`
-	probe         uint64
-	probeOwner    *enterpriseQuotaGate
-	probePaid     bool
-	legacyReadyAt time.Time
-	rejections    []enterpriseQuotaRejection
+	PaidRecovery         bool      `json:"paid_recovery,omitempty"`
+	ProtectionStartedAt  time.Time `json:"protection_started_at,omitzero"`
+	ProtectionObservedAt time.Time `json:"protection_observed_at,omitzero"`
+	ProtectionUsageAt    time.Time `json:"protection_usage_at,omitzero"`
+	ProtectionRetryAt    time.Time `json:"protection_retry_at,omitzero"`
+	probe                uint64
+	probeOwner           *enterpriseQuotaGate
+	probePaid            bool
+	legacyReadyAt        time.Time
+	rejections           []enterpriseQuotaRejection
+	streak               []enterpriseQuotaRejection
 }
 
 func (s *SharedQuotaState) clearProbe() {
@@ -55,11 +62,12 @@ func (s *SharedQuotaState) clearProbe() {
 }
 
 type enterpriseQuotaGate struct {
-	manager             *Manager
-	authID, fingerprint string
-	epoch, credential   uint64
-	identity            *ge.QuotaIdentity
-	policy              *Auth
+	manager                *Manager
+	authID, fingerprint    string
+	epoch, credential      uint64
+	identity               *ge.QuotaIdentity
+	policy                 *Auth
+	restoredProtectionPaid bool
 }
 
 type quotaTicketVersion struct{ reset, version uint64 }
@@ -69,6 +77,7 @@ type enterpriseQuotaTicket struct {
 	versions         map[string]quotaTicketVersion
 	probes           map[string]uint64
 	request          *enterpriseQuotaRequest
+	model            string
 	admittedAt       time.Time
 	paidRecovery     bool
 	sharedRateLimit  bool
@@ -136,6 +145,10 @@ func (m *Manager) attachEnterpriseQuotaLocked(auth *Auth) {
 	policy := auth.Clone()
 	policy.enterpriseQuota = nil
 	g := &enterpriseQuotaGate{manager: m, authID: auth.ID, fingerprint: fingerprint, epoch: auth.RegistrationEpoch, credential: auth.CredentialVersion, identity: identity, policy: policy}
+	if old != nil && old.restoredProtectionPaid && old.fingerprint == g.fingerprint && old.epoch == g.epoch &&
+		old.credential == g.credential && identity != nil && old.identity != nil && *identity == *old.identity {
+		g.restoredProtectionPaid = true
+	}
 	c.replaceProbeOwnerLocked(old, g)
 	c.migrateBalanceLocked(old, g)
 	auth.EnterpriseQuotaIdentity = identity
@@ -189,6 +202,7 @@ func (m *Manager) fenceEnterpriseQuotaHomeTransition(previousHome, nextHome bool
 		}
 		s.clearProbe()
 		s.rejections = nil
+		s.streak = nil
 	}
 }
 
@@ -206,6 +220,25 @@ func quotaPhase(state *SharedQuotaState, now time.Time) string {
 	}
 	return state.Phase
 }
+
+func (c *enterpriseQuotaCoordinator) poolStateLocked(key string) *SharedQuotaState {
+	id := quotaDigest(key)
+	if s := c.pools[id]; s != nil {
+		return s
+	}
+	s := &SharedQuotaState{PoolID: id, Key: key, Version: 1, Phase: "normal"}
+	c.pools[id] = s
+	return s
+}
+
+func (g *enterpriseQuotaGate) probeOccupancyWaitLocked(s *SharedQuotaState, now time.Time) time.Time {
+	if enterpriseLocalProtectionKind(s.Restriction.Kind) {
+		if pool := g.manager.enterpriseQuota.balances[s.Key]; pool != nil && pool.liveGeneration > 0 {
+			return now.Add(time.Second)
+		}
+	}
+	return time.Time{}
+}
 func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 	if g == nil || !g.enabled() {
 		return false, time.Time{}
@@ -213,6 +246,10 @@ func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 	c := &g.manager.enterpriseQuota
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	g = c.bindings[g.authID]
+	if g == nil || !g.enabled() {
+		return false, time.Time{}
+	}
 	var next time.Time
 	if blocked, retryAt := g.balanceBlockedLocked(now); blocked {
 		next = retryAt
@@ -235,6 +272,7 @@ func (g *enterpriseQuotaGate) blocked(now time.Time) (bool, time.Time) {
 			if readyAt := g.legacyProbeReadyAt(s, now); readyAt.After(next) {
 				next = readyAt
 			}
+			next = maxTime(next, g.probeOccupancyWaitLocked(s, now))
 		}
 	}
 	return !next.IsZero(), next
@@ -261,7 +299,7 @@ func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicke
 	// Identity discovery and metadata edits publish a new gate without changing
 	// credentials. Admit those snapshots against the latest quota identity/policy.
 	g = current
-	t := &enterpriseQuotaTicket{gate: g, admittedAt: now, versions: map[string]quotaTicketVersion{}, probes: map[string]uint64{}}
+	t := &enterpriseQuotaTicket{gate: g, model: model, admittedAt: now, versions: map[string]quotaTicketVersion{}, probes: map[string]uint64{}}
 	keys := g.keys()
 	enabled := g.enabled()
 	var wait time.Duration
@@ -269,13 +307,8 @@ func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicke
 		wait = retryAt.Sub(now)
 	}
 	for _, key := range keys {
-		id := quotaDigest(key)
-		s := c.pools[id]
-		if s == nil {
-			s = &SharedQuotaState{PoolID: id, Key: key, Version: 1, Phase: "normal"}
-			c.pools[id] = s
-		}
-		t.versions[id] = quotaTicketVersion{s.ResetEpoch, s.Version}
+		s := c.poolStateLocked(key)
+		t.versions[s.PoolID] = quotaTicketVersion{s.ResetEpoch, s.Version}
 		if !enabled || !g.appliesToQuota(s, now) {
 			continue
 		}
@@ -290,6 +323,9 @@ func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicke
 			}
 		case "probe_pending":
 			if delay := g.legacyProbeReadyAt(s, now).Sub(now); delay > wait {
+				wait = delay
+			}
+			if delay := g.probeOccupancyWaitLocked(s, now).Sub(now); delay > wait {
 				wait = delay
 			}
 			if media && g.isPaidQuotaRecovery(s, now) && wait < time.Second {
@@ -321,6 +357,7 @@ func (g *enterpriseQuotaGate) beginForModel(model string) (*enterpriseQuotaTicke
 	}
 	t.balance = c.balancePoolLocked(g)
 	t.balance.inFlight++
+	t.balance.liveGeneration++
 	t.balance.byAuth[g.authID]++
 	c.startRotationRequestLocked(g.authID)
 	c.mu.Unlock()
@@ -353,7 +390,13 @@ func (t *enterpriseQuotaTicket) finishBalance(err error) {
 
 func (t *enterpriseQuotaTicket) finishRotation() {
 	t.rotationFinished.Do(func() {
-		t.gate.manager.enterpriseQuota.finishRotationRequest(t.gate.authID)
+		c := &t.gate.manager.enterpriseQuota
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if p := t.balance.current(); p != nil {
+			p.liveGeneration--
+		}
+		c.finishRotationRequestLocked(t.gate.authID)
 	})
 }
 
@@ -367,6 +410,10 @@ func (c *enterpriseQuotaCoordinator) startRotationRequestLocked(authID string) {
 func (c *enterpriseQuotaCoordinator) finishRotationRequest(authID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.finishRotationRequestLocked(authID)
+}
+
+func (c *enterpriseQuotaCoordinator) finishRotationRequestLocked(authID string) {
 	if c.rotationInFlight[authID] > 1 {
 		c.rotationInFlight[authID]--
 	} else {
@@ -426,17 +473,22 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 		return
 	}
 	currentCredential := g.sameCredential(current)
-	changed, persist := false, false
+	changed, persist, persistProtection := false, false, false
 	restrictionID, deniedID := "", ""
 	if upstream != nil && upstream.Restriction != nil {
 		r, id := g.restrictionPool(*upstream.Restriction)
 		restrictionID = id
+		previous := c.pools[id]
+		wasProtected := previous != nil && previous.durableProtection()
 		if currentCredential && t.applyRestrictionLocked(current, id, r, probeRetryAt, now) {
 			deniedID = id
 			changed, persist = true, true
+			persistProtection = wasProtected || previous.durableProtection()
 		}
 	} else if currentCredential && unscopedRateLimit {
-		changed = t.recordQuotaPressureLocked(current, upstream, now)
+		changed, persistProtection = t.recordQuotaPressureLocked(current, upstream, now)
+	} else if currentCredential {
+		t.breakQuotaStreakLocked(current, upstream, err, now)
 	}
 	for id, probe := range t.probes {
 		s := c.pools[id]
@@ -445,6 +497,7 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 			continue
 		}
 		ownerCurrent := currentCredential && s.probeOwner == current
+		persistProtection = persistProtection || s.durableProtection()
 		paidProbe := s.probePaid
 		legacyReadyAt := g.legacyProbeReadyAt(s, now)
 		s.clearProbe()
@@ -473,12 +526,16 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 			continue
 		}
 		persist = persist || s.Restriction.Kind != enterpriseNearLimitKind
+		if t.retainProtectionAfterProbeLocked(s, err, upstream, now, ownerCurrent) {
+			continue
+		}
 		switch {
 		case err == nil && ownerCurrent:
 			s.Phase = "normal"
 			s.Restriction = ge.Restriction{}
 			s.legacyReadyAt = time.Time{}
 			s.PaidRecovery = false
+			s.ProtectionStartedAt, s.ProtectionObservedAt, s.ProtectionUsageAt, s.ProtectionRetryAt = time.Time{}, time.Time{}, time.Time{}, time.Time{}
 		case paidProbe && !probeRetryAt.IsZero():
 			// Failed upstream verification closes the pool again. Returning
 			// to probe_pending here would let a burst dispatch serial probes.
@@ -502,6 +559,9 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 	}
 	if persist {
 		g.manager.persistCooldownStates(context.Background())
+	}
+	if persistProtection {
+		g.manager.persistEnterpriseQuotaProtection()
 	}
 }
 
@@ -536,9 +596,14 @@ func (t *enterpriseQuotaTicket) applyRestrictionLocked(current *enterpriseQuotaG
 	}
 	paidRecovery := s.PaidRecovery || (r.Kind == "daily" && r.Scope == "edition" &&
 		r.Feature == "assistant_search" && current.paidQuotaKey(now) == s.Key)
+	if enterpriseObservedPause(s.Restriction.Kind) && r.Kind != "daily" {
+		s.ProtectionRetryAt = maxTime(s.ProtectionRetryAt, r.RetryAt)
+		r = s.Restriction
+		r.RetryAt = maxTime(r.RetryAt, s.ProtectionRetryAt)
+	}
 	// Merge a concurrent batch without progressive backoff or deadline shortening.
 	if s.Restriction.RetryAt.After(r.RetryAt) {
-		if s.Restriction.Kind == enterpriseNearLimitKind || r.Kind == "daily" {
+		if s.Restriction.Kind == enterpriseNearLimitKind || s.Restriction.Kind == enterpriseRateLimitedKind || r.Kind == "daily" {
 			r.RetryAt = s.Restriction.RetryAt
 		} else {
 			resetAt := r.ResetAt
@@ -567,7 +632,7 @@ func (t *enterpriseQuotaTicket) applyRestrictionLocked(current *enterpriseQuotaG
 	if isProbe {
 		s.clearProbe()
 	}
-	s.rejections = nil
+	s.rejections, s.streak = nil, nil
 	return true
 }
 
@@ -667,7 +732,7 @@ func (g *enterpriseQuotaGate) views(now time.Time) []CooldownView {
 			// no upstream restriction kind.
 			kind = ""
 		}
-		views = append(views, CooldownView{Scope: "credential", Reason: "credential_quota", RetryAt: retryAt.UTC(), RemainingSeconds: remaining, Origin: "shared_pool", Feature: s.Restriction.Feature, PoolID: s.PoolID, PoolVersion: s.Version, RelatedAuthCount: count, Phase: phase, RestrictionKind: kind, RestrictionScope: s.Restriction.Scope, TimeSource: s.Restriction.TimeSource, SharedResetSupported: !g.manager.HomeEnabled()})
+		views = append(views, CooldownView{Scope: "credential", Reason: "credential_quota", RetryAt: retryAt.UTC(), RemainingSeconds: remaining, Origin: "shared_pool", Feature: s.Restriction.Feature, PoolID: s.PoolID, PoolVersion: s.Version, RelatedAuthCount: count, Phase: phase, RestrictionKind: kind, RestrictionScope: s.Restriction.Scope, TimeSource: s.Restriction.TimeSource, SharedResetSupported: !g.manager.HomeEnabled() && !enterpriseLocalProtectionKind(s.Restriction.Kind)})
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].PoolID < views[j].PoolID })
 	return views
@@ -698,7 +763,7 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 		}
 	}
 	now := c.now()
-	if !belongs || s == nil || !g.appliesToQuota(s, now) || version == 0 || s.Version != version || s.probe != 0 {
+	if !belongs || s == nil || !g.appliesToQuota(s, now) || version == 0 || s.Version != version || s.probe != 0 || enterpriseLocalProtectionKind(s.Restriction.Kind) {
 		c.mu.Unlock()
 		return nil, fmt.Errorf("shared pool changed; refresh credentials before retrying")
 	}
@@ -707,7 +772,7 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 	s.Phase = "probe_pending"
 	s.clearProbe()
 	s.legacyReadyAt = time.Time{}
-	s.rejections = nil
+	s.rejections, s.streak = nil, nil
 	result := &SharedQuotaResetResult{ResetScope: "shared_pool", PoolID: poolID, PoolVersion: s.Version, Phase: s.Phase, AffectedAuthIndexes: []string{}}
 	for _, member := range c.bindings {
 		if !member.appliesToQuota(s, now) {
@@ -720,10 +785,14 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 			}
 		}
 	}
+	durableProtection := s.durableProtection()
 	c.mu.Unlock()
 	sort.Strings(result.AffectedAuthIndexes)
 	m.publishEnterpriseQuota()
 	m.persistCooldownStates(ctx)
+	if durableProtection {
+		m.persistEnterpriseQuotaProtection()
+	}
 	return result, nil
 }
 
@@ -744,6 +813,20 @@ func validSharedQuotaState(s SharedQuotaState) bool {
 		return false
 	}
 	r := s.Restriction
+	if r.Kind == enterpriseNearLimitKind {
+		return s.PaidRecovery && scope == "edition" && r.Scope == scope && r.Feature == "assistant_search" &&
+			r.TimeSource == "local_quota_pressure" && r.ResetAt.IsZero() && !r.RetryAt.IsZero()
+	}
+	if enterpriseLocalProtectionKind(r.Kind) {
+		if scope != "edition" || r.Scope != scope || r.Feature != "assistant_search" || r.RetryAt.IsZero() || !s.PaidRecovery {
+			return false
+		}
+		if r.Kind == enterpriseRateLimitedKind {
+			return r.TimeSource == "local_quota_pressure" && r.ResetAt.IsZero() && !s.ProtectionStartedAt.IsZero()
+		}
+		return r.TimeSource == "quota_observation" && !r.ResetAt.IsZero() && !r.ResetAt.After(r.RetryAt) &&
+			!s.ProtectionObservedAt.IsZero() && !s.ProtectionUsageAt.IsZero() && !s.ProtectionUsageAt.After(s.ProtectionObservedAt)
+	}
 	if (r.Kind != "daily" && r.Kind != "minute") || (r.Feature != "assistant_search" && r.Feature != "technical_requests") || r.RetryAt.IsZero() {
 		return false
 	}

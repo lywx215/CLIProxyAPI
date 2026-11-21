@@ -541,7 +541,7 @@ func getAvailableAuthsWithPriorityMode(auths []*Auth, provider, model string, no
 		return nil, newAuthUnavailableError(earliest, now)
 	}
 
-	return availableAuthsFromPriorityBuckets(availableByPriority, allPriorities), nil
+	return availableAuthsFromPriorityBuckets(preferHealthyEnterprisePools(availableByPriority, now), allPriorities), nil
 }
 
 // availableAuthsFromPriorityBuckets flattens availability buckets into a stable, ID-sorted slice.

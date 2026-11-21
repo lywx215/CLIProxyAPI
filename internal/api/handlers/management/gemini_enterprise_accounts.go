@@ -82,6 +82,7 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	}
 	summary := geminiEnterpriseCredentialSummary(root.Metadata)
 	summary["account_id"], summary["revision"] = account.ID, account.Revision
+	summary["routing"] = gin.H{"priority": account.Routing.Priority, "weight": account.Routing.EffectiveWeight()}
 	summary["account_management_supported"] = true
 	summary["oauth_authorization_revision"] = coreauth.EnterpriseOAuthAuthorizationRevision(root)
 	summary["oauth_subject"] = ge.String(root.Metadata, coreauth.EnterpriseOAuthSubjectKey)
@@ -105,6 +106,10 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 		}
 	}
 	now := time.Now().UTC()
+	summary["server_time"] = now
+	if uploadedAt := h.authManager.EnterpriseFirstUploadedAt(root); !uploadedAt.IsZero() {
+		summary["first_uploaded_at"] = uploadedAt
+	}
 	collections := make([]gin.H, 0, len(account.Collections))
 	carbonEnabled, carbonAvailable := 0, 0
 	for _, collection := range account.Collections {
@@ -122,6 +127,12 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 			"settings": enterpriseCollectionSettings(collection.Settings),
 		}
 		if child != nil {
+			priority, weight := coreauth.CredentialRoutingValues(child)
+			entry["routing"] = gin.H{
+				"priority": priority, "weight": weight,
+				"priority_inherited": collection.Settings["priority"] == nil,
+				"weight_inherited":   collection.Settings[coreauth.AttributeWeight] == nil,
+			}
 			entry["quota_balancing"] = h.authManager.EnterpriseQuotaBalance(child)
 			policy := h.authManager.EnterpriseModelPolicyView(child)
 			entry["model_policy_state"] = policy
@@ -149,6 +160,9 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 				entry["cooldowns"] = coreauth.CooldownSnapshotForAuth(child, now)
 			}
 		}
+		if history, ok := h.authManager.EnterpriseRequestHistory(account.ID, collection, now); ok {
+			entry["success"], entry["failed"], entry["recent_requests"] = history.Success, history.Failed, history.RecentRequests
+		}
 		collections = append(collections, entry)
 	}
 	summary["collections"] = collections
@@ -160,10 +174,13 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 func (h *Handler) addEnterpriseAccountSummary(entry gin.H, auth *coreauth.Auth) {
 	summary := h.enterpriseAccountSummary(auth)
 	entry["gemini_enterprise"] = summary
-	if !coreauth.IsEnterpriseAccountAuth(auth) {
+	collections, _ := summary["collections"].([]gin.H)
+	if !coreauth.IsEnterpriseAccountAuth(auth) && len(collections) == 0 {
 		return
 	}
-	collections, _ := summary["collections"].([]gin.H)
+	if routing, ok := summary["routing"].(gin.H); ok && coreauth.IsEnterpriseAccountAuth(auth) {
+		entry["priority"], entry["weight"] = routing["priority"], routing["weight"]
+	}
 	var success, failed int64
 	var buckets []coreauth.RecentRequestBucket
 	for _, collection := range collections {
@@ -358,6 +375,73 @@ func (h *Handler) discoverEnterpriseAccount(ctx context.Context, base *coreauth.
 		return updated, added, merged, warnings, errDiscovery
 	}
 	return updated, added, merged, warnings, nil
+}
+
+// PatchGeminiEnterpriseAccountRouting changes the defaults used by collections
+// without a saved routing override.
+func (h *Handler) PatchGeminiEnterpriseAccountRouting(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	if !h.enterpriseManagementAllowed(c) {
+		return
+	}
+	var req struct {
+		Name             string         `json:"name"`
+		AuthIndex        string         `json:"auth_index"`
+		AccountID        string         `json:"account_id"`
+		ExpectedRevision uint64         `json:"expected_revision"`
+		Fields           map[string]any `json:"fields"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16*1024)
+	if c.ShouldBindJSON(&req) != nil || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.AuthIndex) == "" || strings.TrimSpace(req.AccountID) == "" || req.ExpectedRevision == 0 || len(req.Fields) == 0 {
+		enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_account_routing", "name, account auth_index, account_id, expected_revision and routing changes are required")
+		return
+	}
+	for field := range req.Fields {
+		if field != "priority" && field != coreauth.AttributeWeight {
+			enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_account_routing", "Only priority and weight are supported")
+			return
+		}
+	}
+	if err := validateEnterpriseCollectionFields(req.Fields); err != nil {
+		enterpriseManagementFailure(c, http.StatusBadRequest, "invalid_account_routing", err.Error())
+		return
+	}
+	root, found := h.lookupAuthFile(req.Name, req.AuthIndex)
+	if !found || root == nil || root.Provider != ge.Provider || coreauth.IsBoundChildAuth(root) || coreauth.IsPluginVirtualAuth(root) {
+		enterpriseManagementFailure(c, http.StatusConflict, "credential_changed", "Account changed; reload and try again")
+		return
+	}
+	updated, err := h.authManager.UpdateEnterpriseAccount(c.Request.Context(), root, req.ExpectedRevision, func(account *ge.Account) error {
+		if account.ID != req.AccountID {
+			return coreauth.ErrEnterpriseAccountChanged
+		}
+		if value, ok := req.Fields["priority"]; ok {
+			account.Routing.Priority, _ = authFileIntValue(value)
+		}
+		if value, ok := req.Fields[coreauth.AttributeWeight]; ok {
+			account.Routing.Weight = nil
+			if weight, isWeight := value.(int64); isWeight && weight != credentialweight.Default {
+				account.Routing.Weight = &weight
+			}
+		}
+		return nil
+	})
+	if c.Request.Context().Err() != nil {
+		return
+	}
+	if err != nil {
+		if errors.Is(err, coreauth.ErrEnterpriseAccountChanged) {
+			enterpriseManagementFailure(c, http.StatusConflict, "credential_changed", "Account changed; reload and try again")
+		} else {
+			enterpriseManagementFailure(c, http.StatusInternalServerError, "account_routing_save_failed", "Could not save account routing settings")
+		}
+		return
+	}
+	if errHook := h.invokePostAuthPersistHooks(c.Request.Context(), []*coreauth.Auth{updated}); errHook != nil {
+		enterpriseManagementFailure(c, http.StatusInternalServerError, "runtime_sync_failed", "Account routing saved, but runtime synchronization failed; reload")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "gemini_enterprise": h.enterpriseAccountSummary(updated)})
 }
 
 // PatchGeminiEnterpriseCollection changes one saved collection with optimistic
@@ -571,7 +655,7 @@ func validateEnterpriseCollectionFields(fields map[string]any) error {
 	}
 	for key, value := range fields {
 		if value == nil {
-			if key == "catalog_fallback" || key == "model_policy" || key == "allowed_models" || key == "weight" || key == "request_retry" || key == "model_aliases" || key == "request_scoped_errors" || key == "headers" {
+			if key == "catalog_fallback" || key == "model_policy" || key == "allowed_models" || key == "priority" || key == "weight" || key == "request_retry" || key == "model_aliases" || key == "request_scoped_errors" || key == "headers" {
 				continue
 			}
 			return errors.New("this collection setting cannot be null")
@@ -593,7 +677,7 @@ func validateEnterpriseCollectionFields(fields map[string]any) error {
 			fields[key] = weight
 		case "priority", "request_retry", "max_concurrent_requests":
 			number, ok := value.(float64)
-			if !ok || number != float64(int64(number)) || number < -1000000 || number > 1000000 {
+			if !ok || number < -ge.MaxRoutingPriority || number > ge.MaxRoutingPriority || number != float64(int64(number)) {
 				return errors.New("numeric settings must be bounded integers")
 			}
 			if key == "request_retry" && number < 0 {

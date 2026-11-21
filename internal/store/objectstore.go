@@ -175,6 +175,14 @@ func (s *ObjectTokenStore) AuthDir() string {
 	return s.authDir
 }
 
+// LocalRuntimeStateDir keeps instance history outside the synchronized auth prefix.
+func (s *ObjectTokenStore) LocalRuntimeStateDir() string {
+	if s == nil {
+		return ""
+	}
+	return s.spoolRoot
+}
+
 // Bootstrap ensures the target bucket exists and synchronizes data from the object storage backend.
 func (s *ObjectTokenStore) Bootstrap(ctx context.Context, exampleConfigPath string) error {
 	if s == nil {

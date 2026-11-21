@@ -78,7 +78,6 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	s.applyRetryConfig(s.cfg)
-	s.configureCooldownStateStore(s.cfg)
 	s.configureGeminiBudget(ctx, s.cfg)
 
 	s.registerPluginAuthParser()
@@ -86,7 +85,12 @@ func (s *Service) Run(ctx context.Context) error {
 		if errLoad := s.coreManager.Load(ctx); errLoad != nil {
 			log.Warnf("failed to load auth store: %v", errLoad)
 		}
+		if errHistory := s.coreManager.OpenEnterpriseHistory(s.cfg.AuthDir); errHistory != nil {
+			return fmt.Errorf("cliproxy: %w", errHistory)
+		}
 		s.registerConfigAPIKeyAuths(coreauth.WithSkipPersist(ctx), s.cfg)
+		s.configureEnterpriseQuotaProtection(ctx, s.cfg)
+		s.configureCooldownStateStore(s.cfg)
 		if s.cfg.SaveCooldownStatus {
 			if errRestoreCooldown := s.coreManager.RestoreCooldownStates(ctx); errRestoreCooldown != nil {
 				log.Warnf("failed to restore cooldown state: %v", errRestoreCooldown)
@@ -375,6 +379,9 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		}
 
 		if s.coreManager != nil {
+			if errClose := s.coreManager.CloseEnterpriseHistory(); errClose != nil && shutdownErr == nil {
+				shutdownErr = errClose
+			}
 			if errClose := s.coreManager.CloseGeminiBudget(); errClose != nil && shutdownErr == nil {
 				shutdownErr = errClose
 			}

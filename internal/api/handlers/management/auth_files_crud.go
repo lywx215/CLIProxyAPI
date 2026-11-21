@@ -316,6 +316,7 @@ func (h *Handler) writeAuthFile(ctx context.Context, name string, data []byte) e
 	if err := h.upsertAuthRecord(ctx, auth); err != nil {
 		return err
 	}
+	h.authManager.RememberEnterpriseCredentialUpload(auth)
 	if h.postAuthPersistHook != nil {
 		if errHook := h.postAuthPersistHook(ctx, auth); errHook != nil {
 			return fmt.Errorf("post-auth persist hook failed: %w", errHook)

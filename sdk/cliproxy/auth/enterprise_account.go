@@ -212,6 +212,12 @@ func ProjectEnterpriseAuth(auth *Auth) ([]*Auth, error) {
 				child.Metadata[key] = cloneAuthMetadataValue(value)
 			}
 		}
+		if collection.Settings["priority"] == nil && account.Routing.Priority != 0 {
+			child.Metadata["priority"] = float64(account.Routing.Priority)
+		}
+		if collection.Settings[AttributeWeight] == nil && account.Routing.Weight != nil {
+			child.Metadata[AttributeWeight] = *account.Routing.Weight
+		}
 		putEnterpriseResources(child, collection.ResourceBinding)
 		for _, model := range ge.AdmissionModels() {
 			if evidence := model.ReadEvidenceStore(parent.Metadata)[ge.CarbonBindingFingerprint(ge.FromMetadata(child.Metadata))]; evidence != nil {
@@ -935,7 +941,9 @@ func advanceEnterpriseRevisions(previous ge.Account, next *ge.Account) error {
 			copyCollection := *collection
 			copyCollection.Revision = prior.Revision
 			collection.Revision = prior.Revision
-			if !reflect.DeepEqual(prior, copyCollection) {
+			priorityChanged := collection.Settings["priority"] == nil && previous.Routing.Priority != next.Routing.Priority
+			weightChanged := collection.Settings[AttributeWeight] == nil && previous.Routing.EffectiveWeight() != next.Routing.EffectiveWeight()
+			if priorityChanged || weightChanged || !reflect.DeepEqual(prior, copyCollection) {
 				collection.Revision++
 			}
 		} else {

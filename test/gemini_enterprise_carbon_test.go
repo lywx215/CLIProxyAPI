@@ -134,6 +134,7 @@ func TestEnterprisePublicCredentialExhaustionUses429(t *testing.T) {
 			{name: "configured alias", model: "paid-hydrogen-alias", wantStatus: http.StatusTooManyRequests},
 			{name: "disabled registered route", model: ge.ArgonModel, wantStatus: http.StatusTooManyRequests},
 			{name: "all credentials expired", model: ge.ArgonModel, wantStatus: http.StatusTooManyRequests},
+			{name: "verified quota exhausted", model: ge.ArgonModel, wantStatus: http.StatusTooManyRequests},
 			{name: "catalog model no longer registered", model: "workspace/gemini-3.8-flash", wantStatus: http.StatusTooManyRequests},
 			{name: "local catalog rejection", model: ge.HydrogenModel, wantStatus: http.StatusTooManyRequests},
 			{name: "unknown model", model: "gemini-unknown-credential-test", wantStatus: http.StatusBadRequest},
@@ -145,7 +146,7 @@ func TestEnterprisePublicCredentialExhaustionUses429(t *testing.T) {
 				}}
 				var auths []enterprisePolicyWireAuth
 				switch scenario.name {
-				case "disabled registered route", "all credentials expired", "local catalog rejection", "bad payload":
+				case "disabled registered route", "all credentials expired", "verified quota exhausted", "local catalog rejection", "bad payload":
 					auths = []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog"}}
 				case "catalog model no longer registered":
 					auths = []enterprisePolicyWireAuth{{id: "paid", project: "12345", edition: "enterprise_plus", mode: "catalog", prefix: "workspace"}}
@@ -173,6 +174,23 @@ func TestEnterprisePublicCredentialExhaustionUses429(t *testing.T) {
 						if _, err := fixture.manager.Update(t.Context(), a); err != nil {
 							t.Fatal(err)
 						}
+					case "verified quota exhausted":
+						now := time.Now().UTC()
+						zone, err := time.LoadLocation("America/Los_Angeles")
+						if err != nil {
+							t.Fatal(err)
+						}
+						local := now.In(zone)
+						start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, zone).UTC()
+						reset := ge.NextPacificMidnight(now)
+						quota := ge.QuotaSnapshot{
+							Status: "ok", ProjectID: "12345", Location: "global", ObservedAt: now, PeriodStart: &start, ResetAt: &reset,
+							Pools: []ge.QuotaPool{{Tier: "enterprise_plus", Status: "ok", Used: new(int64(10200)), Limit: new(int64(10200)),
+								Remaining: new(int64(0)), UsageUpdatedAt: &now}},
+						}
+						if !fixture.manager.ObserveEnterpriseQuota(a, quota) {
+							t.Fatal("verified depletion did not reach the pool")
+						}
 					}
 				}
 				requestFields := map[string]any{}
@@ -187,6 +205,9 @@ func TestEnterprisePublicCredentialExhaustionUses429(t *testing.T) {
 				response := enterprisePublicCall(fixture.router, path, body)
 				if response.Code != scenario.wantStatus {
 					t.Fatalf("HTTP %d, want %d: %s", response.Code, scenario.wantStatus, response.Body.String())
+				}
+				if scenario.name == "verified quota exhausted" && response.Header().Get("Retry-After") == "" {
+					t.Fatal("verified depletion did not return its expected retry time")
 				}
 				wantType := "invalid_request_error"
 				if scenario.wantStatus == http.StatusTooManyRequests {

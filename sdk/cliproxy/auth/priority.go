@@ -8,6 +8,11 @@ import (
 // AttributeFilePriority marks priority values inherited from a physical auth file.
 const AttributeFilePriority = "file_priority"
 
+// CredentialRoutingValues reports the effective values used by the selectors.
+func CredentialRoutingValues(auth *Auth) (priority int, weight int64) {
+	return authPriority(auth), authWeight(auth)
+}
+
 // ApplyAuthPriorityMetadata copies a valid file priority into an auth's metadata and routing attributes.
 func ApplyAuthPriorityMetadata(auth *Auth, metadata map[string]any) {
 	if auth == nil {

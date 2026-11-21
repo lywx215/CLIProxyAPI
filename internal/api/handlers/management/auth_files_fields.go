@@ -1055,6 +1055,9 @@ func (h *Handler) saveTokenRecord(ctx context.Context, record *coreauth.Auth) (s
 	if errSave != nil {
 		return savedPath, errSave
 	}
+	if savedPath != "" {
+		h.authManager.RememberEnterpriseCredentialUpload(record)
+	}
 	if legacyClaudeCredential != nil {
 		if strings.TrimSpace(savedPath) == "" {
 			return "", fmt.Errorf("canonical Claude credential was not persisted; legacy credential retained")
