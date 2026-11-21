@@ -40,6 +40,12 @@ type EnterpriseRequestHistory struct {
 	RecentRequests  []RecentRequestBucket
 }
 
+// EnterpriseCredentialLifetime stores the verified upload and legacy initialization times.
+type EnterpriseCredentialLifetime struct {
+	FirstUploadedAt time.Time
+	InitializedAt   time.Time
+}
+
 type enterpriseHistoryKey struct {
 	account, binding string
 }
@@ -82,7 +88,7 @@ func (m *Manager) RuntimeStateDir(authDir string) string {
 }
 
 // OpenEnterpriseHistory restores server-local history on the auth volume before
-// accepting traffic. Loaded legacy credentials retain an unknown upload date.
+// accepting traffic and initializes the lifetime of loaded legacy credentials.
 func (m *Manager) OpenEnterpriseHistory(authDir string) error {
 	if m == nil || m.HomeEnabled() || m.enterpriseHistory.Load() != nil {
 		return nil
@@ -99,14 +105,15 @@ func (m *Manager) OpenEnterpriseHistory(authDir string) error {
 	if err != nil {
 		return err
 	}
-	if err = store.importBaseline(path+".baseline", time.Now()); err == nil {
+	now := time.Now().UTC()
+	if err = store.importBaseline(path+".baseline", now); err == nil {
 		seen := make(map[string]bool)
 		var legacy []enterpriseHistoryEvent
 		for _, auth := range m.List() {
 			if id := enterpriseHistoryAccountID(auth); id != "" && !IsEnterpriseCollectionAuth(auth) && !seen[id] {
 				seen[id] = true
-				if _, exists := store.firstUploaded[id]; !exists {
-					legacy = append(legacy, enterpriseHistoryEvent{Account: id, Kind: historyUpload})
+				if lifetime := store.lifetimes[id]; lifetime.FirstUploadedAt.IsZero() && lifetime.InitializedAt.IsZero() {
+					legacy = append(legacy, enterpriseHistoryEvent{Account: id, Kind: historyUpload, InitializedAt: now})
 				}
 			}
 		}
@@ -144,7 +151,7 @@ func (m *Manager) RememberEnterpriseCredentialUpload(auth *Auth) {
 		return
 	}
 	store.mu.RLock()
-	_, known := store.firstUploaded[account]
+	_, known := store.lifetimes[account]
 	store.mu.RUnlock()
 	if !known {
 		store.record(enterpriseHistoryEvent{Account: account, Kind: historyUpload, At: time.Now().UTC()})
@@ -154,16 +161,21 @@ func (m *Manager) RememberEnterpriseCredentialUpload(auth *Auth) {
 // EnterpriseFirstUploadedAt returns the timestamp recorded at the first local
 // upload, or the zero value when the original upload predates retained evidence.
 func (m *Manager) EnterpriseFirstUploadedAt(auth *Auth) time.Time {
+	return m.EnterpriseCredentialLifetime(auth).FirstUploadedAt
+}
+
+// EnterpriseCredentialLifetime returns the persistent lifetime associated with the account.
+func (m *Manager) EnterpriseCredentialLifetime(auth *Auth) EnterpriseCredentialLifetime {
 	if m == nil {
-		return time.Time{}
+		return EnterpriseCredentialLifetime{}
 	}
 	store := m.enterpriseHistory.Load()
 	if store == nil {
-		return time.Time{}
+		return EnterpriseCredentialLifetime{}
 	}
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-	return store.firstUploaded[enterpriseHistoryAccountID(auth)]
+	return store.lifetimes[enterpriseHistoryAccountID(auth)]
 }
 
 // EnterpriseRequestHistory returns durable counters. Discovery can canonicalize

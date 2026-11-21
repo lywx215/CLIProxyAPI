@@ -100,3 +100,37 @@ func TestV8EnterpriseCredentialHistoryRestoredAfterServiceRestart(t *testing.T) 
 		t.Fatal("v8 lost recent requests after reload")
 	}
 }
+
+func TestV8EnterpriseLegacyCredentialUsesInitializationTime(t *testing.T) {
+	handler, _, _ := enterpriseAccountFixture(t)
+	before := time.Now().UTC()
+	if err := handler.authManager.OpenEnterpriseHistory(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := handler.authManager.CloseEnterpriseHistory(); err != nil {
+			t.Error(err)
+		}
+	})
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v8/management/credentials", nil)
+	ctx.Set(ConfigV8ContextKey, true)
+	handler.ListAuthFiles(ctx)
+	var payload struct {
+		Files []struct {
+			Enterprise struct {
+				FirstUploadedAt time.Time `json:"first_uploaded_at"`
+				InitializedAt   time.Time `json:"lifetime_initialized_at"`
+				ServerTime      time.Time `json:"server_time"`
+			} `json:"gemini_enterprise"`
+		} `json:"files"`
+	}
+	if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &payload) != nil || len(payload.Files) != 1 {
+		t.Fatalf("unexpected credential listing status %d", recorder.Code)
+	}
+	view := payload.Files[0].Enterprise
+	if !view.FirstUploadedAt.IsZero() || view.InitializedAt.Before(before) || view.InitializedAt.After(view.ServerTime) {
+		t.Fatalf("unexpected legacy lifetime: %+v", view)
+	}
+}

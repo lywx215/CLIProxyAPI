@@ -91,9 +91,14 @@ func (s *enterpriseHistoryStore) importBaseline(path string, now time.Time) (err
 			return errors.New("invalid or repeated Enterprise history baseline account")
 		}
 		seenAccounts[account.AccountID] = true
-		at, known := s.firstUploaded[account.AccountID]
-		if !known || (!account.FirstUploadedAt.IsZero() && (at.IsZero() || account.FirstUploadedAt.Before(at))) {
-			events = append(events, enterpriseHistoryEvent{Kind: historyUpload, Account: account.AccountID, At: account.FirstUploadedAt})
+		lifetime := s.lifetimes[account.AccountID]
+		uploadedAt := account.FirstUploadedAt
+		if uploadedAt.IsZero() {
+			if lifetime.FirstUploadedAt.IsZero() && lifetime.InitializedAt.IsZero() {
+				events = append(events, enterpriseHistoryEvent{Kind: historyUpload, Account: account.AccountID, InitializedAt: seed.CapturedAt})
+			}
+		} else if lifetime.FirstUploadedAt.IsZero() || uploadedAt.Before(lifetime.FirstUploadedAt) {
+			events = append(events, enterpriseHistoryEvent{Kind: historyUpload, Account: account.AccountID, At: uploadedAt})
 		}
 		for _, collection := range account.Collections {
 			key := enterpriseHistoryKey{account: account.AccountID, binding: collection.BindingID}

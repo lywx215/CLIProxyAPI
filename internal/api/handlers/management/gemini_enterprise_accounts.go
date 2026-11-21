@@ -107,8 +107,11 @@ func (h *Handler) enterpriseAccountSummary(auth *coreauth.Auth) gin.H {
 	}
 	now := time.Now().UTC()
 	summary["server_time"] = now
-	if uploadedAt := h.authManager.EnterpriseFirstUploadedAt(root); !uploadedAt.IsZero() {
-		summary["first_uploaded_at"] = uploadedAt
+	lifetime := h.authManager.EnterpriseCredentialLifetime(root)
+	if !lifetime.FirstUploadedAt.IsZero() {
+		summary["first_uploaded_at"] = lifetime.FirstUploadedAt
+	} else if !lifetime.InitializedAt.IsZero() {
+		summary["lifetime_initialized_at"] = lifetime.InitializedAt
 	}
 	collections := make([]gin.H, 0, len(account.Collections))
 	carbonEnabled, carbonAvailable := 0, 0

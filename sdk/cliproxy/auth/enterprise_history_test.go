@@ -133,11 +133,85 @@ func TestEnterpriseCredentialHistorySurvivesRestartAndReplacement(t *testing.T) 
 	if err := otherServer.Load(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	beforeInitialization := time.Now().UTC()
 	openTestEnterpriseHistory(t, otherServer, t.TempDir())
 	otherServer.RememberEnterpriseCredentialUpload(restored)
-	if got := otherServer.EnterpriseFirstUploadedAt(restored); !got.IsZero() {
-		t.Fatalf("a legacy credential with unknown first upload was assigned %v", got)
+	lifetime := otherServer.EnterpriseCredentialLifetime(restored)
+	if !lifetime.FirstUploadedAt.IsZero() || lifetime.InitializedAt.Before(beforeInitialization) || lifetime.InitializedAt.After(time.Now()) {
+		t.Fatalf("unexpected legacy lifetime: %+v", lifetime)
 	}
+}
+
+func TestEnterpriseHistoryInitializesLegacyAccountsFromBaseline(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, enterpriseHistoryName)
+	parent := enterpriseAccountFixture(t, 1)
+	account, err := ge.ReadAccount(parent.Metadata)
+	if err != nil || account == nil {
+		t.Fatal("missing fixture account", err)
+	}
+	stats := enterpriseHistorySeedStats{Success: 120, Failed: 3}
+	binding := account.Collections[0].ID
+	legacy, err := openEnterpriseHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errAppend := legacy.appendEvents([]enterpriseHistoryEvent{
+		{Kind: historyUpload, Account: account.ID},
+		{Kind: historyBaseline, Account: account.ID, Binding: binding, Baseline: &stats},
+	})
+	if err = errors.Join(errAppend, legacy.closeFile()); err != nil {
+		t.Fatal(err)
+	}
+
+	captured := time.Date(2024, 11, 20, 2, 13, 20, 0, time.UTC)
+	baseline := enterpriseHistorySeed{Version: 1, CapturedAt: captured, Accounts: []enterpriseHistorySeedAccount{{
+		AccountID:   account.ID,
+		Collections: []enterpriseHistorySeedCollection{{BindingID: binding, enterpriseHistorySeedStats: stats}},
+	}}}
+	writeBaseline := func() {
+		t.Helper()
+		data, err := json.Marshal(baseline)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path+".baseline", data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeBaseline()
+
+	open := func(wantUpload time.Time, success int64) *Manager {
+		t.Helper()
+		manager := NewManager(nil, nil, nil)
+		openTestEnterpriseHistory(t, manager, directory)
+		registerEnterpriseFixture(t, manager, parent)
+		manager.RememberEnterpriseCredentialUpload(parent)
+		lifetime := manager.EnterpriseCredentialLifetime(parent)
+		if !lifetime.InitializedAt.Equal(captured) || !lifetime.FirstUploadedAt.Equal(wantUpload) {
+			t.Fatalf("unexpected lifetime: %+v, want initialization %v and upload %v", lifetime, captured, wantUpload)
+		}
+		if view := historyForFixture(t, manager, parent, time.Now()); view.Success != success || view.Failed != stats.Failed {
+			t.Fatalf("counters changed during lifetime initialization: %+v", view)
+		}
+		return manager
+	}
+	manager := open(time.Time{}, stats.Success)
+	child := manager.EnterpriseCollections(parent.ID)[0]
+	manager.MarkResult(t.Context(), Result{AuthID: child.ID, Provider: ge.Provider, Success: true})
+	if err := manager.CloseEnterpriseHistory(); err != nil {
+		t.Fatal(err)
+	}
+
+	baseline.CapturedAt = captured.Add(time.Hour)
+	writeBaseline()
+	if err := open(time.Time{}, stats.Success+1).CloseEnterpriseHistory(); err != nil {
+		t.Fatal(err)
+	}
+	first := captured.Add(-48 * time.Hour)
+	baseline.Accounts[0].FirstUploadedAt = first
+	writeBaseline()
+	open(first, stats.Success+1)
 }
 
 func TestEnterpriseHistoryBaselineReplayAndInterruptedAppend(t *testing.T) {

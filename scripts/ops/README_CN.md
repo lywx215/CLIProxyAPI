@@ -204,6 +204,8 @@ python -B -m scripts.ops.enterprise_history_baseline credentials.json --captured
 
 把文件放入同一目标实例的持久化运行目录。文件存储使用 `auth-dir`。Postgres 和对象存储使用本地镜像根目录，Git 使用工作区旁的 `gitstore-runtime`。新进程启动时导入成功数、失败数及近期计数，然后把新请求的结果追加到 `.gemini-enterprise-history.v1.wal`。恢复会跳过已导入的计数。可信的本服首次上传时间可通过 `--trusted-first-uploads` 指定一个以账号 ID 为键、带 UTC 偏移的时间字符串为值的 JSON 文件。例行服务重启及容器更新都需要继续挂载这个实例的原数据卷。
 
+缺少可信首传时间时，基线中的凭证采用基线的采集时间初始化计时，其他旧凭证采用服务首次保存初始化记录的时间。管理页标记「自初始化」。后续有可信首传时间时可补录，页面优先按首传时间计算。
+
 ## 离线验收和结构
 
 ```powershell

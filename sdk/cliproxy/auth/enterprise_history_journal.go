@@ -33,6 +33,9 @@ type enterpriseHistoryEvent struct {
 	Success  bool                        `json:"success,omitempty"`
 	Status   int                         `json:"status_code,omitempty"`
 	Baseline *enterpriseHistorySeedStats `json:"baseline,omitempty"`
+
+	// Older journal readers treat an upload event with no At as a legacy account.
+	InitializedAt time.Time `json:"initialized_at,omitzero"`
 }
 
 type enterpriseHistoryBatch struct {
@@ -46,9 +49,9 @@ type enterpriseHistoryWrite struct {
 }
 
 type enterpriseHistoryStore struct {
-	mu            sync.RWMutex
-	firstUploaded map[string]time.Time
-	counts        map[enterpriseHistoryKey]*enterpriseHistoryCounts
+	mu        sync.RWMutex
+	lifetimes map[string]EnterpriseCredentialLifetime
+	counts    map[enterpriseHistoryKey]*enterpriseHistoryCounts
 
 	sendMu   sync.RWMutex
 	closed   bool
@@ -74,7 +77,7 @@ func openEnterpriseHistory(path string) (*enterpriseHistoryStore, error) {
 		return nil, fmt.Errorf("open Enterprise credential history: %w", err)
 	}
 	store := &enterpriseHistoryStore{
-		file: file, unlockFile: unlock, firstUploaded: make(map[string]time.Time),
+		file: file, unlockFile: unlock, lifetimes: make(map[string]EnterpriseCredentialLifetime),
 		counts:   make(map[enterpriseHistoryKey]*enterpriseHistoryCounts),
 		requests: make(chan enterpriseHistoryWrite, historyBatchMax), done: make(chan struct{}),
 	}
@@ -247,6 +250,9 @@ func (s *enterpriseHistoryStore) replay() error {
 }
 
 func (e enterpriseHistoryEvent) valid() bool {
+	if !e.InitializedAt.IsZero() && (e.Kind != historyUpload || !e.At.IsZero()) {
+		return false
+	}
 	switch e.Kind {
 	case historyUpload:
 		return e.Binding == "" && e.Baseline == nil
@@ -264,9 +270,14 @@ func (s *enterpriseHistoryStore) apply(batch enterpriseHistoryBatch) {
 	defer s.mu.Unlock()
 	for _, event := range batch.Events {
 		if event.Kind == historyUpload {
-			if at, known := s.firstUploaded[event.Account]; !known || (!event.At.IsZero() && (at.IsZero() || event.At.Before(at))) {
-				s.firstUploaded[event.Account] = event.At.UTC()
+			lifetime := s.lifetimes[event.Account]
+			if !event.At.IsZero() && (lifetime.FirstUploadedAt.IsZero() || event.At.Before(lifetime.FirstUploadedAt)) {
+				lifetime.FirstUploadedAt = event.At.UTC()
 			}
+			if lifetime.InitializedAt.IsZero() && lifetime.FirstUploadedAt.IsZero() {
+				lifetime.InitializedAt = event.InitializedAt.UTC()
+			}
+			s.lifetimes[event.Account] = lifetime
 			continue
 		}
 		key := enterpriseHistoryKey{account: event.Account, binding: event.Binding}
