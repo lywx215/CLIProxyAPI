@@ -55,15 +55,10 @@ type Account struct {
 
 // RotationScope identifies the shared license region, independent of engine choice.
 func RotationScope(project, location string) string {
-	if !numberProject.MatchString(project) {
+	if !numberProject.MatchString(project) || !SupportedLocation(location) {
 		return ""
 	}
-	switch location {
-	case "global", "us", "eu", "ca", "au", "in":
-		return project + "/" + location
-	default:
-		return ""
-	}
+	return project + "/" + location
 }
 
 func ValidRotationOwner(owner string) bool {

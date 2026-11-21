@@ -8,13 +8,13 @@ import (
 
 // SupportedLocations returns the regions supported by discovery and resource editing.
 func SupportedLocations() []string {
-	return []string{"global", "us", "eu", "ca", "au", "in"}
+	return []string{"global", "us", "eu", "ca", "au", "in", "kr", "sg"}
 }
 
 // SupportedLocation reports whether a location has an explicitly supported endpoint.
 func SupportedLocation(location string) bool {
 	switch location {
-	case "global", "us", "eu", "ca", "au", "in":
+	case "global", "us", "eu", "ca", "au", "in", "kr", "sg":
 		return true
 	default:
 		return false
@@ -35,6 +35,10 @@ func OriginForLocation(location string) string {
 		return "https://au-discoveryengine.googleapis.com"
 	case "in":
 		return "https://in-discoveryengine.googleapis.com"
+	case "kr":
+		return "https://kr-discoveryengine.googleapis.com"
+	case "sg":
+		return "https://sg-discoveryengine.googleapis.com"
 	default:
 		return Origin
 	}
@@ -57,7 +61,8 @@ func Official(req *http.Request) bool {
 	}
 	switch req.URL.Host {
 	case "discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com",
-		"ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com":
+		"ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com",
+		"kr-discoveryengine.googleapis.com", "sg-discoveryengine.googleapis.com":
 		return true
 	default:
 		return false
