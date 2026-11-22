@@ -60,6 +60,8 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, a := enterpriseTestService(t, "quota-pressure-service")
+			s.cfg.AuthDir = t.TempDir()
+			s.configureEnterpriseQuotaProtection(t.Context(), s.cfg)
 			m := s.coreManager
 			b := a.Clone()
 			b.ID = a.ID + "-sibling"
@@ -108,13 +110,16 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 
 			readStarted, releaseRead := make(chan struct{}), make(chan struct{})
 			d.fetchQuota = func(ctx context.Context, auth *coreauth.Auth, _ string) ge.QuotaSnapshot {
+				if _, ok := ctx.Deadline(); ok {
+					t.Error("background quota metadata read acquired an upstream deadline")
+				}
 				if quotaReads.Add(1) == 1 {
 					close(readStarted)
 				}
 				select {
 				case <-releaseRead:
 					snapshot := serviceQuotaObservation(auth)
-					used, remaining := int64(9900), int64(100)
+					used, remaining := int64(9500), int64(500)
 					snapshot.Pools[0].Used, snapshot.Pools[0].Remaining = &used, &remaining
 					return snapshot
 				case <-ctx.Done():
@@ -163,13 +168,13 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 
 			logicalRequest := coreauth.WithEnterpriseQuotaRequest(t.Context())
 			reject(logicalRequest, a, models[0])
-			s.refreshEnterpriseModels(t.Context())
 			select {
 			case <-readStarted:
 			case <-time.After(5 * time.Second):
 				t.Fatal("the first Google 429 did not queue a quota read")
 			}
 			reject(logicalRequest, b, models[1])
+			s.refreshEnterpriseModels(t.Context()) // Scheduled and pressure reads coalesce.
 			reject(t.Context(), a, models[2])
 			if test.usageBeforeThird {
 				close(releaseRead)

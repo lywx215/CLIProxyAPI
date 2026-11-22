@@ -54,7 +54,7 @@ func plainGoogleRateLimit(a *Auth, now time.Time, model, retryAfter string) *ge.
 
 func quotaPressureAttempt(t *testing.T, ctx context.Context, a *Auth, err error) {
 	t.Helper()
-	ticket, errBegin := a.enterpriseQuota.begin()
+	ticket, errBegin := a.enterpriseQuota.beginForModel(quotaPressureTestModel)
 	if errBegin != nil {
 		t.Fatalf("could not dispatch request: %v", errBegin)
 	}
@@ -101,13 +101,13 @@ func TestEnterprisePaidQuotaPressureDeduplicatesManagerRetries(t *testing.T) {
 		view[0].TimeSource != "local_quota_pressure" || view[0].RelatedAuthCount != 3 || !view[0].RetryAt.Equal(now.Add(2*time.Minute)) {
 		t.Fatalf("expected a backward-compatible shared pause honoring Retry-After: %+v", view)
 	}
-	if m.EnterpriseQuotaBalancingEnabled() || m.EnterpriseQuotaRefreshNeeded(a) {
-		t.Fatal("quota protection changed balancing or kept reading a paused pool")
+	if m.EnterpriseQuotaBalancingEnabled() || !m.EnterpriseQuotaRefreshNeeded(a) {
+		t.Fatal("paid-pool protection must continue observing the pool independently of balancing")
 	}
 }
 
 func TestEnterprisePaidQuotaPressureRequiresCurrentUsageAndIndependent429s(t *testing.T) {
-	for _, scenario := range []string{"below 99%", "stale quota", "old 429", "previous day", "trial", "trial observation", "local errors", "media"} {
+	for _, scenario := range []string{"below 95%", "stale quota", "old 429", "previous day", "trial", "trial observation", "local errors", "media"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, now := quotaPressureTestManager()
 			m.SetConfig(&config.Config{Routing: config.RoutingConfig{GeminiEnterpriseQuotaBalancing: true}})
@@ -115,8 +115,8 @@ func TestEnterprisePaidQuotaPressureRequiresCurrentUsageAndIndependent429s(t *te
 				*now = ge.NextPacificMidnight(*now).Add(-10 * time.Second)
 			}
 			a := quotaPressureAuth(t, m, "pressure-miss", "12345", "us", scenario != "trial")
-			left := int64(100)
-			if scenario == "below 99%" {
+			left := int64(500)
+			if scenario == "below 95%" {
 				left++
 			}
 			observer := a
@@ -150,6 +150,39 @@ func TestEnterprisePaidQuotaPressureRequiresCurrentUsageAndIndependent429s(t *te
 				t.Fatalf("insufficient evidence paused an edition: %+v", view)
 			}
 		})
+	}
+}
+
+func TestEnterpriseQuotaPressureReadBackoffAndExpiredWindow(t *testing.T) {
+	m, now := quotaPressureTestManager()
+	a := quotaPressureAuth(t, m, "pressure-missing", "12345", "us", true)
+	b := quotaPressureAuth(t, m, "pressure-sibling", "12345", "us", true)
+	reads := 0
+	m.SetEnterpriseQuotaRefreshHook(func(*Auth) { reads++ })
+	reject := func(auth *Auth) {
+		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), auth, plainGoogleRateLimit(auth, *now, quotaPressureTestModel, ""))
+	}
+	reject(a)
+	*now = now.Add(29 * time.Second)
+	reject(b)
+	if reads != 1 {
+		t.Fatalf("missing observation triggered %d reads before retry", reads)
+	}
+	*now = now.Add(time.Second)
+	reject(a)
+	if reads != 2 {
+		t.Fatalf("expected one bounded refresh retry, got %d", reads)
+	}
+	*now = now.Add(time.Minute + time.Nanosecond)
+	observeBalance(t, m, b, *now, 500)
+	if view := m.EnterpriseQuotaBalance(a); view.ProtectionStatus != "" {
+		t.Fatalf("late observation revived expired 429s: %+v", view)
+	}
+	reject(a)
+	reject(b)
+	reject(a)
+	if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "paused" || view.RetryAt == nil || !view.RetryAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("fresh window failed to pause at exactly 95%%: %+v", view)
 	}
 }
 

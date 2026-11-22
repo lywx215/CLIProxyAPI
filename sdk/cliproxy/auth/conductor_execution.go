@@ -125,7 +125,9 @@ func preferredExecutionAttemptError(fallback, upstream error) error {
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut cliproxyexecutor.Response, resultErr error) {
 	if containsEnterpriseProvider(providers) {
-		ctx = WithEnterpriseQuotaRequest(ctx)
+		var finish func()
+		ctx, finish = BeginEnterpriseQuotaRequest(ctx)
+		defer finish()
 	}
 	ctx = coreusage.WithModelAttemptSequence(ctx)
 	ctx = withEnterpriseModelAttempts(ctx)
@@ -294,7 +296,9 @@ func (m *Manager) ExecuteCount(ctx context.Context, providers []string, req clip
 // It supports multiple providers for the same model and round-robins the starting provider per model.
 func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resultOut *cliproxyexecutor.StreamResult, resultErr error) {
 	if containsEnterpriseProvider(providers) {
-		ctx = WithEnterpriseQuotaRequest(ctx)
+		var finish func()
+		ctx, finish = BeginEnterpriseQuotaRequest(ctx)
+		defer finish()
 	}
 	ctx = coreusage.WithModelAttemptSequence(ctx)
 	ctx = withEnterpriseModelAttempts(ctx)

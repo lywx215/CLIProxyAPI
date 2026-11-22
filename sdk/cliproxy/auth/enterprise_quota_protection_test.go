@@ -38,11 +38,11 @@ func TestEnterpriseQuotaProtectionLimitsTenConsecutiveLogical429s(t *testing.T) 
 		t.Fatalf("success did not interrupt the streak: %+v", v)
 	}
 	*now = now.Add(2*time.Minute + time.Second)
-	for range 9 {
+	for range 8 {
 		reject(WithEnterpriseQuotaRequest(t.Context()), b, "")
 	}
 	if v := m.EnterpriseQuotaBalance(a); v.ProtectionStatus != "" {
-		t.Fatalf("expired 429 survived the two-minute window: %+v", v)
+		t.Fatalf("nine distinct rejections must leave the pool open: %+v", v)
 	}
 	quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, &enterpriseLocalGateError{newModelCooldownError("", ge.Provider, time.Second)})
 	inFlight, err := a.enterpriseQuota.beginForModel(quotaPressureTestModel)
@@ -82,15 +82,8 @@ func TestEnterpriseQuotaProtectionLimitsTenConsecutiveLogical429s(t *testing.T) 
 		t.Fatalf("same pool admitted a second request: %v", err)
 	}
 	probe.finish(nil)
-	if v := m.EnterpriseQuotaBalance(a); v.ProtectionStatus != "rate_limited" || v.RetryAt == nil ||
-		!v.RetryAt.Equal(now.Add(30*time.Second)) {
-		t.Fatalf("success without a current quota reading opened the limited pool early: %+v", v)
-	}
-	observeBalance(t, m, b, *now, 600)
-	*now = now.Add(30 * time.Second)
-	quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, nil)
 	if v := m.EnterpriseQuotaBalance(a); v.ProtectionStatus != "" {
-		t.Fatalf("verified single-probe recovery left a protection record: %+v", v)
+		t.Fatalf("successful text probe without a current reading left a protection record: %+v", v)
 	}
 }
 
@@ -101,7 +94,12 @@ func TestEnterpriseQuotaProtectionPausesOnlyLimitedHighUsage(t *testing.T) {
 	if v := m.EnterpriseQuotaBalance(a); v.ProtectionStatus != "" || v.UsedPercent == nil || *v.UsedPercent != 95 {
 		t.Fatalf("high usage by itself changed admission or lost the percentage: %+v", v)
 	}
-	for range 10 {
+	for i := range 10 {
+		if i >= 3 {
+			// The next independent rejection is a single recovery probe.
+			*now = now.Add(time.Minute)
+			observeBalance(t, m, a, *now, 500)
+		}
 		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, plainGoogleRateLimit(a, *now, quotaPressureTestModel, ""))
 	}
 	v := m.EnterpriseQuotaBalance(a)

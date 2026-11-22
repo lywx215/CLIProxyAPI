@@ -17,10 +17,12 @@ import (
 // have a recent successful read whose last usage point is several hours old.
 const EnterpriseQuotaObservationTTL = 5 * time.Minute
 
+// The provider embeds tzdata on all supported platforms.
+var enterpriseQuotaPacific, _ = time.LoadLocation("America/Los_Angeles")
+
 func enterpriseQuotaDayStart(now time.Time) time.Time {
-	zone, _ := time.LoadLocation("America/Los_Angeles")
-	local := now.In(zone)
-	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, zone).UTC()
+	local := now.In(enterpriseQuotaPacific)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, enterpriseQuotaPacific).UTC()
 }
 
 type enterpriseQuotaDebit struct {
@@ -28,15 +30,26 @@ type enterpriseQuotaDebit struct {
 	count int64
 }
 
+type enterpriseQuotaReading struct {
+	snapshot ge.QuotaSnapshot
+	pool     *ge.QuotaPool
+}
+
+func (r enterpriseQuotaReading) accepts(snapshot ge.QuotaSnapshot, pool *ge.QuotaPool) bool {
+	return !r.snapshot.ObservedAt.After(snapshot.ObservedAt) &&
+		(r.pool == nil || r.snapshot.PeriodStart == nil || !r.snapshot.PeriodStart.Equal(*snapshot.PeriodStart) || !r.pool.UsageUpdatedAt.After(*pool.UsageUpdatedAt))
+}
+
 type enterpriseBalancePool struct {
-	redirect        *enterpriseBalancePool
-	snapshot        ge.QuotaSnapshot
-	pool            *ge.QuotaPool
-	paidObservation bool
-	inFlight        int64
-	liveGeneration  int64
-	byAuth          map[string]int64
-	debits          []enterpriseQuotaDebit
+	enterpriseQuotaReading
+	// Trial members can update their routing estimates independently of the
+	// verified paid reading used for protection and management totals.
+	paid           enterpriseQuotaReading
+	redirect       *enterpriseBalancePool
+	inFlight       int64
+	liveGeneration int64
+	byAuth         map[string]int64
+	debits         []enterpriseQuotaDebit
 }
 
 func (p *enterpriseBalancePool) current() *enterpriseBalancePool {
@@ -79,6 +92,10 @@ type EnterpriseQuotaBalanceView struct {
 	Status             string     `json:"status"`
 	PoolID             string     `json:"pool_id,omitempty"`
 	ObservedAt         *time.Time `json:"observed_at,omitempty"`
+	PeriodStart        *time.Time `json:"period_start,omitempty"`
+	UsageUpdatedAt     *time.Time `json:"usage_updated_at,omitempty"`
+	Limit              *int64     `json:"limit,omitempty"`
+	Used               *int64     `json:"used,omitempty"`
 	ResetAt            *time.Time `json:"reset_at,omitempty"`
 	Remaining          *int64     `json:"remaining,omitempty"`
 	EffectiveRemaining *int64     `json:"effective_remaining,omitempty"`
@@ -137,14 +154,20 @@ func (m *Manager) EnterpriseQuotaBalance(auth *Auth) EnterpriseQuotaBalanceView 
 	for _, debit := range p.debits {
 		view.LocalUnreported += debit.count
 	}
-	if p.pool != nil {
-		observed, reset, remaining := p.snapshot.ObservedAt, *p.snapshot.ResetAt, *p.pool.Remaining
+	reading := p.enterpriseQuotaReading
+	if g.matchesPaidQuotaKey(key) && p.paid.pool != nil {
+		reading = p.paid
+		period, updated, limit, used := *reading.snapshot.PeriodStart, *reading.pool.UsageUpdatedAt, *reading.pool.Limit, *reading.pool.Used
+		view.PeriodStart, view.UsageUpdatedAt, view.Limit, view.Used = &period, &updated, &limit, &used
+		if p.currentPaidObservation(now) && limit > 0 {
+			percent := 100 * float64(used) / float64(limit)
+			view.UsedPercent = &percent
+		}
+	}
+	if reading.pool != nil {
+		observed, reset, remaining := reading.snapshot.ObservedAt, *reading.snapshot.ResetAt, *reading.pool.Remaining
 		view.ObservedAt, view.ResetAt, view.Remaining = &observed, &reset, &remaining
 		view.Status = "stale"
-	}
-	if p.currentPaidObservation(now) && *p.pool.Limit > 0 {
-		percent := 100 * float64(*p.pool.Used) / float64(*p.pool.Limit)
-		view.UsedPercent = &percent
 	}
 	if left, known := p.remaining(now, view.Reserve); known {
 		view.Status, view.EffectiveRemaining = "ok", &left
@@ -252,31 +275,36 @@ func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaG
 	binding := ge.FromMetadata(g.policy.Metadata)
 	sourceIdentity := source.enterpriseQuota.identity
 	if !g.identity.ValidFor(binding) || !sourceIdentity.ValidFor(binding) || sourceIdentity.ProjectNumber != g.identity.ProjectNumber ||
+		sourceIdentity.Paid != g.identity.Paid || sourceIdentity.Trial != g.identity.Trial ||
 		sourceIdentity.Edition != g.identity.Edition || sourceIdentity.PrincipalHash != g.identity.PrincipalHash ||
 		snapshot.ProjectID != binding.ProjectID || snapshot.Location != binding.Location {
 		return false, false, false
 	}
 	pool := ge.SelectQuotaPool(snapshot, g.identity, binding)
 	if pool == nil || pool.Status != "ok" || pool.Remaining == nil || pool.Limit == nil || pool.Used == nil || pool.UsageUpdatedAt == nil || snapshot.PeriodStart == nil || snapshot.ResetAt == nil ||
-		snapshot.ObservedAt.After(now) || now.Sub(snapshot.ObservedAt) > EnterpriseQuotaObservationTTL || !snapshot.PeriodStart.Equal(enterpriseQuotaDayStart(now)) || !snapshot.ResetAt.Equal(ge.NextPacificMidnight(now)) ||
+		snapshot.ObservedAt.After(now) || now.Sub(snapshot.ObservedAt) >= EnterpriseQuotaObservationTTL || !snapshot.PeriodStart.Equal(enterpriseQuotaDayStart(now)) || !snapshot.ResetAt.Equal(ge.NextPacificMidnight(now)) ||
 		pool.UsageUpdatedAt.Before(*snapshot.PeriodStart) || pool.UsageUpdatedAt.After(snapshot.ObservedAt) || *pool.Remaining < 0 || *pool.Limit < 0 || *pool.Used < 0 {
 		return false, false, false
 	}
 	p := c.balancePoolLocked(g)
-	if p.snapshot.ObservedAt.After(snapshot.ObservedAt) {
+	key := g.paidQuotaKey(now)
+	updateBalance := p.enterpriseQuotaReading.accepts(snapshot, pool)
+	if key == "" && !updateBalance || key != "" && !p.paid.accepts(snapshot, pool) {
 		return false, false, false
 	}
-	if p.pool != nil && p.snapshot.PeriodStart != nil && p.snapshot.PeriodStart.Equal(*snapshot.PeriodStart) && p.pool.UsageUpdatedAt.After(*pool.UsageUpdatedAt) {
-		return false, false, false
-	}
-	p.snapshot = ge.CloneQuotaSnapshot(snapshot)
-	p.pool = ge.SelectQuotaPool(p.snapshot, g.identity, binding)
-	p.paidObservation = g.paidQuotaKey(now) != ""
+	reading := enterpriseQuotaReading{snapshot: ge.CloneQuotaSnapshot(snapshot)}
+	reading.pool = ge.SelectQuotaPool(reading.snapshot, g.identity, binding)
 	// Recompute rather than trusting a caller-supplied derived remaining value.
-	remaining := max(int64(0), *p.pool.Limit-*p.pool.Used)
-	p.pool.Remaining = &remaining
-	p.pruneDebits(*pool.UsageUpdatedAt)
-	if key := g.paidQuotaKey(now); key != "" && g.enabled() {
+	remaining := max(int64(0), *reading.pool.Limit-*reading.pool.Used)
+	reading.pool.Remaining = &remaining
+	if updateBalance {
+		p.enterpriseQuotaReading = reading
+		p.pruneDebits(*pool.UsageUpdatedAt)
+	}
+	if key != "" {
+		p.paid = reading
+	}
+	if key != "" && g.enabled() {
 		s := c.poolStateLocked(key)
 		if g.protectObservedQuotaLocked(s, p, now) {
 			return true, true, true
@@ -284,8 +312,8 @@ func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaG
 		if g.pauseNearQuotaLimitLocked(s, now) {
 			return true, true, true
 		}
-		if enterpriseObservedPause(s.Restriction.Kind) && p.pool.UsageUpdatedAt.After(s.ProtectionUsageAt) {
-			s.ProtectionUsageAt, s.ProtectionObservedAt = p.pool.UsageUpdatedAt.UTC(), p.snapshot.ObservedAt.UTC()
+		if enterpriseObservedPause(s.Restriction.Kind) && reading.pool.UsageUpdatedAt.After(s.ProtectionUsageAt) {
+			s.ProtectionUsageAt, s.ProtectionObservedAt = reading.pool.UsageUpdatedAt.UTC(), reading.snapshot.ObservedAt.UTC()
 			return true, false, true
 		}
 	}
@@ -515,7 +543,7 @@ func (s *QuotaBalancedSelector) Pick(ctx context.Context, provider, model string
 			left = unknownCapacity
 		}
 		score := float64(left) / float64(p.pool.inFlight+1)
-		if p.pool.usedAtLeast(now, 95) {
+		if p.pool.usedAtLeast(now, enterprisePaidHighUsagePercent) {
 			score *= 0.5
 		}
 		weights[key] = score

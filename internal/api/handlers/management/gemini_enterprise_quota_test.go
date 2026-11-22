@@ -15,6 +15,7 @@ import (
 	ge "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/geminienterprise"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	"github.com/tidwall/gjson"
 )
 
 func TestEnterpriseQuotaHandlerKeepsPermissionFailuresOutOfCredentialHealth(t *testing.T) {
@@ -141,6 +142,65 @@ func TestEnterpriseQuotaHandlerPublishesVerifiedPaidDepletion(t *testing.T) {
 		view := manager.EnterpriseQuotaBalance(registered)
 		if view.Enabled || view.ProtectionStatus != "paused" || view.ProtectionReason != "quota_exhausted" || view.RetryAt == nil {
 			t.Fatalf("manual verified observation failed to protect routing (failed=%v): %+v", failed, view)
+		}
+	}
+}
+
+// Uses the same projected account and list handler as the management page.
+func paidQuotaListFixture(t *testing.T) (*Handler, *coreauth.Auth, func(int64) bool) {
+	t.Helper()
+	h, _, children := enterpriseAccountFixture(t)
+	var source *coreauth.Auth
+	for _, child := range children {
+		if ge.FromMetadata(child.Metadata).Location == "global" && !child.Disabled {
+			source = child
+			break
+		}
+	}
+	if source == nil {
+		t.Fatal("missing enabled global collection")
+	}
+	trial := false
+	publishManagementEnterpriseSubscription(t, h.authManager, source, ge.SubscriptionObservation{
+		Status: "ok", State: "ACTIVE", Edition: "enterprise_plus", FreeTrial: &trial, ProjectNumber: "123", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now(),
+	}, ge.Model{ID: "gemini-3.8-flash"})
+	h.authManager.PublishEnterpriseSubscriptionIdentity(source)
+	source, _ = h.authManager.GetByID(source.ID)
+	return h, source, func(used int64) bool {
+		now := time.Now().UTC()
+		zone, _ := time.LoadLocation("America/Los_Angeles")
+		y, m, d := now.In(zone).Date()
+		start, end := time.Date(y, m, d, 0, 0, 0, 0, zone).UTC(), ge.NextPacificMidnight(now)
+		watermark := now.Add(-time.Minute)
+		if watermark.Before(start) {
+			watermark = start
+		}
+		limit := int64(10200)
+		left := max(0, limit-used)
+		return h.authManager.ObserveEnterpriseQuota(source, ge.QuotaSnapshot{
+			Status: "ok", ProjectID: "123", Location: "global", ObservedAt: now, PeriodStart: &start, ResetAt: &end,
+			Pools: []ge.QuotaPool{{Tier: "enterprise_plus", Status: "ok", Used: &used, Limit: &limit, Remaining: &left, UsageUpdatedAt: &watermark}},
+		})
+	}
+}
+
+func TestEnterpriseCredentialListSharesProtectionObservation(t *testing.T) {
+	h, source, observe := paidQuotaListFixture(t)
+	for _, used := range []int64{10199, 10200} {
+		if !observe(used) {
+			t.Fatal("paid runtime observation rejected")
+		}
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set(ConfigV8ContextKey, true)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v8/management/credentials", nil)
+		h.ListAuthFiles(c)
+		query := "files.0.gemini_enterprise.collections.#(binding_id==\"" + coreauth.EnterpriseBindingID(source) + "\").quota_balancing"
+		view := gjson.GetBytes(w.Body.Bytes(), query)
+		if w.Code != 200 || !view.Get("used").Exists() || view.Get("used").Int() != used || view.Get("limit").Int() != 10200 || view.Get("remaining").Int() != 10200-used ||
+			!view.Get("period_start").Exists() || !view.Get("reset_at").Exists() || !view.Get("usage_updated_at").Time().Before(view.Get("observed_at").Time()) ||
+			(view.Get("protection_reason").String() == "quota_exhausted") != (used == 10200) {
+			t.Fatalf("wrong management quota for %d: %s", used, view.Raw)
 		}
 	}
 }

@@ -27,16 +27,24 @@ type SharedQuotaBinding struct {
 }
 
 type SharedQuotaSnapshot struct {
-	SchemaVersion int                  `json:"schema_version"`
-	Version       uint64               `json:"version"`
-	Pools         []SharedQuotaState   `json:"pools"`
-	Bindings      []SharedQuotaBinding `json:"bindings"`
+	SchemaVersion int                              `json:"schema_version"`
+	Version       uint64                           `json:"version"`
+	Pools         []SharedQuotaState               `json:"pools"`
+	Bindings      []SharedQuotaBinding             `json:"bindings"`
+	Streaks       map[string]enterpriseQuotaStreak `json:"pending_streaks,omitempty"`
 }
 
 // Validate rejects corrupt snapshots before any state is published or persisted.
 func (s SharedQuotaSnapshot) Validate() error {
 	if s.SchemaVersion != 1 || s.Version == 0 {
 		return fmt.Errorf("unsupported shared quota state schema or version")
+	}
+	for id, streak := range s.Streaks {
+		_, err := hex.DecodeString(id)
+		if len(id) != sha256HexLength || err != nil || streak.Count < 1 || streak.Count >= enterpriseQuotaStreakCount ||
+			streak.Day.IsZero() || !streak.Day.Equal(enterpriseQuotaDayStart(streak.Day)) {
+			return fmt.Errorf("invalid paid quota streak")
+		}
 	}
 	pools := make(map[string]struct{}, len(s.Pools))
 	for _, state := range s.Pools {
@@ -76,6 +84,17 @@ func (m *Manager) quotaSnapshot(protectionOnly bool) SharedQuotaSnapshot {
 	defer c.mu.Unlock()
 	c.storeVersion++
 	snapshot := SharedQuotaSnapshot{SchemaVersion: 1, Version: c.storeVersion, Pools: []SharedQuotaState{}, Bindings: []SharedQuotaBinding{}}
+	if protectionOnly && len(c.streaks) > 0 {
+		snapshot.Streaks = make(map[string]enterpriseQuotaStreak)
+		day := enterpriseQuotaDayStart(c.now())
+		for id, streak := range c.streaks {
+			if streak.Day.Equal(day) {
+				snapshot.Streaks[id] = streak
+			} else {
+				delete(c.streaks, id)
+			}
+		}
+	}
 	for _, s := range c.pools {
 		if protectionOnly && !s.durableProtection() ||
 			!protectionOnly && (s.Restriction.Kind == enterpriseNearLimitKind || enterpriseLocalProtectionKind(s.Restriction.Kind)) {
@@ -85,7 +104,6 @@ func (m *Manager) quotaSnapshot(protectionOnly bool) SharedQuotaSnapshot {
 		state.clearProbe()
 		state.legacyReadyAt = time.Time{}
 		state.rejections = nil
-		state.streak = nil
 		snapshot.Pools = append(snapshot.Pools, state)
 	}
 	for _, g := range c.bindings {
@@ -158,7 +176,7 @@ func (m *Manager) ConfigureEnterpriseQuotaProtectionStore(ctx context.Context, d
 	m.restoreQuotaSnapshot(snapshot, true)
 	c.protectionPath = path
 	current := m.quotaSnapshot(true)
-	if len(current.Pools) == 0 && snapshot.Version == 0 {
+	if len(current.Pools) == 0 && len(current.Streaks) == 0 && snapshot.Version == 0 {
 		return nil
 	}
 	return writeSharedQuotaSnapshot(ctx, path, current)
@@ -185,6 +203,17 @@ func (m *Manager) restoreQuotaSnapshot(snapshot SharedQuotaSnapshot, protectionO
 	}
 	c.storeVersion = max(c.storeVersion, snapshot.Version)
 	now := c.now()
+	if protectionOnly && len(snapshot.Streaks) > 0 {
+		if c.streaks == nil {
+			c.streaks = make(map[string]enterpriseQuotaStreak)
+		}
+		day := enterpriseQuotaDayStart(now)
+		for id, streak := range snapshot.Streaks {
+			if streak.Day.Equal(day) && c.pools[id] == nil && c.streaks[id].Count == 0 {
+				c.streaks[id] = streak
+			}
+		}
+	}
 	for _, s := range snapshot.Pools {
 		// Versions from independently configured stores are not a shared clock.
 		// Existing memory, including explicit-reset tombstones, remains authoritative.

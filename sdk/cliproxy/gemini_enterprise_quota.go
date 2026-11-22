@@ -20,6 +20,9 @@ func (s *Service) configureEnterpriseQuotaProtection(ctx context.Context, cfg *c
 	}
 	dir := ""
 	if !cfg.Home.Enabled {
+		s.coreManager.SetEnterpriseQuotaRefreshHook(func(auth *coreauth.Auth) {
+			s.queueEnterpriseQuotaRead(context.Background(), auth, true)
+		})
 		var errResolve error
 		dir, errResolve = resolveCooldownStateAuthDir(cfg)
 		if errResolve != nil {
@@ -27,6 +30,8 @@ func (s *Service) configureEnterpriseQuotaProtection(ctx context.Context, cfg *c
 			return
 		}
 		dir = s.coreManager.RuntimeStateDir(dir)
+	} else {
+		s.coreManager.SetEnterpriseQuotaRefreshHook(nil)
 	}
 	if err := s.coreManager.ConfigureEnterpriseQuotaProtectionStore(ctx, dir); err != nil && ctx.Err() == nil {
 		log.WithError(err).Warn("failed to restore Gemini Enterprise quota protection")
@@ -36,7 +41,14 @@ func (s *Service) configureEnterpriseQuotaProtection(ctx context.Context, cfg *c
 // Quota reads share the bounded, cancellable discovery workers. They never run
 // on the inference path and do not depend on an open management dashboard.
 func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth) {
-	if s.coreManager == nil || auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == coreauth.StatusDisabled || !s.coreManager.EnterpriseQuotaRefreshNeeded(auth) {
+	s.queueEnterpriseQuotaRead(ctx, auth, false)
+}
+
+func (s *Service) queueEnterpriseQuotaRead(ctx context.Context, auth *coreauth.Auth, pressure bool) {
+	if s.coreManager == nil || auth == nil || auth.Provider != ge.Provider || coreauth.IsEnterpriseAccountAuth(auth) || auth.Disabled || auth.Status == coreauth.StatusDisabled || s.coreManager.HomeEnabled() {
+		return
+	}
+	if !pressure && !s.coreManager.EnterpriseQuotaRefreshNeeded(auth) {
 		return
 	}
 	auth = auth.Clone()
@@ -50,6 +62,7 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 		return
 	}
 	poolKey := fmt.Sprintf("pool:%s/%s/%s", identity.ProjectNumber, identity.Location, identity.Edition)
+	pressureKey := "pressure:" + poolKey
 	authKey := "auth:" + key
 	s.cfgMu.RLock()
 	lifetime := s.antigravityContext
@@ -63,7 +76,11 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 	d := s.enterpriseState()
 	d.mu.Lock()
 	now := d.now()
-	if d.closed || d.quotaPending[poolKey].cancel != nil || now.Before(d.quotaNext[poolKey]) || now.Before(d.quotaNext[authKey]) {
+	wait := now.Before(d.quotaNext[poolKey]) || now.Before(d.quotaNext[authKey])
+	if pressure {
+		wait = !identity.Paid || identity.Trial || now.Before(d.quotaNext[pressureKey])
+	}
+	if d.closed || d.quotaPending[poolKey].cancel != nil || wait {
 		d.mu.Unlock()
 		return
 	}
@@ -99,17 +116,22 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 			return
 		}
 		defer func() { <-d.slots }()
-		var observation ge.QuotaSnapshot
-		if d.fetchQuota != nil {
-			observation = d.fetchQuota(probeCtx, auth, proxy)
-		} else if client, errClient := ge.Client(proxy); errClient == nil {
+		observation := s.coreManager.ReadEnterpriseQuota(probeCtx, auth, identity, proxy, func(ctx context.Context) ge.QuotaSnapshot {
+			if d.fetchQuota != nil {
+				return d.fetchQuota(ctx, auth, proxy)
+			}
+			client, errClient := ge.Client(proxy)
+			if errClient != nil {
+				return ge.QuotaSnapshot{}
+			}
+			defer client.CloseIdleConnections()
 			quotaBinding := binding
 			quotaBinding.ProjectID = identity.ProjectNumber
-			observation = ge.FetchQuota(probeCtx, client, quotaBinding, ge.String(auth.Metadata, "access_token"), d.now())
+			observation := ge.FetchQuota(ctx, client, quotaBinding, ge.String(auth.Metadata, "access_token"), d.now())
 			observation.ProjectID = binding.ProjectID
-			client.CloseIdleConnections()
-		}
-		if probeCtx.Err() != nil || !s.enterpriseActive(auth, key) {
+			return observation
+		})
+		if probeCtx.Err() != nil || !s.enterpriseActive(auth, key) || !s.enterpriseTokenCurrent(auth) {
 			return
 		}
 		accepted := s.coreManager.ObserveEnterpriseQuota(auth, observation)
@@ -126,9 +148,16 @@ func (s *Service) queueEnterpriseQuota(ctx context.Context, auth *coreauth.Auth)
 		if accepted {
 			next = now.Add(enterpriseQuotaRefreshInterval)
 		}
-		if reset := ge.NextPacificMidnight(now); reset.Before(next) {
-			next = reset
+		d.quotaNext[poolKey] = minTimeUntilReset(next, now)
+		if pressure || !accepted {
+			d.quotaNext[pressureKey] = minTimeUntilReset(now.Add(enterpriseQuotaRetryInterval), now)
 		}
-		d.quotaNext[poolKey] = next
 	}()
+}
+
+func minTimeUntilReset(next, now time.Time) time.Time {
+	if reset := ge.NextPacificMidnight(now); reset.Before(next) {
+		return reset
+	}
+	return next
 }

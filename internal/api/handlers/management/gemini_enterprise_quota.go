@@ -127,8 +127,11 @@ func (h *Handler) GetGeminiEnterpriseQuota(c *gin.Context) {
 		if identity.ValidFor(binding) {
 			quotaBinding.ProjectID = identity.ProjectNumber
 		}
-		snapshot := ge.FetchQuota(ctx, client, quotaBinding, token, now)
-		snapshot.ProjectID = binding.ProjectID
+		snapshot := h.authManager.ReadEnterpriseQuota(ctx, fresh, identity, proxy, func(readCtx context.Context) ge.QuotaSnapshot {
+			snapshot := ge.FetchQuota(readCtx, client, quotaBinding, token, time.Now().UTC())
+			snapshot.ProjectID = binding.ProjectID
+			return snapshot
+		})
 		return enterpriseQuotaEntry{snapshot: snapshot, identity: identity, expires: now.Add(2 * time.Minute)}
 	})
 	if !ok || c.Request.Context().Err() != nil {
