@@ -45,6 +45,7 @@ func (t *enterpriseQuotaTicket) verifyProbe(ctx context.Context, model string, h
 		state.mu.Unlock()
 	}
 	t.model = model
+	t.emptyGeneration = !hasPayload || ctx.Err() != nil
 	if len(t.probes) == 0 {
 		return nil
 	}
@@ -130,8 +131,10 @@ func (e *enterpriseQuotaExecutor) ExecuteStream(ctx context.Context, a *Auth, r 
 		return source, nil
 	}
 	out := make(chan exec.StreamChunk)
+	finishRequest := ticket.request.hold()
 	go func() {
 		defer close(out)
+		defer finishRequest()
 		var finalErr error
 		hadPayload := false
 		var cancelled bool

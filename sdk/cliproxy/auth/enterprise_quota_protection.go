@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	enterpriseQuotaStreakCount  = 10
-	enterpriseQuotaStreakWindow = 2 * time.Minute
-	enterpriseQuotaProbeSpacing = 30 * time.Second
-	enterpriseRateLimitedKind   = "rate_limited"
-	enterpriseHighUsageKind     = "high_usage"
-	enterpriseExhaustedKind     = "quota_exhausted"
+	enterpriseQuotaStreakCount     = 10
+	enterprisePaidHighUsagePercent = 95
+	enterpriseQuotaProbeSpacing    = 30 * time.Second
+	enterpriseRateLimitedKind      = "rate_limited"
+	enterpriseHighUsageKind        = "high_usage"
+	enterpriseExhaustedKind        = "quota_exhausted"
 )
 
 func enterpriseLocalProtectionKind(kind string) bool {
@@ -29,23 +29,30 @@ func (s *SharedQuotaState) durableProtection() bool {
 }
 
 func (g *enterpriseQuotaGate) matchesProtectedPool(s *SharedQuotaState) bool {
-	return g.identity != nil && !g.identity.Trial && (g.identity.Paid || g.restoredProtectionPaid) &&
-		g.keys()["edition"] == s.Key
+	return g.matchesPaidQuotaKey(s.Key)
 }
 
-func (s *SharedQuotaState) recordRateLimit(now, retryAt time.Time) bool {
-	cutoff := maxTime(enterpriseQuotaDayStart(now), now.Add(-enterpriseQuotaStreakWindow))
-	for len(s.streak) > 0 && s.streak[0].at.Before(cutoff) {
-		s.streak = s.streak[1:]
+func (g *enterpriseQuotaGate) matchesPaidQuotaKey(key string) bool {
+	return g.identity != nil && !g.identity.Trial && (g.identity.Paid || g.restoredProtectionPaid) &&
+		g.keys()["edition"] == key
+}
+
+func (c *enterpriseQuotaCoordinator) recordRateLimit(s *SharedQuotaState, now, retryAt time.Time) bool {
+	day := enterpriseQuotaDayStart(now)
+	streak := c.streaks[s.PoolID]
+	if !streak.Day.Equal(day) {
+		streak = enterpriseQuotaStreak{Day: day}
 	}
-	s.streak = append(s.streak, enterpriseQuotaRejection{at: now, retryAt: retryAt})
-	if len(s.streak) < enterpriseQuotaStreakCount {
+	streak.Count++
+	streak.RetryAt = maxTime(streak.RetryAt, retryAt).UTC()
+	if streak.Count < enterpriseQuotaStreakCount {
+		if c.streaks == nil {
+			c.streaks = make(map[string]enterpriseQuotaStreak)
+		}
+		c.streaks[s.PoolID] = streak
 		return false
 	}
-	retryAt = now.Add(enterpriseQuotaProbeSpacing)
-	for _, rejection := range s.streak {
-		retryAt = maxTime(retryAt, rejection.retryAt)
-	}
+	retryAt = maxTime(s.Restriction.RetryAt, maxTime(now.Add(enterpriseQuotaProbeSpacing), streak.RetryAt))
 	s.Phase, s.PaidRecovery = "cooling", true
 	s.Restriction = ge.Restriction{
 		Kind: enterpriseRateLimitedKind, Scope: "edition", Feature: "assistant_search",
@@ -53,31 +60,9 @@ func (s *SharedQuotaState) recordRateLimit(now, retryAt time.Time) bool {
 	}
 	s.LastRejectedAt, s.ProtectionStartedAt = now.UTC(), now.UTC()
 	s.Version++
-	s.rejections, s.streak = nil, nil
+	delete(c.streaks, s.PoolID)
+	s.rejections = nil
 	return true
-}
-
-func (t *enterpriseQuotaTicket) breakQuotaStreakLocked(g *enterpriseQuotaGate, upstream *ge.GenerationError, err error, now time.Time) {
-	if t.request == nil || err != nil && (upstream == nil || enterpriseProbeGoogleRateLimited(upstream)) {
-		return
-	}
-	model := t.model
-	if upstream != nil && upstream.Model != "" {
-		model = upstream.Model
-	}
-	if model != "" && !enterpriseQuotaTextModel(model) {
-		return
-	}
-	s := g.quotaPressureStateLocked(now)
-	if s == nil || s.Phase != "normal" || len(s.streak) == 0 || t.admittedAt.Before(enterpriseQuotaDayStart(now)) {
-		return
-	}
-	if captured, ok := t.versions[s.PoolID]; !ok || s.ResetEpoch != captured.reset || s.Version != captured.version {
-		return
-	}
-	if _, seen := t.request.pools.LoadOrStore(s.PoolID, struct{}{}); !seen {
-		s.streak = nil
-	}
 }
 
 func maxTime(a, b time.Time) time.Time {
@@ -88,15 +73,15 @@ func maxTime(a, b time.Time) time.Time {
 }
 
 func (p *enterpriseBalancePool) currentPaidObservation(now time.Time) bool {
-	return p != nil && p.paidObservation && p.pool != nil && p.snapshot.ResetAt != nil && now.Before(*p.snapshot.ResetAt) &&
-		!p.snapshot.ObservedAt.After(now) && now.Sub(p.snapshot.ObservedAt) < EnterpriseQuotaObservationTTL
+	return p != nil && p.paid.pool != nil && now.Before(*p.paid.snapshot.ResetAt) &&
+		!p.paid.snapshot.ObservedAt.After(now) && now.Sub(p.paid.snapshot.ObservedAt) < EnterpriseQuotaObservationTTL
 }
 
 func (p *enterpriseBalancePool) usedAtLeast(now time.Time, percent int64) bool {
 	if !p.currentPaidObservation(now) {
 		return false
 	}
-	limit, used := *p.pool.Limit, *p.pool.Used
+	limit, used := *p.paid.pool.Limit, *p.paid.pool.Used
 	// ceil(percent * limit / 100), without multiplying the full limit.
 	threshold := (limit/100)*percent + (limit%100*percent+99)/100
 	return limit > 0 && used >= threshold
@@ -106,11 +91,12 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 	if !p.currentPaidObservation(now) {
 		return false
 	}
-	if !s.ProtectionUsageAt.IsZero() && p.pool.UsageUpdatedAt.Before(s.ProtectionUsageAt) {
+	reading := p.paid
+	if !s.ProtectionUsageAt.IsZero() && reading.pool.UsageUpdatedAt.Before(s.ProtectionUsageAt) {
 		return false
 	}
-	if enterpriseObservedPause(s.Restriction.Kind) && *p.pool.Remaining > 0 && !p.usedAtLeast(now, 95) &&
-		p.snapshot.ObservedAt.After(s.ProtectionObservedAt) {
+	if enterpriseObservedPause(s.Restriction.Kind) && *reading.pool.Remaining > 0 && !p.usedAtLeast(now, enterprisePaidHighUsagePercent) &&
+		reading.snapshot.ObservedAt.After(s.ProtectionObservedAt) {
 		// Release a verified observation-based pause through the same single
 		// lease, retaining any outstanding upstream Retry-After.
 		readyAt := maxTime(now, s.ProtectionRetryAt)
@@ -121,16 +107,16 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		s.Restriction.ResetAt = time.Time{}
 		s.Restriction.RetryAt = readyAt.UTC()
 		s.Restriction.TimeSource = "local_quota_pressure"
-		s.ProtectionStartedAt = p.snapshot.ObservedAt.UTC()
+		s.ProtectionStartedAt = reading.snapshot.ObservedAt.UTC()
 		s.Phase = "cooling"
 		s.Version++
 		return true
 	}
 	kind := ""
 	switch {
-	case *p.pool.Remaining == 0:
+	case *reading.pool.Remaining == 0:
 		kind = enterpriseExhaustedKind
-	case s.Restriction.Kind == enterpriseRateLimitedKind && p.usedAtLeast(now, 95):
+	case s.Restriction.Kind == enterpriseRateLimitedKind && p.usedAtLeast(now, enterprisePaidHighUsagePercent):
 		kind = enterpriseHighUsageKind
 	default:
 		return false
@@ -139,7 +125,7 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		// Explicit upstream restrictions retain their scope and recovery rules.
 		return false
 	}
-	reset := p.snapshot.ResetAt.UTC()
+	reset := reading.snapshot.ResetAt.UTC()
 	if s.Restriction.Kind == kind && s.Restriction.ResetAt.Equal(reset) {
 		return false
 	}
@@ -152,16 +138,17 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		ResetAt: reset, TimeSource: "quota_observation",
 	}
 	s.Phase, s.PaidRecovery = "cooling", true
-	s.ProtectionObservedAt, s.ProtectionUsageAt = p.snapshot.ObservedAt.UTC(), p.pool.UsageUpdatedAt.UTC()
+	s.ProtectionObservedAt, s.ProtectionUsageAt = reading.snapshot.ObservedAt.UTC(), reading.pool.UsageUpdatedAt.UTC()
 	s.Version++
-	s.rejections, s.streak = nil, nil
+	delete(g.manager.enterpriseQuota.streaks, s.PoolID)
+	s.rejections = nil
 	return true
 }
 
 func (g *enterpriseQuotaGate) rateLimitedPoolReadyLocked(s *SharedQuotaState, now time.Time) bool {
 	p := g.manager.enterpriseQuota.balances[s.Key]
-	return (p.currentPaidObservation(now) && !p.snapshot.ObservedAt.Before(s.ProtectionStartedAt) &&
-		*p.pool.Limit > 0 && !p.usedAtLeast(now, 95)) ||
+	return (p.currentPaidObservation(now) && !p.paid.snapshot.ObservedAt.Before(s.ProtectionStartedAt) &&
+		*p.paid.pool.Limit > 0 && !p.usedAtLeast(now, enterprisePaidHighUsagePercent)) ||
 		(!s.ProtectionStartedAt.IsZero() && s.ProtectionStartedAt.Before(enterpriseQuotaDayStart(now)))
 }
 
@@ -169,12 +156,12 @@ func (t *enterpriseQuotaTicket) retainProtectionAfterProbeLocked(s *SharedQuotaS
 	if !enterpriseLocalProtectionKind(s.Restriction.Kind) {
 		return false
 	}
-	if err == nil && ownerCurrent && (s.Restriction.Kind != enterpriseRateLimitedKind || t.gate.rateLimitedPoolReadyLocked(s, now)) {
+	if err == nil && ownerCurrent {
 		return false
 	}
 	delay := maxTime(now, t.admittedAt.Add(enterpriseQuotaProbeSpacing))
 	if err != nil && upstream != nil && upstream.Restriction == nil && enterpriseProbeGoogleRateLimited(upstream) {
-		delay = maxTime(delay, upstream.RetryAt)
+		delay = maxTime(now.Add(enterpriseQuotaProbeSpacing), upstream.RetryAt)
 		s.LastRejectedAt = now.UTC()
 		t.sharedRateLimit = enterpriseUnscopedRateLimit(upstream)
 	}

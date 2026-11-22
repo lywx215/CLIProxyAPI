@@ -29,6 +29,9 @@ type enterpriseQuotaCoordinator struct {
 	balances         map[string]*enterpriseBalancePool
 	balanceTurn      chan struct{}
 	rotationInFlight map[string]int64
+	refreshQuota     func(*Auth)
+	streaks          map[string]enterpriseQuotaStreak
+	reads            map[enterpriseQuotaReadKey]*enterpriseQuotaRead
 }
 
 // SharedQuotaState is one authoritative restriction, independent of Auth/ModelState.
@@ -52,7 +55,8 @@ type SharedQuotaState struct {
 	probePaid            bool
 	legacyReadyAt        time.Time
 	rejections           []enterpriseQuotaRejection
-	streak               []enterpriseQuotaRejection
+	successEpoch         uint64 // Fences pending logical rejections received before a successful generation.
+	nextPressureRead     time.Time
 }
 
 func (s *SharedQuotaState) clearProbe() {
@@ -81,6 +85,8 @@ type enterpriseQuotaTicket struct {
 	admittedAt       time.Time
 	paidRecovery     bool
 	sharedRateLimit  bool
+	refreshQuota     bool
+	emptyGeneration  bool
 	finished         sync.Once
 	balanceFinished  sync.Once
 	rotationFinished sync.Once
@@ -202,8 +208,8 @@ func (m *Manager) fenceEnterpriseQuotaHomeTransition(previousHome, nextHome bool
 		}
 		s.clearProbe()
 		s.rejections = nil
-		s.streak = nil
 	}
+	clear(c.streaks)
 }
 
 func (g *enterpriseQuotaGate) sameCredential(current *enterpriseQuotaGate) bool {
@@ -473,7 +479,12 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 		return
 	}
 	currentCredential := g.sameCredential(current)
+	outcome := t.quotaOutcomeLocked(current, currentCredential, upstream, err, now)
 	changed, persist, persistProtection := false, false, false
+	if outcome.success {
+		persistProtection = c.streaks[outcome.poolID].Count > 0
+		delete(c.streaks, outcome.poolID)
+	}
 	restrictionID, deniedID := "", ""
 	if upstream != nil && upstream.Restriction != nil {
 		r, id := g.restrictionPool(*upstream.Restriction)
@@ -487,8 +498,6 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 		}
 	} else if currentCredential && unscopedRateLimit {
 		changed, persistProtection = t.recordQuotaPressureLocked(current, upstream, now)
-	} else if currentCredential {
-		t.breakQuotaStreakLocked(current, upstream, err, now)
 	}
 	for id, probe := range t.probes {
 		s := c.pools[id]
@@ -531,6 +540,7 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 		}
 		switch {
 		case err == nil && ownerCurrent:
+			delete(c.streaks, s.PoolID)
 			s.Phase = "normal"
 			s.Restriction = ge.Restriction{}
 			s.legacyReadyAt = time.Time{}
@@ -553,7 +563,17 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 			s.Phase = "probe_pending"
 		}
 	}
+	refresh := c.refreshQuota
 	c.mu.Unlock()
+	if t.refreshQuota && refresh != nil {
+		if auth, ok := g.manager.GetByID(g.authID); ok && current.sameCredential(auth.enterpriseQuota) &&
+			current.paidQuotaKey(now) == auth.enterpriseQuota.paidQuotaKey(now) {
+			refresh(auth)
+		}
+	}
+	if outcome.poolID != "" {
+		t.request.recordOutcome(outcome)
+	}
 	if changed {
 		g.manager.publishEnterpriseQuota()
 	}
@@ -632,7 +652,10 @@ func (t *enterpriseQuotaTicket) applyRestrictionLocked(current *enterpriseQuotaG
 	if isProbe {
 		s.clearProbe()
 	}
-	s.rejections, s.streak = nil, nil
+	s.rejections = nil
+	if r.Kind == "daily" || enterpriseObservedPause(r.Kind) {
+		delete(c.streaks, s.PoolID)
+	}
 	return true
 }
 
@@ -772,7 +795,9 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 	s.Phase = "probe_pending"
 	s.clearProbe()
 	s.legacyReadyAt = time.Time{}
-	s.rejections, s.streak = nil, nil
+	_, hadStreak := c.streaks[s.PoolID]
+	delete(c.streaks, s.PoolID)
+	s.rejections = nil
 	result := &SharedQuotaResetResult{ResetScope: "shared_pool", PoolID: poolID, PoolVersion: s.Version, Phase: s.Phase, AffectedAuthIndexes: []string{}}
 	for _, member := range c.bindings {
 		if !member.appliesToQuota(s, now) {
@@ -790,7 +815,7 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 	sort.Strings(result.AffectedAuthIndexes)
 	m.publishEnterpriseQuota()
 	m.persistCooldownStates(ctx)
-	if durableProtection {
+	if durableProtection || hadStreak {
 		m.persistEnterpriseQuotaProtection()
 	}
 	return result, nil

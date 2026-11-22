@@ -17,7 +17,10 @@ const (
 
 type enterpriseQuotaRequestKey struct{}
 type enterpriseQuotaRequest struct {
-	pools sync.Map
+	pools    sync.Map // One fast-path rejection per logical request and pool.
+	mu       sync.Mutex
+	holds    int
+	outcomes map[string]enterpriseQuotaOutcome
 }
 
 // WithEnterpriseQuotaRequest identifies one logical request across dispatch and
@@ -71,7 +74,7 @@ func (g *enterpriseQuotaGate) appliesToQuota(s *SharedQuotaState, now time.Time)
 }
 
 func (p *enterpriseBalancePool) nearDailyLimit(now time.Time) bool {
-	return p.usedAtLeast(now, 99)
+	return p.usedAtLeast(now, enterprisePaidHighUsagePercent)
 }
 
 func (g *enterpriseQuotaGate) quotaPressureStateLocked(now time.Time) *SharedQuotaState {
@@ -101,8 +104,14 @@ func (t *enterpriseQuotaTicket) recordQuotaPressureLocked(g *enterpriseQuotaGate
 	if !ok || s.ResetEpoch != captured.reset {
 		return false, false
 	}
-	if s.Phase == "cooling" && s.Restriction.Kind == enterpriseNearLimitKind {
+	if s.Restriction.Kind == enterpriseNearLimitKind {
 		t.sharedRateLimit = true
+		if t.probes[s.PoolID] == 0 && upstream.RetryAt.After(s.Restriction.RetryAt) {
+			s.Restriction.RetryAt = upstream.RetryAt.UTC()
+			s.Phase = "cooling"
+			s.Version++
+			return true, true
+		}
 	}
 	if enterpriseLocalProtectionKind(s.Restriction.Kind) {
 		t.sharedRateLimit = true
@@ -121,10 +130,20 @@ func (t *enterpriseQuotaTicket) recordQuotaPressureLocked(g *enterpriseQuotaGate
 	if s.Phase != "normal" || s.Version != captured.version {
 		return false, false
 	}
+	if streak := g.manager.enterpriseQuota.streaks[s.PoolID]; streak.Count == enterpriseQuotaStreakCount-1 && streak.Day.Equal(enterpriseQuotaDayStart(now)) {
+		// Retries of the prospective tenth failure must not add a separate
+		// model cooldown. Only logical settlement can close the pool.
+		t.sharedRateLimit = true
+	}
 	if _, seen := t.request.pools.LoadOrStore(s.PoolID, struct{}{}); seen {
 		return false, false
 	}
 	s.pruneRejections(now)
+	pool := g.manager.enterpriseQuota.balances[s.Key]
+	t.refreshQuota = len(s.rejections) == 0 || !pool.currentPaidObservation(now) && !now.Before(s.nextPressureRead)
+	if t.refreshQuota {
+		s.nextPressureRead = now.Add(enterpriseQuotaProbeSpacing)
+	}
 	if len(s.rejections) == enterpriseQuotaRejectionCount {
 		s.rejections = s.rejections[1:]
 	}
@@ -133,12 +152,7 @@ func (t *enterpriseQuotaTicket) recordQuotaPressureLocked(g *enterpriseQuotaGate
 		t.sharedRateLimit = true
 		return true, true
 	}
-	if !s.recordRateLimit(now, upstream.RetryAt) {
-		return false, false
-	}
-	g.protectObservedQuotaLocked(s, g.manager.enterpriseQuota.balances[s.Key], now)
-	t.sharedRateLimit = true
-	return true, true
+	return false, false
 }
 
 func (g *enterpriseQuotaGate) pauseNearQuotaLimitLocked(s *SharedQuotaState, now time.Time) bool {
@@ -158,7 +172,7 @@ func (g *enterpriseQuotaGate) pauseNearQuotaLimitLocked(s *SharedQuotaState, now
 	s.PaidRecovery = true
 	s.Restriction = ge.Restriction{Kind: enterpriseNearLimitKind, Scope: "edition", Feature: "assistant_search", Edition: g.identity.Edition, RetryAt: retryAt.UTC(), TimeSource: "local_quota_pressure"}
 	s.LastRejectedAt = s.rejections[len(s.rejections)-1].at.UTC()
-	s.rejections, s.streak = nil, nil
+	s.rejections = nil
 	return true
 }
 
@@ -167,12 +181,21 @@ func (g *enterpriseQuotaGate) needsQuotaObservationLocked(now time.Time) bool {
 	if s == nil {
 		return false
 	}
-	if s.durableProtection() && s.Restriction.Kind != enterpriseNearLimitKind {
+	if s.durableProtection() {
 		return true
 	}
 	if s.Phase != "normal" {
 		return false
 	}
 	s.pruneRejections(now)
-	return len(s.rejections) > 0 && !g.manager.enterpriseQuota.balances[s.Key].nearDailyLimit(now)
+	return len(s.rejections) > 0
+}
+
+// SetEnterpriseQuotaRefreshHook schedules a metadata read after the first
+// rejection in a pressure window. The callback runs outside manager locks.
+func (m *Manager) SetEnterpriseQuotaRefreshHook(hook func(*Auth)) {
+	c := &m.enterpriseQuota
+	c.mu.Lock()
+	c.refreshQuota = hook
+	c.mu.Unlock()
 }

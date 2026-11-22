@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -17,7 +18,8 @@ import (
 
 type enterpriseQuotaBootstrapExecutor struct {
 	coreauth.ProviderExecutor
-	calls int
+	calls     int
+	successAt int
 }
 
 func (*enterpriseQuotaBootstrapExecutor) Identifier() string { return ge.Provider }
@@ -25,6 +27,12 @@ func (*enterpriseQuotaBootstrapExecutor) Identifier() string { return ge.Provide
 func (e *enterpriseQuotaBootstrapExecutor) ExecuteStream(ctx context.Context, auth *coreauth.Auth, req coreexec.Request, _ coreexec.Options) (*coreexec.StreamResult, error) {
 	e.calls++
 	coreexec.MarkUpstreamAttempt(ctx)
+	if e.calls == e.successAt {
+		chunks := make(chan coreexec.StreamChunk, 1)
+		chunks <- coreexec.StreamChunk{Payload: []byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")}
+		close(chunks)
+		return &coreexec.StreamResult{Chunks: chunks}, nil
+	}
 	rejection := ge.ParseGenerationError([]byte(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`),
 		http.StatusTooManyRequests, http.Header{"Retry-After": {"120"}}, ge.FromMetadata(auth.Metadata),
 		auth.EnterpriseQuotaIdentity, time.Now(), false)
@@ -35,17 +43,16 @@ func (e *enterpriseQuotaBootstrapExecutor) ExecuteStream(ctx context.Context, au
 	return &coreexec.StreamResult{Chunks: chunks}, nil
 }
 
-func TestEnterpriseQuotaPressureDeduplicatesHTTPStreamBootstrap(t *testing.T) {
+func quotaBootstrapFixture(t *testing.T, models []ge.Model, executor *enterpriseQuotaBootstrapExecutor) (*coreauth.Manager, *BaseAPIHandler, []*coreauth.Auth) {
+	t.Helper()
 	manager := coreauth.NewManager(nil, nil, nil)
 	// Each Manager call can try one credential. Only the handler can redispatch.
 	manager.SetRetryConfig(0, 0, 1)
-	executor := &enterpriseQuotaBootstrapExecutor{}
 	manager.RegisterExecutor(executor)
 	handler := NewBaseAPIHandlers(&sdkconfig.SDKConfig{
 		Streaming: sdkconfig.StreamingConfig{BootstrapRetries: 1},
 	}, manager)
 
-	models := []ge.Model{{ID: "gemini-quota-bootstrap-one"}, {ID: "gemini-quota-bootstrap-two"}, {ID: "gemini-quota-bootstrap-three"}}
 	registered := make([]*registry.ModelInfo, 0, len(models))
 	for _, model := range models {
 		registered = append(registered, &registry.ModelInfo{ID: model.ID})
@@ -81,7 +88,14 @@ func TestEnterpriseQuotaPressureDeduplicatesHTTPStreamBootstrap(t *testing.T) {
 		manager.RefreshSchedulerEntry(name)
 		credentials = append(credentials, auth)
 	}
+	return manager, handler, credentials
+}
 
+func TestEnterpriseQuotaPressureDeduplicatesHTTPStreamBootstrap(t *testing.T) {
+	models := []ge.Model{{ID: "gemini-quota-bootstrap-one"}, {ID: "gemini-quota-bootstrap-two"}, {ID: "gemini-quota-bootstrap-three"}}
+	executor := &enterpriseQuotaBootstrapExecutor{}
+	manager, handler, credentials := quotaBootstrapFixture(t, models, executor)
+	project, edition := "123451", "enterprise_plus"
 	rejectRequest := func(model string) int {
 		t.Helper()
 		before := executor.calls
@@ -158,5 +172,40 @@ func TestEnterpriseQuotaPressureDeduplicatesHTTPStreamBootstrap(t *testing.T) {
 	a, b := sharedPause(credentials[0]), sharedPause(credentials[1])
 	if a == "" || a != b {
 		t.Fatalf("three independent requests did not pause the shared pool: %q, %q", a, b)
+	}
+}
+
+func TestEnterpriseQuotaTenthStreamBootstrapSuccessBreaksStreak(t *testing.T) {
+	var models []ge.Model
+	for i := range 20 {
+		models = append(models, ge.Model{ID: fmt.Sprintf("gemini-streak-test-%d", i)})
+	}
+	executor := &enterpriseQuotaBootstrapExecutor{successAt: 20}
+	manager, handler, credentials := quotaBootstrapFixture(t, models, executor)
+	for i, model := range models {
+		before := executor.calls
+		data, _, errs := handler.executeStreamWithAuthManagerFormats(t.Context(), "openai", "openai", model.ID,
+			[]byte(`{"messages":[{"role":"user","content":"test"}]}`), "", false, modelExecutionOptions{Operation: "chat_completions"})
+		var payload bool
+		if data != nil {
+			for chunk := range data {
+				payload = payload || len(chunk) > 0
+			}
+		}
+		var status int
+		if errs != nil {
+			for failure := range errs {
+				if failure != nil {
+					status = failure.StatusCode
+				}
+			}
+		}
+		if executor.calls-before != 2 || payload != (i == 9) || (status == http.StatusTooManyRequests) != (i != 9) {
+			t.Fatalf("request %d: attempts=%d payload=%v status=%d", i+1, executor.calls-before, payload, status)
+		}
+		view := manager.EnterpriseQuotaBalance(credentials[0])
+		if (view.ProtectionStatus == "rate_limited") != (i == 19) {
+			t.Fatalf("request %d: %+v", i+1, view)
+		}
 	}
 }

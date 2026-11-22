@@ -387,7 +387,9 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 		}
 	}
 	if maxBootstrapRetries > 0 && enterpriseCandidate {
-		ctx = coreauth.WithEnterpriseQuotaRequest(ctx)
+		var finish func()
+		ctx, finish = coreauth.BeginEnterpriseQuotaRequest(ctx)
+		defer finish()
 	}
 	streamResult, err := h.AuthManager.ExecuteStream(ctx, providers, req, opts)
 	if err != nil {
