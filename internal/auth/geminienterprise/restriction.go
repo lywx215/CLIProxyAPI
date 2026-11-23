@@ -37,6 +37,9 @@ type GenerationError struct {
 	Started            bool
 	// UnscopedRateLimit records a Google 429 without quota-specific details.
 	UnscopedRateLimit bool
+	// QuotaPressureHint records a structured Google 429 whose details are
+	// compatible with the paid Assistant/Search pool but do not identify a limit.
+	QuotaPressureHint bool
 	// ModelNotEnabled is set only from a validated Google ErrorInfo detail.
 	ModelNotEnabled bool
 	Model           string
@@ -194,6 +197,8 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		identity = nil
 	}
 	type violation struct {
+		Subject    string            `json:"subject"`
+		APIService string            `json:"apiService"`
 		Metric     string            `json:"quotaMetric"`
 		ID         string            `json:"quotaId"`
 		Dimensions map[string]string `json:"quotaDimensions"`
@@ -285,10 +290,12 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	}
 	validDetails := true
 	unscoped := true
+	pressureHint := e.RPCStatus == "RESOURCE_EXHAUSTED"
 	for _, detail := range body.Details {
 		var d struct {
 			Type       string            `json:"@type"`
 			Domain     string            `json:"domain"`
+			Reason     string            `json:"reason"`
 			Metadata   map[string]string `json:"metadata"`
 			RetryDelay string            `json:"retryDelay"`
 			Violations json.RawMessage   `json:"violations"`
@@ -297,8 +304,8 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 			validDetails = false
 			continue
 		}
-		// A detail identifying a different quota or an unrecognized scope
-		// must never become evidence against the entire edition.
+		// Details other than retry timing require independent evidence from
+		// the paid pool before they can contribute to quota pressure.
 		if d.Type != "type.googleapis.com/google.rpc.RetryInfo" {
 			unscoped = false
 		}
@@ -306,6 +313,11 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		case "type.googleapis.com/google.rpc.ErrorInfo":
 			if (d.Domain != "googleapis.com" && d.Domain != "discoveryengine.googleapis.com") || !mergeMetadata(metadata, d.Metadata, false) {
 				validDetails = false
+			}
+			switch d.Reason {
+			case "", "RESOURCE_EXHAUSTED", "QUOTA_EXCEEDED", "RATE_LIMIT_EXCEEDED", "RESOURCE_QUOTA_EXCEEDED":
+			default:
+				pressureHint = false
 			}
 		case "type.googleapis.com/google.rpc.QuotaFailure":
 			var items []violation
@@ -318,6 +330,10 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 			if delay, err := time.ParseDuration(d.RetryDelay); quotaRetryDelay.MatchString(d.RetryDelay) && err == nil && delay > 0 {
 				mergeTime(now.Add(delay))
 			}
+		case "type.googleapis.com/google.rpc.RequestInfo", "type.googleapis.com/google.rpc.LocalizedMessage",
+			"type.googleapis.com/google.rpc.Help", "type.googleapis.com/google.rpc.DebugInfo":
+		default:
+			pressureHint = false
 		}
 	}
 	e.RetryAt = retryAt
@@ -337,8 +353,13 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 		if !mergeMetadata(fields, v.Dimensions, true) || !mergeMetadata(fields, map[string]string{"quota_metric": v.Metric, "quota_limit": v.ID}, false) {
 			return e
 		}
+		if pressureHint && ((v.Subject != "" && !projectMatches(strings.TrimPrefix(v.Subject, "project:"))) ||
+			(v.APIService != "" && v.APIService != "discoveryengine.googleapis.com") || !quotaPressureFieldsMatch(fields, identity)) {
+			pressureHint = false
+		}
 		fieldsByViolation = append(fieldsByViolation, fields)
 	}
+	e.QuotaPressureHint = pressureHint && !unscoped && !userDimension
 	// Multiple different violations cannot safely establish one restriction scope.
 	var restriction *Restriction
 	for _, fields := range fieldsByViolation {
@@ -410,9 +431,28 @@ func ParseGenerationError(raw []byte, status int, headers http.Header, binding c
 	}
 	e.Restriction = restriction
 	if restriction != nil {
+		e.QuotaPressureHint = false
 		e.RetryAt = restriction.RetryAt
 	}
 	return e
+}
+
+func quotaPressureFieldsMatch(fields map[string]string, identity *QuotaIdentity) bool {
+	kind, user, valid := restrictionUnit(fields["quota_unit"])
+	if !valid || kind == "minute" || user || minuteQuotaLimit.MatchString(fields["quota_limit"]) || userQuotaLimit.MatchString(fields["quota_limit"]) {
+		return false
+	}
+	if scope := fields["quota_scope"]; scope != "" && scope != "edition" {
+		return false
+	}
+	if feature := fields["feature"]; feature != "" && feature != "assistant_search" {
+		return false
+	}
+	if metric := fields["quota_metric"]; metric != "" {
+		matched := textQuotaMetric.FindStringSubmatch(metric)
+		return len(matched) > 0 && identity != nil && matched[1] == identity.Edition
+	}
+	return true
 }
 
 func canonicalQuotaMetric(metric string) string {

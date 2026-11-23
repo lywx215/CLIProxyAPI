@@ -103,7 +103,7 @@ func (m *Manager) quotaSnapshot(protectionOnly bool) SharedQuotaSnapshot {
 		state := *s
 		state.clearProbe()
 		state.legacyReadyAt = time.Time{}
-		state.rejections = nil
+		state.clearQuotaRejections()
 		snapshot.Pools = append(snapshot.Pools, state)
 	}
 	for _, g := range c.bindings {

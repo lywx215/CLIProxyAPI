@@ -61,7 +61,7 @@ func (c *enterpriseQuotaCoordinator) recordRateLimit(s *SharedQuotaState, now, r
 	s.LastRejectedAt, s.ProtectionStartedAt = now.UTC(), now.UTC()
 	s.Version++
 	delete(c.streaks, s.PoolID)
-	s.rejections = nil
+	s.clearQuotaRejections()
 	return true
 }
 
@@ -113,10 +113,12 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		return true
 	}
 	kind := ""
+	s.pruneRejections(now)
 	switch {
 	case *reading.pool.Remaining == 0:
 		kind = enterpriseExhaustedKind
-	case s.Restriction.Kind == enterpriseRateLimitedKind && p.usedAtLeast(now, enterprisePaidHighUsagePercent):
+	case p.usedAtLeast(now, enterprisePaidHighUsagePercent) &&
+		(s.Restriction.Kind == enterpriseRateLimitedKind || s.corroboratedQuotaPressure()):
 		kind = enterpriseHighUsageKind
 	default:
 		return false
@@ -131,6 +133,9 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 	}
 	if !enterpriseObservedPause(s.Restriction.Kind) {
 		s.ProtectionRetryAt = s.Restriction.RetryAt
+		for _, rejection := range s.completedRejections {
+			s.ProtectionRetryAt = maxTime(s.ProtectionRetryAt, rejection.retryAt)
+		}
 	}
 	s.Restriction = ge.Restriction{
 		Kind: kind, Scope: "edition", Feature: "assistant_search", Edition: g.identity.Edition,
@@ -141,7 +146,7 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 	s.ProtectionObservedAt, s.ProtectionUsageAt = reading.snapshot.ObservedAt.UTC(), reading.pool.UsageUpdatedAt.UTC()
 	s.Version++
 	delete(g.manager.enterpriseQuota.streaks, s.PoolID)
-	s.rejections = nil
+	s.clearQuotaRejections()
 	return true
 }
 
@@ -163,7 +168,7 @@ func (t *enterpriseQuotaTicket) retainProtectionAfterProbeLocked(s *SharedQuotaS
 	if err != nil && upstream != nil && upstream.Restriction == nil && enterpriseProbeGoogleRateLimited(upstream) {
 		delay = maxTime(now.Add(enterpriseQuotaProbeSpacing), upstream.RetryAt)
 		s.LastRejectedAt = now.UTC()
-		t.sharedRateLimit = enterpriseUnscopedRateLimit(upstream)
+		t.sharedRateLimit = enterpriseUnscopedRateLimit(upstream) || enterpriseQuotaPressureHint(upstream)
 	}
 	if enterpriseObservedPause(s.Restriction.Kind) {
 		// After the documented daily reset, allow a delayed observation or a

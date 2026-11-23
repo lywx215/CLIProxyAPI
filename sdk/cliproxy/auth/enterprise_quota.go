@@ -55,6 +55,7 @@ type SharedQuotaState struct {
 	probePaid            bool
 	legacyReadyAt        time.Time
 	rejections           []enterpriseQuotaRejection
+	completedRejections  []enterpriseQuotaRejection
 	successEpoch         uint64 // Fences pending logical rejections received before a successful generation.
 	nextPressureRead     time.Time
 }
@@ -207,7 +208,7 @@ func (m *Manager) fenceEnterpriseQuotaHomeTransition(previousHome, nextHome bool
 			s.Phase = "probe_pending"
 		}
 		s.clearProbe()
-		s.rejections = nil
+		s.clearQuotaRejections()
 	}
 	clear(c.streaks)
 }
@@ -484,6 +485,7 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 	if outcome.success {
 		persistProtection = c.streaks[outcome.poolID].Count > 0
 		delete(c.streaks, outcome.poolID)
+		c.pools[outcome.poolID].completedRejections = nil
 	}
 	restrictionID, deniedID := "", ""
 	if upstream != nil && upstream.Restriction != nil {
@@ -496,7 +498,7 @@ func (t *enterpriseQuotaTicket) finishOnce(err error) {
 			changed, persist = true, true
 			persistProtection = wasProtected || previous.durableProtection()
 		}
-	} else if currentCredential && unscopedRateLimit {
+	} else if currentCredential && enterpriseTextQuotaRejection(upstream) {
 		changed, persistProtection = t.recordQuotaPressureLocked(current, upstream, now)
 	}
 	for id, probe := range t.probes {
@@ -652,7 +654,7 @@ func (t *enterpriseQuotaTicket) applyRestrictionLocked(current *enterpriseQuotaG
 	if isProbe {
 		s.clearProbe()
 	}
-	s.rejections = nil
+	s.clearQuotaRejections()
 	if r.Kind == "daily" || enterpriseObservedPause(r.Kind) {
 		delete(c.streaks, s.PoolID)
 	}
@@ -797,7 +799,7 @@ func (m *Manager) ResetSharedQuota(ctx context.Context, authID, poolID string, v
 	s.legacyReadyAt = time.Time{}
 	_, hadStreak := c.streaks[s.PoolID]
 	delete(c.streaks, s.PoolID)
-	s.rejections = nil
+	s.clearQuotaRejections()
 	result := &SharedQuotaResetResult{ResetScope: "shared_pool", PoolID: poolID, PoolVersion: s.Version, Phase: s.Phase, AffectedAuthIndexes: []string{}}
 	for _, member := range c.bindings {
 		if !member.appliesToQuota(s, now) {

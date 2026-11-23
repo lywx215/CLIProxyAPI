@@ -28,6 +28,8 @@ type enterpriseQuotaOutcome struct {
 	successEpoch        uint64
 	admittedAt, retryAt time.Time
 	success, pending    bool
+	model               string
+	unscoped            bool
 }
 
 func (r *enterpriseQuotaRequest) hold() func() {
@@ -68,6 +70,7 @@ func (r *enterpriseQuotaRequest) recordOutcome(o enterpriseQuotaOutcome) {
 	}
 	if exists && !o.success && last.successEpoch == o.successEpoch {
 		o.retryAt = maxTime(o.retryAt, last.retryAt)
+		o.unscoped = o.unscoped || last.unscoped
 	}
 	if r.outcomes == nil {
 		r.outcomes = make(map[string]enterpriseQuotaOutcome)
@@ -84,7 +87,8 @@ func (t *enterpriseQuotaTicket) quotaOutcomeLocked(g *enterpriseQuotaGate, curre
 	if !current || t.request == nil || t.admittedAt.Before(enterpriseQuotaDayStart(now)) {
 		return enterpriseQuotaOutcome{}
 	}
-	if err != nil && !enterpriseUnscopedRateLimit(upstream) || err == nil && (t.emptyGeneration || !enterpriseQuotaTextModel(t.model)) {
+	unscoped := enterpriseUnscopedRateLimit(upstream)
+	if err != nil && !unscoped && !enterpriseQuotaPressureHint(upstream) || err == nil && (t.emptyGeneration || !enterpriseQuotaTextModel(t.model)) {
 		return enterpriseQuotaOutcome{}
 	}
 	s := g.quotaPressureStateLocked(now)
@@ -100,7 +104,7 @@ func (t *enterpriseQuotaTicket) quotaOutcomeLocked(g *enterpriseQuotaGate, curre
 	}
 	o := enterpriseQuotaOutcome{gate: g, poolID: s.PoolID, version: v, admittedAt: t.admittedAt, success: err == nil, successEpoch: s.successEpoch}
 	if upstream != nil {
-		o.retryAt = upstream.RetryAt
+		o.retryAt, o.model, o.unscoped = upstream.RetryAt, upstream.Model, unscoped
 	}
 	return o
 }
@@ -118,13 +122,19 @@ func (o enterpriseQuotaOutcome) settle() {
 		c.mu.Unlock()
 		return
 	}
-	changed := c.recordRateLimit(s, now, o.retryAt)
-	if changed {
-		g.protectObservedQuotaLocked(s, c.balances[s.Key], now)
+	changed := o.unscoped && c.recordRateLimit(s, now, o.retryAt)
+	if s.Phase == "normal" {
+		s.pruneRejections(now)
+		s.completedRejections = appendQuotaRejection(s.completedRejections, enterpriseQuotaRejection{at: now, retryAt: o.retryAt, model: o.model})
+	}
+	if changed || s.Phase == "normal" {
+		changed = g.protectObservedQuotaLocked(s, c.balances[s.Key], now) || changed
 	}
 	c.mu.Unlock()
 	if changed {
 		m.publishEnterpriseQuota()
 	}
-	m.persistEnterpriseQuotaProtection()
+	if changed || o.unscoped {
+		m.persistEnterpriseQuotaProtection()
+	}
 }
