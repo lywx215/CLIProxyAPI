@@ -13,7 +13,7 @@ import (
 )
 
 func TestSupportedLocations(t *testing.T) {
-	want := []string{"global", "us", "eu", "ca", "au", "in"}
+	want := []string{"global", "us", "eu", "ca", "au", "in", "kr", "sg"}
 	if !slices.Equal(SupportedLocations(), want) {
 		t.Fatal("unexpected supported locations")
 	}
@@ -22,7 +22,7 @@ func TestSupportedLocations(t *testing.T) {
 	if !slices.Equal(SupportedLocations(), want) {
 		t.Fatal("caller changed the shared locations")
 	}
-	for _, location := range append(want, "", "es", "sg", "CA", "evil.test") {
+	for _, location := range append(want, "", "es", "jp", "CA", "evil.test") {
 		if SupportedLocation(location) != slices.Contains(want, location) {
 			t.Fatalf("incorrect support for %q", location)
 		}
@@ -33,6 +33,7 @@ func TestRegionalEndpointsAndCredentialConfinement(t *testing.T) {
 	hosts := map[string]string{
 		"global": "discoveryengine.googleapis.com", "us": "us-discoveryengine.googleapis.com", "eu": "eu-discoveryengine.googleapis.com",
 		"ca": "ca-discoveryengine.googleapis.com", "au": "au-discoveryengine.googleapis.com", "in": "in-discoveryengine.googleapis.com",
+		"kr": "kr-discoveryengine.googleapis.com", "sg": "sg-discoveryengine.googleapis.com",
 	}
 	for region, host := range hosts {
 		binding := config.GeminiEnterpriseOAuth{ClientID: "client", ProjectID: "123", Location: region, EngineID: "app"}
@@ -71,7 +72,7 @@ func TestRegionalEndpointsAndCredentialConfinement(t *testing.T) {
 			}
 		}
 		if region != "global" {
-			for _, foreign := range []string{"discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com", "ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com"} {
+			for _, foreign := range []string{"discoveryengine.googleapis.com", "global-discoveryengine.googleapis.com", "us-discoveryengine.googleapis.com", "eu-discoveryengine.googleapis.com", "ca-discoveryengine.googleapis.com", "au-discoveryengine.googleapis.com", "in-discoveryengine.googleapis.com", "kr-discoveryengine.googleapis.com", "sg-discoveryengine.googleapis.com"} {
 				if foreign == host {
 					continue
 				}
