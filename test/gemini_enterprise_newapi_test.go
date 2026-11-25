@@ -3,6 +3,7 @@ package test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -38,6 +39,36 @@ func TestEnterpriseNewAPITextHistorySignature(t *testing.T) {
 				}
 				if !strings.Contains(response.Header().Get("X-CLIProxyAPI-Ignored-Parameters"), "contents[1].parts[0].thoughtSignature") {
 					t.Fatal("ignored signature field is not reported")
+				}
+			})
+		}
+	}
+}
+
+func TestEnterpriseNewAPIEmptySystemInstruction(t *testing.T) {
+	const userText = "Answer the question."
+	const contents = `[{"parts":[{"text":"` + userText + `"}]}]`
+	router, transport, _ := enterpriseFixtureRouter(t)
+	for _, scenario := range []struct{ name, field, instruction, want string }{
+		{"omitted text", "systemInstruction", `{"parts":[{}]}`, userText},
+		{"empty parts", "systemInstruction", `{"parts":[]}`, userText},
+		{"omitted parts", "systemInstruction", `{}`, userText},
+		{"blank instruction alias", "system_instruction", `{"parts":[{"text":null},{"text":""},{"text":" \n\t"}]}`, userText},
+		{"mixed parts", "systemInstruction", `{"parts":[{},{"text":"  Use"},{"text":" "},{"text":null},{"text":"Markdown.\n"}]}`, "  Use Markdown.\n\n" + userText},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", scenario.name, stream), func(t *testing.T) {
+				path, body := enterprisePublicRequest(t, "gemini-4-argon", "gemini", stream, map[string]any{
+					"contents":     json.RawMessage(contents),
+					scenario.field: json.RawMessage(scenario.instruction),
+				})
+				before := transport.calls.Load()
+				response := enterprisePublicCall(router, path, body)
+				if response.Code != http.StatusOK || transport.calls.Load() != before+1 || !strings.Contains(enterprisePublicText(response.Body.Bytes(), "gemini", stream), "offline") {
+					t.Fatalf("generation failed: status=%d body=%s", response.Code, response.Body.String())
+				}
+				if got := gjson.GetBytes(transport.requestBody(), "query.text").String(); got != scenario.want {
+					t.Fatalf("query.text = %q, want %q", got, scenario.want)
 				}
 			})
 		}
@@ -194,8 +225,10 @@ func TestEnterpriseNewAPIHistoryPayloadRemainsFinal(t *testing.T) {
 			cfg.Payload.Override = []config.PayloadRule{{Models: models, Params: map[string]any{"query.text": "final configured text"}}}
 		}
 		router, transport, _ := enterpriseFixtureRouterWithConfig(t, cfg)
+		fields := enterpriseNewAPIHistory([]map[string]any{{"text": "previous answer", "thoughtSignature": "opaque-signature"}})
+		fields["systemInstruction"] = json.RawMessage(`{"parts":[{}]}`)
 		for _, stream := range []bool{false, true} {
-			path, body := enterprisePublicRequest(t, "gemini-3.1-pro-preview", "gemini", stream, enterpriseNewAPIHistory([]map[string]any{{"text": "previous answer", "thoughtSignature": "opaque-signature"}}))
+			path, body := enterprisePublicRequest(t, "gemini-3.1-pro-preview", "gemini", stream, fields)
 			response := enterprisePublicCall(router, path, body)
 			if filter {
 				if response.Code != 400 || transport.calls.Load() != 0 || gjson.GetBytes(response.Body.Bytes(), "error.param").String() != "query.text" || gjson.GetBytes(response.Body.Bytes(), "error.code").String() != "invalid_field" {

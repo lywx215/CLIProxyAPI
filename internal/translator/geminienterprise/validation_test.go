@@ -126,6 +126,10 @@ func TestEnterpriseInputDiagnosticsIdentifyExactNestedFields(t *testing.T) {
 	const chatMessages = `"messages":[{"role":"user","content":"hi"}]`
 	for _, test := range []struct{ name, protocol, body, path string }{
 		{"gemini-second-text-part", "gemini", `{"contents":[{"parts":[{"text":"hi"},{"text":42}]}]}`, "contents[0].parts[1].text"},
+		{"gemini-empty-content-part", "gemini", `{"contents":[{"parts":[{}, {"text":"hi"}]}]}`, "contents[0].parts[0].text"},
+		{"gemini-empty-prompt", "gemini", `{"contents":[{"parts":[{"text":" "}]}],"systemInstruction":{"parts":[{}]}}`, "contents"},
+		{"gemini-system-text-type", "gemini", `{` + geminiContent + `,"systemInstruction":{"parts":[{},{"text":42}]}}`, "systemInstruction.parts[1].text"},
+		{"gemini-system-media", "gemini", `{` + geminiContent + `,"systemInstruction":{"parts":[{"inlineData":{"mimeType":"image/png","data":"eA=="}}]}}`, "systemInstruction.parts[0].inlineData"},
 		{"chat-second-text-part", "openai", `{"messages":[{"role":"user","content":[{"type":"text","text":"hi"},{"type":"text","text":42}]}]}`, "messages[0].content[1].text"},
 		{"gemini-second-tool", "gemini", `{` + geminiContent + `,"tools":[{"urlContext":{}},{"googleSearch":true}]}`, "tools[1].googleSearch"},
 		{"chat-second-tool", "openai", `{` + chatMessages + `,"tools":[{"urlContext":{}},{"googleSearch":true}]}`, "tools[1].googleSearch"},

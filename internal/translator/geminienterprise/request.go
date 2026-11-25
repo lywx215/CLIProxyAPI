@@ -335,7 +335,9 @@ func Normalize(body []byte, protocol, model string) (Input, error) {
 		}
 		if v := n.alias(b, "systemInstruction", "system_instruction", ""); v != nil {
 			m := n.object(v, "systemInstruction")
-			texts = append([]string{n.geminiParts(m["parts"], "systemInstruction.parts", false, false)}, texts...)
+			if systemText := n.geminiParts(m["parts"], "systemInstruction.parts", false, false); strings.TrimSpace(systemText) != "" {
+				texts = append([]string{systemText}, texts...)
+			}
 			n.unknown(m, "role|parts", "systemInstruction.")
 		}
 		if v, exists := b["tools"]; exists {

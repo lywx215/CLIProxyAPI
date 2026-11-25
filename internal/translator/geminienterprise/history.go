@@ -31,8 +31,11 @@ func (n *normalizer) optionalText(object map[string]any, key, path string) strin
 // Gemini clients replay response metadata and built-in code events with model history.
 // Signatures are opaque native-Gemini state, never streamAssist fields or prompt text.
 func (n *normalizer) geminiParts(value any, path string, modelHistory, conversation bool) string {
+	if !conversation && value == nil {
+		return ""
+	}
 	var text strings.Builder
-	for i, item := range n.array(value, path, true) {
+	for i, item := range n.array(value, path, conversation) {
 		partPath := fmt.Sprintf("%s[%d]", path, i)
 		prefix := partPath + "."
 		part := n.object(item, partPath)
@@ -109,6 +112,9 @@ func (n *normalizer) geminiParts(value any, path string, modelHistory, conversat
 			n.optionalText(object, "outcome", prefix+"codeExecutionResult.")
 			n.optionalText(object, "output", prefix+"codeExecutionResult.")
 			text.WriteString("\n" + string(marshal(map[string]any{"codeExecutionResult": object})) + "\n")
+		case !conversation:
+			// Gateways can omit the text field when serializing an empty system part.
+			text.WriteString(n.optionalText(part, "text", prefix))
 		case hasText:
 			body := n.text(part["text"], prefix+"text")
 			if !thought {
