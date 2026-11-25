@@ -61,6 +61,43 @@ func TestEnterpriseUnscopedRateLimitClassification(t *testing.T) {
 	}
 }
 
+func TestEnterpriseQuotaPressureHint(t *testing.T) {
+	now := time.Date(2026, 11, 23, 3, 0, 0, 0, time.UTC)
+	binding := config.GeminiEnterpriseOAuth{ProjectID: "12345", Location: "us"}
+	identity := &QuotaIdentity{Verified: true, Paid: true, Binding: Binding(binding), ProjectNumber: "12345", Location: "us", Edition: "enterprise_plus", PrincipalHash: strings.Repeat("a", 64), CheckedAt: now}
+	const detail = `{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"googleapis.com","reason":"RATE_LIMIT_EXCEEDED","metadata":{"service":"discoveryengine.googleapis.com","consumer":"projects/12345","location":"us","quota_metric":"discoveryengine.googleapis.com/quota/text_answer_gen_tier_enterprise_plus_regional","quota_limit":"OpaqueTextLimit"}}`
+	const violation = `{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"subject":"project:12345","apiService":"discoveryengine.googleapis.com"}]}`
+	for _, test := range []struct {
+		name, details string
+		wantHint      bool
+	}{
+		{name: "compatible but unclassified", details: detail, wantHint: true},
+		{name: "generic quota exhausted reason", details: strings.Replace(detail, "RATE_LIMIT_EXCEEDED", "QUOTA_EXHAUSTED", 1), wantHint: true},
+		{name: "informational detail", details: `{"@type":"type.googleapis.com/google.rpc.RequestInfo","requestId":"example"}`, wantHint: true},
+		{name: "compatible legacy quota subject", details: violation, wantHint: true},
+		{name: "another quota service", details: strings.Replace(violation, "discoveryengine.googleapis.com", "compute.googleapis.com", 1)},
+		{name: "per-client quota subject", details: strings.Replace(violation, "project:12345", "clientip:192.0.2.50", 1)},
+		{name: "foreign project", details: strings.Replace(detail, "12345", "99999", 1)},
+		{name: "foreign region", details: strings.Replace(detail, `"us"`, `"in"`, 1)},
+		{name: "foreign edition", details: strings.Replace(detail, "enterprise_plus", "enterprise_standard", 1)},
+		{name: "per-user", details: strings.Replace(detail, "OpaqueTextLimit", "TextAnswersPerDayPerUser", 1)},
+		{name: "minute limit", details: strings.Replace(detail, "OpaqueTextLimit", "TextAnswersPerMinute", 1)},
+		{name: "technical feature", details: strings.Replace(detail, "text_answer_gen_tier_enterprise_plus_regional", "requests", 1)},
+		{name: "confirmed daily limit", details: strings.Replace(detail, "OpaqueTextLimit", "TextAnswersPerDay", 1)},
+		{name: "unrecognized detail type", details: `{"@type":"type.googleapis.com/example.Limit"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := `[{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[` + test.details + `]}}]`
+			for _, status := range []int{http.StatusTooManyRequests, http.StatusOK} {
+				got := ParseGenerationError([]byte(body), status, nil, binding, identity, now, false)
+				if got.QuotaPressureHint != test.wantHint || got.UnscopedRateLimit || got.HTTPStatus != http.StatusTooManyRequests {
+					t.Fatalf("HTTP %d: incompatible pressure classification: %+v", status, got)
+				}
+			}
+		})
+	}
+}
+
 func TestEnterpriseGenerationErrorWrappersPreserveQuotaScope(t *testing.T) {
 	now := time.Date(2026, 11, 19, 4, 20, 0, 0, time.UTC)
 	binding := config.GeminiEnterpriseOAuth{ProjectID: "12345", Location: "eu"}

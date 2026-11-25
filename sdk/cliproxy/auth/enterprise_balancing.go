@@ -124,7 +124,7 @@ func (m *Manager) EnterpriseQuotaBalance(auth *Auth) EnterpriseQuotaBalanceView 
 	key := g.balanceKey()
 	view.PoolID = quotaDigest(key)
 	now := c.now()
-	if s := c.pools[view.PoolID]; s != nil && g.enabled() && g.appliesToQuota(s, now) {
+	if s := c.pools[view.PoolID]; s != nil && g.enforcesQuota(s, now) {
 		phase := quotaPhase(s, now)
 		switch {
 		case s.Restriction.Kind == enterpriseRateLimitedKind:
@@ -229,8 +229,8 @@ func (c *enterpriseQuotaCoordinator) balancePoolLocked(g *enterpriseQuotaGate) *
 	return p
 }
 
-// EnterpriseQuotaRefreshNeeded keeps paid pressure and recovery polling active
-// even when continuous balance monitoring is disabled.
+// EnterpriseQuotaRefreshNeeded polls verified paid pools for daily quota
+// protection independently of the optional balancing strategy.
 func (m *Manager) EnterpriseQuotaRefreshNeeded(source *Auth) bool {
 	if source == nil || source.enterpriseQuota == nil || m.HomeEnabled() {
 		return false
@@ -242,7 +242,7 @@ func (m *Manager) EnterpriseQuotaRefreshNeeded(source *Auth) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	g := c.bindings[source.ID]
-	return source.enterpriseQuota.sameCredential(g) && g.needsQuotaObservationLocked(c.now())
+	return source.enterpriseQuota.sameCredential(g) && g.paidQuotaKey(c.now()) != ""
 }
 
 // ObserveEnterpriseQuota accepts only a current credential's verified edition.
@@ -304,12 +304,12 @@ func (m *Manager) observeEnterpriseQuotaLocked(source *Auth, g *enterpriseQuotaG
 	if key != "" {
 		p.paid = reading
 	}
-	if key != "" && g.enabled() {
+	if key != "" {
 		s := c.poolStateLocked(key)
 		if g.protectObservedQuotaLocked(s, p, now) {
 			return true, true, true
 		}
-		if g.pauseNearQuotaLimitLocked(s, now) {
+		if g.enabled() && g.pauseNearQuotaLimitLocked(s, now) {
 			return true, true, true
 		}
 		if enterpriseObservedPause(s.Restriction.Kind) && reading.pool.UsageUpdatedAt.After(s.ProtectionUsageAt) {

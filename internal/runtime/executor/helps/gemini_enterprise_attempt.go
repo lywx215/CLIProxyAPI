@@ -279,6 +279,10 @@ func (a *EnterpriseAttempt) fields(err error) log.Fields {
 		if generation.RPCStatus != "" {
 			f["upstream_rpc_status"] = generation.RPCStatus
 		}
+		if generation.HTTPStatus == http.StatusTooManyRequests {
+			f["quota_unscoped"] = generation.UnscopedRateLimit
+			f["quota_pressure_hint"] = generation.QuotaPressureHint
+		}
 		f["generation_started"] = generation.Started || coreexec.GenerationHasStarted(err)
 	}
 	return f

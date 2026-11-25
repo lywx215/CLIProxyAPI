@@ -9,6 +9,7 @@ import (
 const (
 	enterpriseQuotaStreakCount     = 10
 	enterprisePaidHighUsagePercent = 95
+	enterprisePaidStopUsagePercent = 97
 	enterpriseQuotaProbeSpacing    = 30 * time.Second
 	enterpriseRateLimitedKind      = "rate_limited"
 	enterpriseHighUsageKind        = "high_usage"
@@ -61,7 +62,7 @@ func (c *enterpriseQuotaCoordinator) recordRateLimit(s *SharedQuotaState, now, r
 	s.LastRejectedAt, s.ProtectionStartedAt = now.UTC(), now.UTC()
 	s.Version++
 	delete(c.streaks, s.PoolID)
-	s.rejections = nil
+	s.clearQuotaRejections()
 	return true
 }
 
@@ -87,8 +88,19 @@ func (p *enterpriseBalancePool) usedAtLeast(now time.Time, percent int64) bool {
 	return limit > 0 && used >= threshold
 }
 
+func (p *enterpriseBalancePool) abovePaidStopUsage() bool {
+	limit, used := *p.paid.pool.Limit, *p.paid.pool.Used
+	percent := int64(enterprisePaidStopUsagePercent)
+	// Compare against floor(97% of the limit) without overflowing int64.
+	return limit > 0 && used > (limit/100)*percent+(limit%100)*percent/100
+}
+
 func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p *enterpriseBalancePool, now time.Time) bool {
 	if !p.currentPaidObservation(now) {
+		return false
+	}
+	stopUsage := p.abovePaidStopUsage()
+	if !g.enabled() && !stopUsage && !s.UsageCutoff {
 		return false
 	}
 	reading := p.paid
@@ -113,24 +125,34 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		return true
 	}
 	kind := ""
+	s.pruneRejections(now)
 	switch {
 	case *reading.pool.Remaining == 0:
 		kind = enterpriseExhaustedKind
-	case s.Restriction.Kind == enterpriseRateLimitedKind && p.usedAtLeast(now, enterprisePaidHighUsagePercent):
+	case stopUsage:
+		kind = enterpriseHighUsageKind
+	case p.usedAtLeast(now, enterprisePaidHighUsagePercent) &&
+		(s.Restriction.Kind == enterpriseRateLimitedKind || s.corroboratedQuotaPressure()):
 		kind = enterpriseHighUsageKind
 	default:
 		return false
 	}
-	if s.Phase != "normal" && !enterpriseLocalProtectionKind(s.Restriction.Kind) && s.Restriction.Kind != enterpriseNearLimitKind {
-		// Explicit upstream restrictions retain their scope and recovery rules.
-		return false
-	}
 	reset := reading.snapshot.ResetAt.UTC()
-	if s.Restriction.Kind == kind && s.Restriction.ResetAt.Equal(reset) {
+	if s.Phase != "normal" && !enterpriseLocalProtectionKind(s.Restriction.Kind) && s.Restriction.Kind != enterpriseNearLimitKind {
+		// The usage cutoff can replace a restriction on the same pool.
+		// Its deadline still honors the current retry time.
+		if !stopUsage {
+			return false
+		}
+	}
+	if s.Restriction.Kind == kind && s.Restriction.ResetAt.Equal(reset) && (!stopUsage || s.UsageCutoff) {
 		return false
 	}
 	if !enterpriseObservedPause(s.Restriction.Kind) {
 		s.ProtectionRetryAt = s.Restriction.RetryAt
+		for _, rejection := range s.completedRejections {
+			s.ProtectionRetryAt = maxTime(s.ProtectionRetryAt, rejection.retryAt)
+		}
 	}
 	s.Restriction = ge.Restriction{
 		Kind: kind, Scope: "edition", Feature: "assistant_search", Edition: g.identity.Edition,
@@ -138,10 +160,11 @@ func (g *enterpriseQuotaGate) protectObservedQuotaLocked(s *SharedQuotaState, p 
 		ResetAt: reset, TimeSource: "quota_observation",
 	}
 	s.Phase, s.PaidRecovery = "cooling", true
+	s.UsageCutoff = s.UsageCutoff || stopUsage
 	s.ProtectionObservedAt, s.ProtectionUsageAt = reading.snapshot.ObservedAt.UTC(), reading.pool.UsageUpdatedAt.UTC()
 	s.Version++
 	delete(g.manager.enterpriseQuota.streaks, s.PoolID)
-	s.rejections = nil
+	s.clearQuotaRejections()
 	return true
 }
 
@@ -163,7 +186,7 @@ func (t *enterpriseQuotaTicket) retainProtectionAfterProbeLocked(s *SharedQuotaS
 	if err != nil && upstream != nil && upstream.Restriction == nil && enterpriseProbeGoogleRateLimited(upstream) {
 		delay = maxTime(now.Add(enterpriseQuotaProbeSpacing), upstream.RetryAt)
 		s.LastRejectedAt = now.UTC()
-		t.sharedRateLimit = enterpriseUnscopedRateLimit(upstream)
+		t.sharedRateLimit = enterpriseUnscopedRateLimit(upstream) || enterpriseQuotaPressureHint(upstream)
 	}
 	if enterpriseObservedPause(s.Restriction.Kind) {
 		// After the documented daily reset, allow a delayed observation or a

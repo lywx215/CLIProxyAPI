@@ -89,6 +89,41 @@ func TestEnterpriseQuotaBackgroundRefreshDeduplicatesAndExpires(t *testing.T) {
 	}
 }
 
+func TestEnterprisePaidQuotaBackgroundRefreshPausesAbove97WithoutRequests(t *testing.T) {
+	s, auth := enterpriseTestService(t, "quota-background-protection")
+	d := s.enterpriseState()
+	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
+		return []ge.Model{{ID: ge.ArgonModel}}, nil
+	}
+	d.fetchSubscription = func(context.Context, *coreauth.Auth, string) ge.SubscriptionObservation {
+		trial := false
+		return ge.SubscriptionObservation{
+			Status: "ok", State: "ACTIVE", Edition: "enterprise_plus", FreeTrial: &trial,
+			ProjectNumber: "123", PrincipalHash: strings.Repeat("a", 64), CheckedAt: time.Now(),
+		}
+	}
+	var reads atomic.Int32
+	d.fetchQuota = func(_ context.Context, auth *coreauth.Auth, _ string) ge.QuotaSnapshot {
+		reads.Add(1)
+		observation := serviceQuotaObservation(auth)
+		used, remaining := int64(9701), int64(299)
+		observation.Pools[0].Used, observation.Pools[0].Remaining = &used, &remaining
+		return observation
+	}
+
+	s.refreshEnterpriseModels(t.Context())
+	d.wg.Wait()
+	s.refreshEnterpriseModels(t.Context())
+	d.wg.Wait()
+
+	current, _ := s.coreManager.GetByID(auth.ID)
+	view := s.coreManager.EnterpriseQuotaBalance(current)
+	if s.coreManager.EnterpriseQuotaBalancingEnabled() || reads.Load() != 1 ||
+		view.ProtectionStatus != "paused" || view.ProtectionReason != "high_usage" {
+		t.Fatalf("periodic polling did not pause the paid pool: reads=%d view=%+v", reads.Load(), view)
+	}
+}
+
 func TestEnterpriseQuotaBackgroundRefreshCancellationAndCredentialFence(t *testing.T) {
 	for _, change := range []string{"cancel", "credential", "home", "disable"} {
 		t.Run(change, func(t *testing.T) {

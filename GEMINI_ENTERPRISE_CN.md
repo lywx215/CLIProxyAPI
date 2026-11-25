@@ -6,6 +6,10 @@
 
 ## 配置与登录
 
+CLIProxyAPI 会自动读取已确认付费的项目和区域用量。当前周期的官方读数超过 97% 时，立即暂停该额度池的新派发，已在途请求继续完成。该保护独立于配额负载均衡开关，也可由管理页刷新额度触发。
+
+新增 OAuth 应用时，先在客户端所属的 Google Cloud 项目启用 Cloud Resource Manager API，再按管理中心、Gemini Manager 和远程授权的完整流程验收。原账号沿用绑定的客户端。[新 OAuth 应用导入与验收](GEMINI_ENTERPRISE_OAUTH_APPLICATIONS_SOP_CN.md)
+
 在 v8 配置的现有 `oauth.providers` 下增加配置，避免创建重复的 `oauth` 节点：
 
 ```yaml

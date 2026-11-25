@@ -28,6 +28,8 @@ type enterpriseQuotaOutcome struct {
 	successEpoch        uint64
 	admittedAt, retryAt time.Time
 	success, pending    bool
+	model               string
+	unscoped            bool
 }
 
 func (r *enterpriseQuotaRequest) hold() func() {
@@ -68,6 +70,7 @@ func (r *enterpriseQuotaRequest) recordOutcome(o enterpriseQuotaOutcome) {
 	}
 	if exists && !o.success && last.successEpoch == o.successEpoch {
 		o.retryAt = maxTime(o.retryAt, last.retryAt)
+		o.unscoped = o.unscoped || last.unscoped
 	}
 	if r.outcomes == nil {
 		r.outcomes = make(map[string]enterpriseQuotaOutcome)
@@ -84,7 +87,8 @@ func (t *enterpriseQuotaTicket) quotaOutcomeLocked(g *enterpriseQuotaGate, curre
 	if !current || t.request == nil || t.admittedAt.Before(enterpriseQuotaDayStart(now)) {
 		return enterpriseQuotaOutcome{}
 	}
-	if err != nil && !enterpriseUnscopedRateLimit(upstream) || err == nil && (t.emptyGeneration || !enterpriseQuotaTextModel(t.model)) {
+	unscoped := enterpriseUnscopedRateLimit(upstream)
+	if err != nil && !unscoped && !enterpriseQuotaPressureHint(upstream) || err == nil && (t.emptyGeneration || !enterpriseQuotaTextModel(t.model)) {
 		return enterpriseQuotaOutcome{}
 	}
 	s := g.quotaPressureStateLocked(now)
@@ -100,7 +104,7 @@ func (t *enterpriseQuotaTicket) quotaOutcomeLocked(g *enterpriseQuotaGate, curre
 	}
 	o := enterpriseQuotaOutcome{gate: g, poolID: s.PoolID, version: v, admittedAt: t.admittedAt, success: err == nil, successEpoch: s.successEpoch}
 	if upstream != nil {
-		o.retryAt = upstream.RetryAt
+		o.retryAt, o.model, o.unscoped = upstream.RetryAt, upstream.Model, unscoped
 	}
 	return o
 }
@@ -113,18 +117,27 @@ func (o enterpriseQuotaOutcome) settle() {
 	g := c.bindings[o.gate.authID]
 	s := c.pools[o.poolID]
 	if m.HomeEnabled() || !o.gate.sameCredential(g) || !g.enabled() || s == nil || g.paidQuotaKey(now) != s.Key ||
-		o.admittedAt.Before(enterpriseQuotaDayStart(now)) || s.ResetEpoch != o.version.reset || s.successEpoch != o.successEpoch ||
+		o.admittedAt.Before(enterpriseQuotaDayStart(now)) || s.ResetEpoch != o.version.reset ||
 		(s.Restriction.Kind != enterpriseNearLimitKind && (s.Phase != "normal" || s.Version != o.version.version)) {
 		c.mu.Unlock()
 		return
 	}
-	changed := c.recordRateLimit(s, now, o.retryAt)
-	if changed {
-		g.protectObservedQuotaLocked(s, c.balances[s.Key], now)
+	// An independent success interrupts the consecutive streak. Settled
+	// rejections still corroborate a near-limit reading within its window.
+	countStreak := o.unscoped && s.successEpoch == o.successEpoch
+	changed := countStreak && c.recordRateLimit(s, now, o.retryAt)
+	if s.Phase == "normal" {
+		s.pruneRejections(now)
+		s.recordCompletedRejection(enterpriseQuotaRejection{at: now, retryAt: o.retryAt, model: o.model})
+	}
+	if changed || s.Phase == "normal" {
+		changed = g.protectObservedQuotaLocked(s, c.balances[s.Key], now) || changed
 	}
 	c.mu.Unlock()
 	if changed {
 		m.publishEnterpriseQuota()
 	}
-	m.persistEnterpriseQuotaProtection()
+	if changed || countStreak {
+		m.persistEnterpriseQuotaProtection()
+	}
 }

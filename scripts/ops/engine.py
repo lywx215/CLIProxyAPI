@@ -79,6 +79,9 @@ class Engine:
         options = execution_options(plan)
         session = self.driver.session() if hasattr(self.driver, 'session') else contextlib.nullcontext()
         with ProcessLock(self.lease.path.with_suffix('.controller.lock')), session, contextlib.ExitStack() as cleanup:
+            run = self.store.run(run_id)
+            if run['status'] == 'superseded':
+                return run
             self.prepared.clear()
             self.lookahead = cleanup.enter_context(Lookahead(self.driver, self.store, run_id, plan['release']))
             if exclude_model_test:
@@ -156,7 +159,8 @@ class Engine:
                             return self.store.run(run_id)
                     else:
                         # No routing changes have occurred before the stopping phase.
-                        if state['phase'] in {'pending', 'prepared', 'staging', 'staged'}:
+                        if (state['phase'] in {'pending', 'prepared', 'staging', 'staged'}
+                                and not self.store.run(run_id)['data'].get('continued_from')):
                             self.lease.release(self.token)
                             self.token = None
                         self.store.status(run_id, 'blocked', reason=code)

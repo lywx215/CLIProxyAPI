@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -87,7 +88,7 @@ func TestEnterprisePaidQuotaPressureDeduplicatesManagerRetries(t *testing.T) {
 	if statusCodeFromError(err) != 429 || attempts != 3 || !m.EnterpriseQuotaRefreshNeeded(a) {
 		t.Fatalf("logical request produced %d upstream calls, error %v", attempts, err)
 	}
-	observeBalance(t, m, a, *now, 100)
+	observeBalance(t, m, a, *now, 400)
 	if view := b.enterpriseQuota.views(*now); len(view) != 0 {
 		t.Fatalf("three retries were counted as three requests: %+v", view)
 	}
@@ -186,6 +187,135 @@ func TestEnterpriseQuotaPressureReadBackoffAndExpiredWindow(t *testing.T) {
 	}
 }
 
+func TestEnterprisePaidQuotaPressureWithDelayedUsageAndSpaced429s(t *testing.T) {
+	for _, test := range []struct {
+		location string
+		used     int64
+		lateRead bool
+	}{
+		{location: "in", used: 9780},
+		{location: "us", used: 9880, lateRead: true},
+	} {
+		t.Run(test.location, func(t *testing.T) {
+			m, now := quotaPressureTestManager()
+			*now = now.Add(-time.Hour)
+			a := quotaPressureAuth(t, m, "delayed-a", "12345", test.location, true)
+			b := quotaPressureAuth(t, m, "delayed-b", "12345", test.location, true)
+			other := quotaPressureAuth(t, m, "delayed-other", "12345", "eu", true)
+			trial := quotaPressureAuth(t, m, "delayed-trial", "12345", test.location, false)
+			reads := 0
+			m.SetEnterpriseQuotaRefreshHook(func(*Auth) { reads++ })
+			reject := func(ctx context.Context, a *Auth, model string) {
+				t.Helper()
+				body := strings.Replace(probeTestAmbiguousQuota, `"us"`, `"`+test.location+`"`, 1)
+				rejection := ge.ParseGenerationError([]byte(body), http.StatusTooManyRequests, nil,
+					ge.FromMetadata(a.Metadata), a.EnterpriseQuotaIdentity, *now, false)
+				rejection.Model = model
+				if !rejection.QuotaPressureHint || rejection.UnscopedRateLimit || rejection.Restriction != nil {
+					t.Fatalf("expected an unclassified Google quota rejection: %+v", rejection)
+				}
+				quotaPressureAttempt(t, ctx, a, rejection)
+			}
+			one := WithEnterpriseQuotaRequest(t.Context())
+			reject(one, a, ge.ArgonModel)
+			reject(one, b, quotaPressureTestModel)
+			*now = now.Add(2 * time.Minute)
+			reject(WithEnterpriseQuotaRequest(t.Context()), b, quotaPressureTestModel)
+			if reads == 0 || !m.EnterpriseQuotaRefreshNeeded(a) {
+				t.Fatal("429s did not trigger a paid quota read with balancing off")
+			}
+			limit := int64(10200)
+			remaining := limit - test.used
+			watermark := now.Add(-time.Hour)
+			observe := func() {
+				t.Helper()
+				snapshot := balanceObservation(a, *now, remaining)
+				snapshot.Pools[0].Used, snapshot.Pools[0].Limit, snapshot.Pools[0].UsageUpdatedAt = &test.used, &limit, &watermark
+				if !m.ObserveEnterpriseQuota(a, snapshot) {
+					t.Fatal("current paid quota reading was rejected")
+				}
+			}
+			if !test.lateRead {
+				observe()
+			}
+			if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "" {
+				t.Fatalf("two requests or a retried request paused the pool: %+v", view)
+			}
+			*now = now.Add(2 * time.Minute)
+			third, finish := BeginEnterpriseQuotaRequest(t.Context())
+			reject(third, a, ge.CarbonModel)
+			if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "" {
+				t.Fatalf("an unsettled retry paused the pool: %+v", view)
+			}
+			finish()
+			if test.lateRead {
+				if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "" {
+					t.Fatalf("unclassified 429s paused a pool before verifying usage: %+v", view)
+				}
+				observe()
+			}
+			view := m.EnterpriseQuotaBalance(b)
+			if view.ProtectionStatus != "paused" || view.ProtectionReason != "high_usage" ||
+				view.RetryAt == nil || view.RetryAt.Before(ge.NextPacificMidnight(*now)) {
+				t.Fatalf("paid pool was not paused before the reported balance reached zero: %+v", view)
+			}
+			if _, err := b.enterpriseQuota.beginForModel(quotaPressureTestModel); statusCodeFromError(err) != http.StatusTooManyRequests {
+				t.Fatalf("another credential from the same pool could dispatch: %v", err)
+			}
+			for _, member := range []*Auth{other, trial} {
+				if blocked, _ := member.enterpriseQuota.blocked(*now); blocked {
+					t.Fatalf("shared pause affected %s", member.ID)
+				}
+			}
+		})
+	}
+}
+
+func TestEnterprisePaidQuotaPressureRetainsCrossModelEvidence(t *testing.T) {
+	m, now := quotaPressureTestManager()
+	*now = now.Add(-time.Hour)
+	a := quotaPressureAuth(t, m, "rolling-a", "12345", "us", true)
+	b := quotaPressureAuth(t, m, "rolling-b", "12345", "us", true)
+	other := quotaPressureAuth(t, m, "rolling-other", "12345", "eu", true)
+
+	reject := func(ctx context.Context, model string) {
+		t.Helper()
+		err := ge.ParseGenerationError([]byte(probeTestAmbiguousQuota), http.StatusTooManyRequests, nil,
+			ge.FromMetadata(a.Metadata), a.EnterpriseQuotaIdentity, *now, false)
+		err.Model = model
+		quotaPressureAttempt(t, ctx, a, err)
+	}
+	first, finish := BeginEnterpriseQuotaRequest(t.Context())
+	reject(first, ge.ArgonModel)
+	quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), b, nil)
+	finish()
+
+	for range 3 {
+		*now = now.Add(30 * time.Second)
+		reject(WithEnterpriseQuotaRequest(t.Context()), ge.CarbonModel)
+	}
+	if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "" {
+		t.Fatalf("the pool paused without a paid quota reading: %+v", view)
+	}
+
+	limit, used := int64(10200), int64(9880)
+	snapshot := balanceObservation(a, *now, limit-used)
+	snapshot.Pools[0].Used, snapshot.Pools[0].Limit = &used, &limit
+	if !m.ObserveEnterpriseQuota(a, snapshot) {
+		t.Fatal("current paid quota reading was rejected")
+	}
+	view := m.EnterpriseQuotaBalance(b)
+	if view.ProtectionStatus != "paused" || view.ProtectionReason != "high_usage" {
+		t.Fatalf("near-exhausted pool lost verified cross-model pressure: %+v", view)
+	}
+	if _, err := b.enterpriseQuota.beginForModel(ge.ArgonModel); statusCodeFromError(err) != http.StatusTooManyRequests {
+		t.Fatalf("another credential from the same pool could dispatch: %v", err)
+	}
+	if blocked, _ := other.enterpriseQuota.blocked(*now); blocked {
+		t.Fatal("shared quota protection affected an unrelated region")
+	}
+}
+
 func TestEnterprisePaidQuotaPressureSingleProbeAndLateObservation(t *testing.T) {
 	m, now := quotaPressureTestManager()
 	a := quotaPressureAuth(t, m, "pressure-probe-a", "named-project", "us", true)
@@ -202,7 +332,7 @@ func TestEnterprisePaidQuotaPressureSingleProbeAndLateObservation(t *testing.T) 
 	if len(a.enterpriseQuota.views(*now)) != 0 {
 		t.Fatal("no observation yet")
 	}
-	observeBalance(t, m, b, *now, 100)
+	observeBalance(t, m, b, *now, 400)
 	oldSuccess.finish(nil)
 	if len(a.enterpriseQuota.views(*now)) != 1 {
 		t.Fatal("late observation did not use the recent 429s, or an older success reopened the pool")
@@ -310,8 +440,8 @@ func TestEnterprisePaidQuotaProbeWithReservedBalanceAndCredentialRotation(t *tes
 	for range 3 {
 		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, plainGoogleRateLimit(a, *now, quotaPressureTestModel, ""))
 	}
-	m.SetConfig(&config.Config{Routing: config.RoutingConfig{GeminiEnterpriseQuotaBalancing: true, GeminiEnterpriseQuotaReserve: 1}})
-	observeBalance(t, m, a, *now, 1)
+	m.SetConfig(&config.Config{Routing: config.RoutingConfig{GeminiEnterpriseQuotaBalancing: true, GeminiEnterpriseQuotaReserve: 400}})
+	observeBalance(t, m, a, *now, 400)
 	*now = now.Add(time.Minute)
 	if _, err := a.enterpriseQuota.beginForModel("gemini-3-pro-image"); err == nil {
 		t.Fatal("image request was allowed to verify the text quota")
@@ -351,7 +481,7 @@ func TestEnterprisePaidQuotaEmptyStreamDoesNotRecover(t *testing.T) {
 	for range 3 {
 		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, plainGoogleRateLimit(a, *now, quotaPressureTestModel, ""))
 	}
-	observeBalance(t, m, a, *now, 100)
+	observeBalance(t, m, a, *now, 400)
 	*now = now.Add(time.Minute)
 	source := make(chan exec.StreamChunk)
 	close(source)
@@ -382,7 +512,7 @@ func TestEnterprisePaidQuotaNewRestrictionKeepsTheRecoverySlotOccupied(t *testin
 	for range 3 {
 		quotaPressureAttempt(t, WithEnterpriseQuotaRequest(t.Context()), a, plainGoogleRateLimit(a, *now, quotaPressureTestModel, ""))
 	}
-	observeBalance(t, m, a, *now, 100)
+	observeBalance(t, m, a, *now, 400)
 	*now = now.Add(time.Minute)
 	probe, err := b.enterpriseQuota.begin()
 	if err != nil {

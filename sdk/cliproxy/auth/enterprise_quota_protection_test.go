@@ -126,6 +126,45 @@ func TestEnterpriseQuotaProtectionPausesOnlyLimitedHighUsage(t *testing.T) {
 	}
 }
 
+func TestEnterpriseQuotaProtectionStopsAbove97PercentWithout429(t *testing.T) {
+	m, now := quotaPressureTestManager()
+	m.SetConfig(&config.Config{DisableCooling: true})
+	a := quotaPressureAuth(t, m, "guard-97", "12345", "us", true)
+	b := quotaPressureAuth(t, m, "guard-97-sibling", "12345", "us", true)
+	other := quotaPressureAuth(t, m, "guard-97-other", "12345", "eu", true)
+	trial := quotaPressureAuth(t, m, "guard-97-trial", "12345", "us", false)
+	limit := int64(10200)
+	observe := func(used int64) {
+		t.Helper()
+		snapshot := balanceObservation(a, *now, limit-used)
+		snapshot.Pools[0].Used, snapshot.Pools[0].Limit = &used, &limit
+		if !m.ObserveEnterpriseQuota(a, snapshot) {
+			t.Fatal("valid paid quota reading was rejected")
+		}
+	}
+	if m.EnterpriseQuotaBalancingEnabled() || !m.EnterpriseQuotaRefreshNeeded(a) || m.EnterpriseQuotaRefreshNeeded(trial) {
+		t.Fatal("the paid-only protection read depended on balancing")
+	}
+	observe(9894)
+	if view := m.EnterpriseQuotaBalance(b); view.ProtectionStatus != "" {
+		t.Fatalf("usage equal to 97%% paused the pool: %+v", view)
+	}
+	*now = now.Add(time.Second)
+	observe(9895)
+	view := m.EnterpriseQuotaBalance(b)
+	if view.ProtectionStatus != "paused" || view.ProtectionReason != "high_usage" || view.RetryAt == nil {
+		t.Fatalf("usage above 97%% did not pause the pool: %+v", view)
+	}
+	if _, err := b.enterpriseQuota.beginForModel(quotaPressureTestModel); statusCodeFromError(err) != http.StatusTooManyRequests {
+		t.Fatalf("a second credential from the same pool could dispatch: %v", err)
+	}
+	for _, auth := range []*Auth{other, trial} {
+		if blocked, _ := auth.enterpriseQuota.blocked(*now); blocked {
+			t.Fatalf("the paid quota threshold affected %s", auth.ID)
+		}
+	}
+}
+
 func TestEnterpriseQuotaProtectionRestoresConfirmedZeroWithoutGeneralCooldownPersistence(t *testing.T) {
 	dir := t.TempDir()
 	m, now := quotaPressureTestManager()

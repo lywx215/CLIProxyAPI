@@ -92,14 +92,13 @@ func TestEnterpriseQuotaPressureRefreshWithoutBalancing(t *testing.T) {
 				return ge.SubscriptionObservation{Status: "ok", Edition: "enterprise_plus", FreeTrial: &trial, ProjectNumber: "123", PrincipalHash: strings.Repeat(principal, 64), CheckedAt: time.Now()}
 			}
 			var quotaReads atomic.Int32
-			d.fetchQuota = func(context.Context, *coreauth.Auth, string) ge.QuotaSnapshot {
-				quotaReads.Add(1)
-				return ge.QuotaSnapshot{}
+			d.fetchQuota = func(_ context.Context, auth *coreauth.Auth, _ string) ge.QuotaSnapshot {
+				return serviceQuotaObservation(auth)
 			}
 			s.refreshEnterpriseModels(t.Context())
 			d.wg.Wait()
-			if quotaReads.Load() != 0 || m.EnterpriseQuotaBalancingEnabled() {
-				t.Fatal("a paid pool without rejections triggered an idle quota read with balancing disabled")
+			if m.EnterpriseQuotaBalancingEnabled() {
+				t.Fatal("paid quota protection enabled balance-based routing")
 			}
 			for _, auth := range []*coreauth.Auth{a, b} {
 				current, _ := m.GetByID(auth.ID)
