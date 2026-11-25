@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -83,8 +84,7 @@ func (s *SharedQuotaState) recordCompletedRejection(rejection enterpriseQuotaRej
 				}
 			}
 		}
-		copy(recent[drop:], recent[drop+1:])
-		recent = recent[:len(recent)-1]
+		recent = slices.Delete(recent, drop, drop+1)
 	}
 	s.completedRejections = append(recent, rejection)
 }

@@ -150,7 +150,7 @@ func TestEnterpriseQuotaPressureDeduplicatesHTTPStreamBootstrap(t *testing.T) {
 	year, month, day := now.In(la).Date()
 	start := time.Date(year, month, day, 0, 0, 0, 0, la).UTC()
 	reset := ge.NextPacificMidnight(now)
-	limit, used, remaining := int64(10000), int64(9900), int64(100)
+	limit, used, remaining := int64(10000), int64(9600), int64(400)
 	if !manager.ObserveEnterpriseQuota(credentials[0], ge.QuotaSnapshot{
 		Status: "ok", ProjectID: project, Location: "us", ObservedAt: now, PeriodStart: &start, ResetAt: &reset,
 		Pools: []ge.QuotaPool{{Tier: edition, Status: "ok", Limit: &limit, Used: &used, Remaining: &remaining, UsageUpdatedAt: &now}},
