@@ -89,7 +89,7 @@ func TestEnterpriseQuotaBackgroundRefreshDeduplicatesAndExpires(t *testing.T) {
 	}
 }
 
-func TestEnterprisePaidQuotaBackgroundRefreshPausesAbove97WithoutRequests(t *testing.T) {
+func TestEnterprisePaidQuotaBackgroundRefreshPausesAbove99WithoutRequests(t *testing.T) {
 	s, auth := enterpriseTestService(t, "quota-background-protection")
 	d := s.enterpriseState()
 	d.fetch = func(context.Context, *coreauth.Auth, string) ([]ge.Model, error) {
@@ -106,7 +106,7 @@ func TestEnterprisePaidQuotaBackgroundRefreshPausesAbove97WithoutRequests(t *tes
 	d.fetchQuota = func(_ context.Context, auth *coreauth.Auth, _ string) ge.QuotaSnapshot {
 		reads.Add(1)
 		observation := serviceQuotaObservation(auth)
-		used, remaining := int64(9701), int64(299)
+		used, remaining := int64(9901), int64(99)
 		observation.Pools[0].Used, observation.Pools[0].Remaining = &used, &remaining
 		return observation
 	}

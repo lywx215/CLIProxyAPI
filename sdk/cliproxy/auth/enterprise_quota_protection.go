@@ -9,7 +9,7 @@ import (
 const (
 	enterpriseQuotaStreakCount     = 10
 	enterprisePaidHighUsagePercent = 95
-	enterprisePaidStopUsagePercent = 97
+	enterprisePaidStopUsagePercent = 99
 	enterpriseQuotaProbeSpacing    = 30 * time.Second
 	enterpriseRateLimitedKind      = "rate_limited"
 	enterpriseHighUsageKind        = "high_usage"
@@ -91,7 +91,7 @@ func (p *enterpriseBalancePool) usedAtLeast(now time.Time, percent int64) bool {
 func (p *enterpriseBalancePool) abovePaidStopUsage() bool {
 	limit, used := *p.paid.pool.Limit, *p.paid.pool.Used
 	percent := int64(enterprisePaidStopUsagePercent)
-	// Compare against floor(97% of the limit) without overflowing int64.
+	// Round the cutoff down to preserve a strict comparison without overflowing int64.
 	return limit > 0 && used > (limit/100)*percent+(limit%100)*percent/100
 }
 
