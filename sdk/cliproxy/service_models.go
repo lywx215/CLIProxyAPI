@@ -72,6 +72,14 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 			excluded = strings.Split(val, ",")
 		}
 	}
+	if provider == "vertex" && a.VertexProjectRoute().Configured() {
+		var models []*ModelInfo
+		if entry := coreauth.ResolveVertexProjectKey(s.cfg, a); entry != nil {
+			models = applyExcludedModels(buildVertexCompatConfigModels(entry), entry.ExcludedModels)
+		}
+		s.registerResolvedModelsForAuth(a, provider, applyModelPrefixes(models, a.Prefix, s.cfg != nil && s.cfg.ForceModelPrefix))
+		return
+	}
 	if s.tryRegisterPluginModelsForAuth(ctx, a, provider, authKind, excluded) {
 		return
 	}
@@ -512,7 +520,7 @@ func (s *Service) resolveConfigVertexCompatKey(auth *coreauth.Auth) *config.Vert
 	if auth == nil || s.cfg == nil {
 		return nil
 	}
-	if entry := configEntryForAuthIndex(auth, s.cfg.VertexCompatAPIKey); entry != nil {
+	if entry := configEntryForAuthIndex(auth, s.cfg.VertexCompatAPIKey); entry != nil && !entry.ProjectRoute().Configured() {
 		return entry
 	}
 	var attrKey, attrBase string
@@ -522,6 +530,9 @@ func (s *Service) resolveConfigVertexCompatKey(auth *coreauth.Auth) *config.Vert
 	}
 	for i := range s.cfg.VertexCompatAPIKey {
 		entry := &s.cfg.VertexCompatAPIKey[i]
+		if entry.ProjectRoute().Configured() {
+			continue
+		}
 		cfgKey := strings.TrimSpace(entry.APIKey)
 		cfgBase := strings.TrimSpace(entry.BaseURL)
 		if attrKey != "" && strings.EqualFold(cfgKey, attrKey) {
@@ -537,7 +548,7 @@ func (s *Service) resolveConfigVertexCompatKey(auth *coreauth.Auth) *config.Vert
 	if attrKey != "" {
 		for i := range s.cfg.VertexCompatAPIKey {
 			entry := &s.cfg.VertexCompatAPIKey[i]
-			if strings.EqualFold(strings.TrimSpace(entry.APIKey), attrKey) {
+			if !entry.ProjectRoute().Configured() && strings.EqualFold(strings.TrimSpace(entry.APIKey), attrKey) {
 				return entry
 			}
 		}

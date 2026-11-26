@@ -51,6 +51,15 @@ func (g *StableIDGenerator) Next(kind string, parts ...string) (string, string) 
 	return fmt.Sprintf("%s:%s", kind, short), short
 }
 
+// NextVertexAPIKey keeps legacy auth IDs while distinguishing project routes.
+func (g *StableIDGenerator) NextVertexAPIKey(entry config.VertexCompatKey) (string, string) {
+	route := entry.ProjectRoute()
+	if route.Configured() {
+		return g.Next("vertex:apikey", entry.APIKey, entry.BaseURL, entry.ProxyURL, route.ProjectID, route.Location)
+	}
+	return g.Next("vertex:apikey", entry.APIKey, entry.BaseURL, entry.ProxyURL)
+}
+
 // ApplyAuthExcludedModelsMeta applies excluded models metadata to an auth entry.
 // It computes a hash of excluded models and sets the auth_kind attribute.
 // For OAuth entries, perKey (from the JSON file's excluded-models field) is merged

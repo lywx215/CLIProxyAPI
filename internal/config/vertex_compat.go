@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
@@ -33,6 +35,10 @@ type VertexCompatKey struct {
 	// When empty, requests fall back to the default Vertex API base URL.
 	BaseURL string `yaml:"base-url,omitempty" json:"base-url,omitempty"`
 
+	// ProjectID and Location opt into the official project-scoped Vertex API.
+	ProjectID string `yaml:"project-id,omitempty" json:"project-id,omitempty"`
+	Location  string `yaml:"location,omitempty" json:"location,omitempty"`
+
 	// ProxyURL optionally overrides the global proxy for this API key.
 	ProxyURL string `yaml:"proxy-url,omitempty" json:"proxy-url,omitempty"`
 
@@ -62,6 +68,94 @@ func (k VertexCompatKey) GetAPIKey() string   { return k.APIKey }
 func (k VertexCompatKey) GetBaseURL() string  { return k.BaseURL }
 func (k VertexCompatKey) GetPrefix() string   { return k.Prefix }
 func (k VertexCompatKey) GetProxyURL() string { return k.ProxyURL }
+
+type VertexProjectRoute struct {
+	ProjectID string
+	Location  string
+}
+
+func (k VertexCompatKey) ProjectRoute() VertexProjectRoute {
+	return VertexProjectRoute{strings.TrimSpace(k.ProjectID), strings.ToLower(strings.TrimSpace(k.Location))}
+}
+
+func (r VertexProjectRoute) Configured() bool { return r.ProjectID != "" || r.Location != "" }
+
+var (
+	vertexProjectID      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	vertexLocation       = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
+	vertexPublisherModel = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$`)
+)
+
+func (r VertexProjectRoute) Validate() error {
+	if r.ProjectID == "" || r.Location == "" {
+		return fmt.Errorf("project-id and location must be set together")
+	}
+	if !vertexProjectID.MatchString(r.ProjectID) {
+		return fmt.Errorf("project-id must be a Google Cloud project ID or number")
+	}
+	if len(r.Location) > 63 || !vertexLocation.MatchString(r.Location) {
+		return fmt.Errorf("location must be a Google Cloud location identifier")
+	}
+	return nil
+}
+
+func ValidVertexPublisherModel(model string) bool { return vertexPublisherModel.MatchString(model) }
+
+// RouteKey distinguishes configured API key routes without exposing the key in logs.
+func (k VertexCompatKey) RouteKey() [4]string {
+	route := k.ProjectRoute()
+	return [4]string{strings.TrimSpace(k.APIKey), strings.TrimSpace(k.BaseURL), route.ProjectID, route.Location}
+}
+
+func (cfg *Config) ValidateVertexCompatKeys() error {
+	if cfg == nil {
+		return nil
+	}
+	seen := make(map[[4]string]struct{})
+	aliasLocations := make(map[string]string)
+	for i, entry := range cfg.VertexCompatAPIKey {
+		route := entry.ProjectRoute()
+		if !route.Configured() {
+			continue
+		}
+		if errRoute := route.Validate(); errRoute != nil {
+			return fmt.Errorf("vertex-api-key[%d]: %w", i, errRoute)
+		}
+		if strings.TrimSpace(entry.APIKey) == "" {
+			return fmt.Errorf("vertex-api-key[%d]: api-key is required for a project route", i)
+		}
+		if strings.TrimSpace(entry.BaseURL) != "" || (entry.Interactions != nil && *entry.Interactions) {
+			return fmt.Errorf("vertex-api-key[%d]: project routes cannot use base-url or interactions=true", i)
+		}
+		key := entry.RouteKey()
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("vertex-api-key[%d]: duplicate project and location for this API key", i)
+		}
+		seen[key] = struct{}{}
+		prefix := normalizeModelPrefix(entry.Prefix)
+		for j, model := range entry.Models {
+			alias := strings.TrimSpace(model.Alias)
+			if alias == "" || !ValidVertexPublisherModel(strings.TrimSpace(model.Name)) {
+				return fmt.Errorf("vertex-api-key[%d].models[%d]: expected a publisher model ID and alias", i, j)
+			}
+			aliases := []string{alias}
+			if prefix != "" {
+				aliases = append(aliases, prefix+"/"+alias)
+				if cfg.ForceModelPrefix && prefix != alias {
+					aliases = aliases[1:]
+				}
+			}
+			for _, publicAlias := range aliases {
+				canonical := strings.ToLower(publicAlias)
+				if location, exists := aliasLocations[canonical]; exists && location != route.Location {
+					return fmt.Errorf("vertex-api-key[%d].models[%d]: alias %q is already bound to %s", i, j, publicAlias, location)
+				}
+				aliasLocations[canonical] = route.Location
+			}
+		}
+	}
+	return nil
+}
 
 // VertexCompatModel represents a model configuration for Vertex compatibility,
 // including the actual model name and its alias for API routing.
@@ -96,7 +190,7 @@ func (cfg *Config) SanitizeVertexCompatKeys() {
 		return
 	}
 
-	seen := make(map[string]struct{}, len(cfg.VertexCompatAPIKey))
+	seen := make(map[[4]string]struct{}, len(cfg.VertexCompatAPIKey))
 	out := cfg.VertexCompatAPIKey[:0]
 	for i := range cfg.VertexCompatAPIKey {
 		entry := cfg.VertexCompatAPIKey[i]
@@ -106,6 +200,9 @@ func (cfg *Config) SanitizeVertexCompatKeys() {
 		}
 		entry.Prefix = normalizeModelPrefix(entry.Prefix)
 		entry.BaseURL = strings.TrimSpace(entry.BaseURL)
+		route := entry.ProjectRoute()
+		entry.ProjectID = route.ProjectID
+		entry.Location = route.Location
 		entry.ProxyURL = strings.TrimSpace(entry.ProxyURL)
 		entry.Headers = NormalizeHeaders(entry.Headers)
 		entry.ExcludedModels = NormalizeExcludedModels(entry.ExcludedModels)
@@ -121,8 +218,7 @@ func (cfg *Config) SanitizeVertexCompatKeys() {
 		}
 		entry.Models = sanitizedModels
 
-		// Use API key + base URL as uniqueness key
-		uniqueKey := entry.APIKey + "|" + entry.BaseURL
+		uniqueKey := entry.RouteKey()
 		if _, exists := seen[uniqueKey]; exists {
 			continue
 		}

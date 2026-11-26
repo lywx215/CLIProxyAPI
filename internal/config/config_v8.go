@@ -944,6 +944,9 @@ func ValidateV8Config(data []byte) error {
 	if errDecode := decoder.Decode(&cfg); errDecode != nil {
 		return errDecode
 	}
+	if errVertex := (*Config)(&cfg).ValidateVertexCompatKeys(); errVertex != nil {
+		return errVertex
+	}
 	if errApps := cfg.OAuth.ValidateGeminiEnterpriseApplications(); errApps != nil {
 		return errApps
 	}

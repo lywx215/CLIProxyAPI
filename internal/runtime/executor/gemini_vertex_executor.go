@@ -227,6 +227,14 @@ func (e *GeminiVertexExecutor) PrepareRequest(req *http.Request, auth *cliproxya
 	}
 	apiKey, _ := vertexAPICreds(auth)
 	if strings.TrimSpace(apiKey) != "" {
+		if route := auth.VertexProjectRoute(); route.Configured() {
+			host, errHost := helps.VertexProjectHost(route)
+			if errHost != nil || req.URL == nil || req.URL.Scheme != "https" || req.URL.Host != host {
+				return statusErr{code: http.StatusBadRequest, msg: "request must use the configured Vertex project endpoint"}
+			}
+			req.Host = host
+			req.Header.Del("Host")
+		}
 		req.Header.Set("x-goog-api-key", apiKey)
 		req.Header.Del("Authorization")
 		return nil
@@ -259,7 +267,7 @@ func (e *GeminiVertexExecutor) HttpRequest(ctx context.Context, auth *cliproxyau
 	if err := e.PrepareRequest(httpReq, auth); err != nil {
 		return nil, err
 	}
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewVertexAPIKeyHTTPClient(ctx, e.cfg, auth)
 	return httpClient.Do(httpReq)
 }
 
@@ -541,11 +549,14 @@ func (e *GeminiVertexExecutor) executeWithAPIKey(ctx context.Context, auth *clip
 		body = helps.EnsureGeminiTrailingUserContent(body, "contents")
 	}
 
-	// For API key auth, use simpler URL format without project/location
-	if baseURL == "" {
-		baseURL = "https://aiplatform.googleapis.com"
+	route := auth.VertexProjectRoute()
+	url, errURL := helps.VertexAPIKeyModelURL(route, baseURL, baseModel, action)
+	if errURL != nil {
+		return resp, statusErr{code: http.StatusBadRequest, msg: errURL.Error()}
 	}
-	url := fmt.Sprintf("%s/%s/publishers/google/models/%s:%s", baseURL, vertexAPIVersion, baseModel, action)
+	if route.Configured() {
+		body, _ = sjson.DeleteBytes(body, "model")
+	}
 	if opts.Alt != "" && action != "countTokens" {
 		url = url + fmt.Sprintf("?$alt=%s", opts.Alt)
 	}
@@ -557,16 +568,7 @@ func (e *GeminiVertexExecutor) executeWithAPIKey(ctx context.Context, auth *clip
 	if errNewReq != nil {
 		return resp, errNewReq
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		httpReq.Header.Set("x-goog-api-key", apiKey)
-	}
-	applyGeminiHeaders(httpReq, auth, opts.Headers)
-	var attrs map[string]string
-	if auth != nil {
-		attrs = auth.Attributes
-	}
-	util.ApplyCustomHeadersFromAttrs(httpReq, attrs, opts.Headers)
+	helps.ApplyVertexAPIKeyHeaders(httpReq, auth, apiKey, opts.Headers)
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -586,7 +588,7 @@ func (e *GeminiVertexExecutor) executeWithAPIKey(ctx context.Context, auth *clip
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewVertexAPIKeyHTTPClient(ctx, e.cfg, auth)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
@@ -840,11 +842,14 @@ func (e *GeminiVertexExecutor) executeStreamWithAPIKey(ctx context.Context, auth
 
 	action := getVertexAction(baseModel, true)
 	body = helps.EnsureGeminiBoundaryUserContent(body, "contents")
-	// For API key auth, use simpler URL format without project/location
-	if baseURL == "" {
-		baseURL = "https://aiplatform.googleapis.com"
+	route := auth.VertexProjectRoute()
+	url, errURL := helps.VertexAPIKeyModelURL(route, baseURL, baseModel, action)
+	if errURL != nil {
+		return nil, statusErr{code: http.StatusBadRequest, msg: errURL.Error()}
 	}
-	url := fmt.Sprintf("%s/%s/publishers/google/models/%s:%s", baseURL, vertexAPIVersion, baseModel, action)
+	if route.Configured() {
+		body, _ = sjson.DeleteBytes(body, "model")
+	}
 	// Imagen models don't support streaming, skip SSE params
 	if !isImagenModel(baseModel) {
 		if opts.Alt == "" {
@@ -861,16 +866,7 @@ func (e *GeminiVertexExecutor) executeStreamWithAPIKey(ctx context.Context, auth
 	if errNewReq != nil {
 		return nil, errNewReq
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		httpReq.Header.Set("x-goog-api-key", apiKey)
-	}
-	applyGeminiHeaders(httpReq, auth, opts.Headers)
-	var attrs map[string]string
-	if auth != nil {
-		attrs = auth.Attributes
-	}
-	util.ApplyCustomHeadersFromAttrs(httpReq, attrs, opts.Headers)
+	helps.ApplyVertexAPIKeyHeaders(httpReq, auth, apiKey, opts.Headers)
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -890,7 +886,7 @@ func (e *GeminiVertexExecutor) executeStreamWithAPIKey(ctx context.Context, auth
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewVertexAPIKeyHTTPClient(ctx, e.cfg, auth)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
@@ -1116,27 +1112,21 @@ func (e *GeminiVertexExecutor) countTokensWithAPIKey(ctx context.Context, auth *
 	translatedReq = internalsignature.SanitizeGeminiRequestThoughtSignatures(translatedReq, "contents")
 	translatedReq = helps.EnsureGeminiLeadingUserContent(translatedReq, "contents")
 
-	// For API key auth, use simpler URL format without project/location
-	if baseURL == "" {
-		baseURL = "https://aiplatform.googleapis.com"
+	route := auth.VertexProjectRoute()
+	url, errURL := helps.VertexAPIKeyModelURL(route, baseURL, baseModel, "countTokens")
+	if errURL != nil {
+		return cliproxyexecutor.Response{}, statusErr{code: http.StatusBadRequest, msg: errURL.Error()}
 	}
-	url := fmt.Sprintf("%s/%s/publishers/google/models/%s:%s", baseURL, vertexAPIVersion, baseModel, "countTokens")
+	if route.Configured() {
+		translatedReq, _ = sjson.DeleteBytes(translatedReq, "model")
+	}
 
 	translatedReq = helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, to.String(), "", originalTranslatedForPayload, req, opts)(translatedReq)
 	httpReq, errNewReq := http.NewRequestWithContext(respCtx, http.MethodPost, url, bytes.NewReader(translatedReq))
 	if errNewReq != nil {
 		return cliproxyexecutor.Response{}, errNewReq
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		httpReq.Header.Set("x-goog-api-key", apiKey)
-	}
-	applyGeminiHeaders(httpReq, auth, opts.Headers)
-	var attrs map[string]string
-	if auth != nil {
-		attrs = auth.Attributes
-	}
-	util.ApplyCustomHeadersFromAttrs(httpReq, attrs, opts.Headers)
+	helps.ApplyVertexAPIKeyHeaders(httpReq, auth, apiKey, opts.Headers)
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -1156,7 +1146,7 @@ func (e *GeminiVertexExecutor) countTokensWithAPIKey(ctx context.Context, auth *
 		AuthValue: authValue,
 	})
 
-	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := helps.NewVertexAPIKeyHTTPClient(ctx, e.cfg, auth)
 	cliproxyexecutor.MarkUpstreamAttempt(ctx)
 	httpResp, errDo := httpClient.Do(httpReq)
 	if errDo != nil {
@@ -1346,7 +1336,7 @@ func shouldExecuteVertexInteractions(auth *cliproxyauth.Auth, opts cliproxyexecu
 }
 
 func isNativeVertexInteractionsAuth(auth *cliproxyauth.Auth) bool {
-	if auth == nil {
+	if auth == nil || auth.VertexProjectRoute().Configured() {
 		return false
 	}
 	if auth.Attributes != nil {

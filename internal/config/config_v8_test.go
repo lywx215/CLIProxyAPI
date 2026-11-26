@@ -67,8 +67,11 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Port != 8317 || len(cfg.APIKeys) != 1 || len(cfg.GeminiKey) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.VertexCompatAPIKey) != 1 || len(cfg.XAIKey) != 1 || len(cfg.MetaKey) != 1 || len(cfg.InteractionsKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
+	if cfg.Port != 8317 || len(cfg.APIKeys) != 1 || len(cfg.GeminiKey) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.VertexCompatAPIKey) != 2 || len(cfg.XAIKey) != 1 || len(cfg.MetaKey) != 1 || len(cfg.InteractionsKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
 		t.Fatal("v8 example fields did not reach runtime config")
+	}
+	if vertex := cfg.VertexCompatAPIKey[1]; vertex.ProjectID != "your-google-cloud-project" || vertex.Location != "us" || len(vertex.Models) != 4 {
+		t.Fatal("v8 Vertex project route example did not load")
 	}
 	if !cfg.QuotaExceeded.AntigravityCredits || !cfg.QuotaExceeded.SwitchProject || !cfg.QuotaExceeded.SwitchPreviewModel {
 		t.Fatal("fork quota defaults changed")

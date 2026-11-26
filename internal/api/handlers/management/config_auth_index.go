@@ -334,7 +334,7 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 	}
 
 	providerAuthMap := make(map[string]map[string]string)
-	for _, p := range []string{"gemini", "interactions", "vertex"} {
+	for _, p := range []string{"gemini", "interactions"} {
 		providerAuthMap[p] = make(map[string]string)
 	}
 
@@ -362,6 +362,7 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 		key := formatCredentialDedupKey(e.APIKey, e.BaseURL, e.ProxyURL, e.Prefix, e.Headers)
 		providerAuthMap["interactions"][key] = resolveAuthIndex(a)
 	}
+	vertexAuthIndexes := make(map[[4]string]string, len(authsByProvider["vertex"]))
 	for _, a := range authsByProvider["vertex"] {
 		if a == nil || a.Attributes == nil {
 			continue
@@ -371,8 +372,7 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 			continue
 		}
 		e := cfg.VertexCompatAPIKey[idx]
-		key := strings.TrimSpace(e.APIKey) + "|" + strings.TrimSpace(e.BaseURL)
-		providerAuthMap["vertex"][key] = resolveAuthIndex(a)
+		vertexAuthIndexes[e.RouteKey()] = resolveAuthIndex(a)
 	}
 
 	authByConfigIndex := make(map[string]map[string]*coreauth.Auth)
@@ -555,7 +555,11 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 				}
 				apiKey := strings.TrimSpace(yamlMapScalar(keyNode, "api-key"))
 				if providerName == "vertex" {
-					if idx, ok := providerAuthMap["vertex"][apiKey+"|"+groupBase]; ok {
+					entry := config.VertexCompatKey{
+						APIKey: apiKey, BaseURL: groupBase,
+						ProjectID: yamlMapScalar(keyNode, "project-id"), Location: yamlMapScalar(keyNode, "location"),
+					}
+					if idx, ok := vertexAuthIndexes[entry.RouteKey()]; ok {
 						setMapScalar(keyNode, "auth_index", idx)
 					}
 					continue
@@ -787,7 +791,7 @@ func (h *Handler) vertexCompatKeysWithAuthIndex() []vertexCompatKeyWithAuthIndex
 	out := make([]vertexCompatKeyWithAuthIndex, len(h.cfg.VertexCompatAPIKey))
 	for i := range h.cfg.VertexCompatAPIKey {
 		entry := h.cfg.VertexCompatAPIKey[i]
-		id, _ := idGen.Next("vertex:apikey", entry.APIKey, entry.BaseURL, entry.ProxyURL)
+		id, _ := idGen.NextVertexAPIKey(entry)
 		authIndex := liveIndexByID[id]
 		out[i] = vertexCompatKeyWithAuthIndex{
 			VertexCompatKey: entry,

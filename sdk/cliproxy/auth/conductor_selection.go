@@ -1066,6 +1066,9 @@ func (m *Manager) authSupportsRouteModel(registryRef *registry.ModelRegistry, au
 	if registryRef.ClientSupportsModel(auth.ID, routeKey) {
 		return true
 	}
+	if auth.VertexProjectRoute().Configured() {
+		return false
+	}
 	selectionKey := m.selectionModelKeyForAuth(auth, routeModel)
 	return selectionKey != "" && selectionKey != routeKey && registryRef.ClientSupportsModel(auth.ID, selectionKey)
 }

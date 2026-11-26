@@ -808,7 +808,7 @@ type APIKeyConfigEntry interface {
 	GetProxyURL() string
 }
 
-func resolveAPIKeyConfig[T APIKeyConfigEntry](entries []T, auth *Auth) *T {
+func resolveAPIKeyConfig[T APIKeyConfigEntry](entries []T, auth *Auth, accept func(T) bool) *T {
 	if auth == nil || len(entries) == 0 {
 		return nil
 	}
@@ -818,6 +818,9 @@ func resolveAPIKeyConfig[T APIKeyConfigEntry](entries []T, auth *Auth) *T {
 		attrBase = strings.TrimSpace(auth.Attributes["base_url"])
 	}
 	matchesCredentials := func(entry T) bool {
+		if accept != nil && !accept(entry) {
+			return false
+		}
 		cfgKey := strings.TrimSpace(entry.GetAPIKey())
 		cfgBase := strings.TrimSpace(entry.GetBaseURL())
 		if attrKey != "" && attrBase != "" {
@@ -846,7 +849,7 @@ func resolveAPIKeyConfig[T APIKeyConfigEntry](entries []T, auth *Auth) *T {
 	}
 	if attrKey != "" {
 		for i := range entries {
-			if strings.EqualFold(strings.TrimSpace(entries[i].GetAPIKey()), attrKey) {
+			if (accept == nil || accept(entries[i])) && strings.EqualFold(strings.TrimSpace(entries[i].GetAPIKey()), attrKey) {
 				return &entries[i]
 			}
 		}
@@ -858,49 +861,54 @@ func resolveGeminiAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internal
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.GeminiKey, auth)
+	return resolveAPIKeyConfig(cfg.GeminiKey, auth, nil)
 }
 
 func resolveInteractionsAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.GeminiKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.InteractionsKey, auth)
+	return resolveAPIKeyConfig(cfg.InteractionsKey, auth, nil)
 }
 
 func resolveClaudeAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.ClaudeKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.ClaudeKey, auth)
+	return resolveAPIKeyConfig(cfg.ClaudeKey, auth, nil)
 }
 
 func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.CodexKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.CodexKey, auth)
+	return resolveAPIKeyConfig(cfg.CodexKey, auth, nil)
 }
 
 func resolveXAIAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.XAIKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.XAIKey, auth)
+	return resolveAPIKeyConfig(cfg.XAIKey, auth, nil)
 }
 
 func resolveVertexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.VertexCompatKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.VertexCompatAPIKey, auth)
+	if auth.VertexProjectRoute().Configured() {
+		return ResolveVertexProjectKey(cfg, auth)
+	}
+	return resolveAPIKeyConfig(cfg.VertexCompatAPIKey, auth, func(entry internalconfig.VertexCompatKey) bool {
+		return !entry.ProjectRoute().Configured()
+	})
 }
 
 func resolveMetaAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.MetaKey {
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.MetaKey, auth)
+	return resolveAPIKeyConfig(cfg.MetaKey, auth, nil)
 }
 
 func resolveUpstreamModelForGeminiAPIKey(cfg *internalconfig.Config, auth *Auth, requestedModel string) string {

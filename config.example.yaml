@@ -683,6 +683,25 @@ upstream:
 #         - api-key: "vk-123..."                        # x-goog-api-key header
 #           weight: 5                                    # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
 #
+#     # Project-scoped Vertex routes use the Google endpoint for location.
+#     # Reuse the same API key in separate entries for other locations.
+#     # The 2026-11-26 regional preset enables all four models in us and eu,
+#     # only gemini-4-argon in europe-west2 and asia-southeast1, and no models in global.
+#     - name: vertex-project-us
+#       keys:
+#         - api-key: "your-google-cloud-api-key"
+#           project-id: "your-google-cloud-project"
+#           location: "us"
+#           models:                              # Explicit allowlist. Use [] to withhold all models.
+#             - name: "gemini-4-neon"
+#               alias: "gemini-4-neon-us"
+#             - name: "gemini-4-hydrogen"
+#               alias: "gemini-4-hydrogen-us"
+#             - name: "gemini-4-carbon"
+#               alias: "gemini-4-carbon-us"
+#             - name: "gemini-4-argon"
+#               alias: "gemini-4-argon-us"
+#
 #   # Codex API keys
 #
 #   codex:
